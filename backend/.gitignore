@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Environments
+.venv
+venv/
+env/
+ENV/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Distribution / packaging
+.installed.cfg
+*.egg/
+*.egg-info/
+/dist
+/build
+
+# environment files
+.env
+.flaskenv
+
+# Editor/OS files
+.idea
+.vscode
+.DS_Store
