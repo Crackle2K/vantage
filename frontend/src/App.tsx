@@ -1,12 +1,19 @@
 import { useState, useEffect } from 'react'
 import type { Business, Category, Deal } from './types'
 import { api } from './api'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import BusinessCard from './components/BusinessCard'
 import FilterBar from './components/FilterBar'
 import DealsSection from './components/DealsSection'
 import BusinessModal from './components/BusinessModal'
+import LoginPage from './pages/LoginPage'
+import SignUpPage from './pages/SignUpPage'
+import AccountPage from './pages/AccountPage'
 
-function App() {
+function MainApp() {
+  const { user, loading: authLoading } = useAuth()
+  const [authView, setAuthView] = useState<'login' | 'signup' | null>(null)
+  const [showAccountPage, setShowAccountPage] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -98,6 +105,62 @@ function App() {
     ? businesses.filter(b => bookmarkedIds.has(b.id))
     : businesses
 
+  // Show auth pages if not logged in
+  if (authLoading) {
+    return (
+      <div className="app">
+        <div className="loading">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!user && authView === 'login') {
+    return (
+      <LoginPage
+        onSwitchToSignUp={() => setAuthView('signup')}
+        onSuccess={() => setAuthView(null)}
+      />
+    )
+  }
+
+  if (!user && authView === 'signup') {
+    return (
+      <SignUpPage
+        onSwitchToLogin={() => setAuthView('login')}
+        onSuccess={() => setAuthView('login')}
+      />
+    )
+  }
+
+  if (!user) {
+    return (
+      <LoginPage
+        onSwitchToSignUp={() => setAuthView('signup')}
+        onSuccess={() => setAuthView(null)}
+      />
+    )
+  }
+
+  // Show account page if requested
+  if (showAccountPage) {
+    return (
+      <div className="app">
+        <header className="app-header">
+          <div className="header-content">
+            <h1 onClick={() => setShowAccountPage(false)} style={{ cursor: 'pointer' }}>Vantage</h1>
+            <p className="tagline">Discover & Support Local Businesses</p>
+          </div>
+          <div className="header-actions">
+            <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
+          </div>
+        </header>
+        <AccountPage />
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -106,6 +169,13 @@ function App() {
           <p className="tagline">Discover & Support Local Businesses</p>
         </div>
         <div className="header-actions">
+          <button
+            className="user-badge"
+            onClick={() => setShowAccountPage(true)}
+            title="Account Settings"
+          >
+            👤 {user.user_metadata?.name || user.email}
+          </button>
           <button
             className={`bookmarks-toggle ${showBookmarksOnly ? 'active' : ''}`}
             onClick={() => setShowBookmarksOnly(!showBookmarksOnly)}
@@ -167,6 +237,14 @@ function App() {
         <p>© 2026 Vantage - Supporting Local Communities</p>
       </footer>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   )
 }
 
