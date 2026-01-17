@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { Business, Category, Deal } from './types'
 import { api } from './api'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -46,11 +46,6 @@ function MainApp() {
     loadData()
   }, [])
 
-  // Fetch businesses when filters change
-  useEffect(() => {
-    loadBusinesses()
-  }, [selectedCategory, sortBy, searchTerm])
-
   const loadData = async () => {
     try {
       const [categoriesData, dealsData] = await Promise.all([
@@ -65,7 +60,7 @@ function MainApp() {
     }
   }
 
-  const loadBusinesses = async () => {
+  const loadBusinesses = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -81,7 +76,12 @@ function MainApp() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedCategory, sortBy, searchTerm])
+
+  // Fetch businesses when filters change
+  useEffect(() => {
+    loadBusinesses()
+  }, [loadBusinesses])
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light'

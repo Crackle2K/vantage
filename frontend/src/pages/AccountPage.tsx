@@ -1,21 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function AccountPage() {
   const { user, signOut, updateProfile } = useAuth()
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [name, setName] = useState(() => user?.user_metadata?.name || '')
+  const [email, setEmail] = useState(() => user?.email || '')
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-
-  useEffect(() => {
-    if (user) {
-      setName(user.user_metadata?.name || '')
-      setEmail(user.email || '')
-    }
-  }, [user])
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
