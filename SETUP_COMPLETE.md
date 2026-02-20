@@ -1,4 +1,4 @@
-# LocalBoost - Installation & Setup Summary
+# Vantage - Installation & Setup Summary
 
 ## ✅ Completed Tasks
 
@@ -201,7 +201,7 @@ npm run dev
 - Backend: http://localhost:8000
 - Frontend: http://localhost:5173
 - MongoDB: mongodb://localhost:27017
-- Database: localboost
+- Database: vantage
 - JWT Token: 7 day expiration
 
 ## 🐛 Known Issues & Solutions

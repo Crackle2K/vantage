@@ -8,6 +8,10 @@ import Businesses from './pages/Businesses'
 import LoginPage from './pages/LoginPage'
 import SignUpPage from './pages/SignUpPage'
 import AccountPage from './pages/AccountPage'
+import PricingPage from './pages/PricingPage'
+import ActivityFeedPage from './pages/ActivityFeedPage'
+import DashboardPage from './pages/DashboardPage'
+import ClaimBusinessPage from './pages/ClaimBusinessPage'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -18,6 +22,10 @@ createRoot(document.getElementById('root')!).render(
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/businesses" element={<Businesses />} />
+            <Route path="/activity" element={<ActivityFeedPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/claim" element={<ClaimBusinessPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/account" element={<AccountPage />} />

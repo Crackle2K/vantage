@@ -1,5 +1,3 @@
-"use client"
-
 import { Search, ArrowUpDown } from "lucide-react"
 
 interface SearchBarProps {

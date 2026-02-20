@@ -1,5 +1,5 @@
 """
-Geospatial Service for LocalBoost
+Geospatial Service for Vantage
 Provides geographic calculation utilities
 """
 

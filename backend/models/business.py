@@ -1,6 +1,6 @@
 """
 Business Model Schema
-Defines business data structures with geospatial support for LocalBoost
+Defines business data structures with geospatial support for Vantage
 """
 
 from pydantic import BaseModel, Field
@@ -88,6 +88,17 @@ class Business(BusinessBase):
     email: Optional[str] = None
     website: Optional[str] = None
     image_url: Optional[str] = None
+
+    # ── Hybrid Model: Seed vs Claimed ───────────────────────────────
+    is_claimed: bool = False                  # Has an owner claimed this?
+    claim_status: Optional[str] = None        # pending, verified, rejected
+    is_seed: bool = True                      # From our seed database?
+
+    # ── Community Trust Layer ───────────────────────────────────────
+    is_active_today: bool = False             # Had check-ins today?
+    checkins_today: int = 0
+    trending_score: float = 0.0              # Activity-based ranking boost
+    last_activity_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -109,21 +120,6 @@ class Business(BusinessBase):
                 "created_at": "2026-01-15T10:30:00Z"
             }
         }
-
-
-class BusinessInDB(Business):
-    """Business schema as stored in database"""
-    pass
-
-
-class BusinessSearchQuery(BaseModel):
-    """Schema for searching businesses with geospatial filters"""
-    latitude: float = Field(..., ge=-90, le=90)
-    longitude: float = Field(..., ge=-180, le=180)
-    radius_km: float = Field(default=10, ge=1, le=100)  # Search radius in kilometers
-    category: Optional[CategoryEnum] = None
-    search_term: Optional[str] = None
-    min_rating: Optional[float] = Field(None, ge=0, le=5)
 
 
 # MongoDB Geo Index Creation

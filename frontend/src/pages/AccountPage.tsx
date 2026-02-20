@@ -14,14 +14,14 @@ export default function AccountPage() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
         <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
-          <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#D4C2FC]/20">
+          <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#22c55e]/20">
             <User className="w-8 h-8 text-white" />
           </div>
-          <h2 className="text-2xl font-bold text-[hsl(var(--foreground))] mb-2 font-heading">Sign in required</h2>
+          <h2 className="text-2xl font-bold text-[hsl(var(--foreground))] mb-2 font-heading">Sign in <span className="font-serif">required</span></h2>
           <p className="text-[hsl(var(--muted-foreground))] mb-6">Please sign in to access your account settings</p>
           <Link
             to="/login"
-            className="inline-flex items-center justify-center px-6 py-3 rounded-xl gradient-primary text-white font-medium shadow-lg shadow-[#D4C2FC]/20"
+            className="inline-flex items-center justify-center px-6 py-3 rounded-xl gradient-primary text-white font-medium shadow-lg shadow-[#22c55e]/20"
           >
             Sign In
           </Link>
@@ -61,7 +61,7 @@ export default function AccountPage() {
           <div className="glass-card rounded-2xl p-8 mb-6">
             <div className="flex items-start gap-5">
               {/* Avatar */}
-              <div className="w-20 h-20 rounded-2xl gradient-primary flex items-center justify-center text-3xl font-bold text-white shadow-lg shadow-[#D4C2FC]/20 flex-shrink-0">
+              <div className="w-20 h-20 rounded-2xl gradient-primary flex items-center justify-center text-3xl font-bold text-white shadow-lg shadow-[#22c55e]/20 flex-shrink-0">
                 {(user.name || user.email)[0].toUpperCase()}
               </div>
 
@@ -124,7 +124,7 @@ export default function AccountPage() {
                   <button onClick={() => setIsEditing(false)} className="px-4 py-2.5 rounded-xl text-sm font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] transition-colors">
                     Cancel
                   </button>
-                  <button className="px-5 py-2.5 rounded-xl text-sm font-medium gradient-primary text-white flex items-center gap-2 shadow-lg shadow-[#D4C2FC]/20">
+                  <button className="px-5 py-2.5 rounded-xl text-sm font-medium gradient-primary text-white flex items-center gap-2 shadow-lg shadow-[#22c55e]/20">
                     <Save className="w-4 h-4" />
                     Save Changes
                   </button>

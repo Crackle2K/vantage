@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchUser = useCallback(async () => {
-    const token = localStorage.getItem('localboost_token');
+    const token = localStorage.getItem('vantage_token');
     if (!token) {
       setUser(null);
       setLoading(false);
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = await api.getMe();
       setUser(userData);
     } catch {
-      localStorage.removeItem('localboost_token');
+      localStorage.removeItem('vantage_token');
       setUser(null);
     } finally {
       setLoading(false);
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       const tokens = await api.login(email, password);
-      localStorage.setItem('localboost_token', tokens.access_token);
+      localStorage.setItem('vantage_token', tokens.access_token);
       await fetchUser();
       return { error: null };
     } catch (err) {
@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (name: string, email: string, password: string, role: string) => {
     try {
       const tokens = await api.register(name, email, password, role);
-      localStorage.setItem('localboost_token', tokens.access_token);
+      localStorage.setItem('vantage_token', tokens.access_token);
       await fetchUser();
       return { error: null };
     } catch (err) {
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = () => {
-    localStorage.removeItem('localboost_token');
+    localStorage.removeItem('vantage_token');
     setUser(null);
   };
 

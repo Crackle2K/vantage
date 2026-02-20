@@ -8,10 +8,11 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        heading: ['"Outfit"', 'system-ui', 'sans-serif'],
-        sub: ['"Outfit"', 'system-ui', 'sans-serif'],
-        body: ['"DM Sans"', 'system-ui', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
+        heading: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        sub: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        body: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+        serif: ['"Instrument Serif"', 'Georgia', 'serif'],
+        mono: ['"Space Mono"', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",

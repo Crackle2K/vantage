@@ -3,7 +3,7 @@ Quick Backend Test Script
 Tests that all modules can be imported and basic functionality works
 """
 
-print("Testing LocalBoost Backend...\n")
+print("Testing Vantage Backend...\n")
 
 # Test 1: Import FastAPI app
 print("✓ Testing main app import...")

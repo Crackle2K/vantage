@@ -1,9 +1,9 @@
-import type { Business, Review, Deal, ReviewCreate, Category, User, AuthTokens } from './types';
+import type { Business, Review, Deal, ReviewCreate, User, AuthTokens, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, BusinessActivityStatus } from './types';
 
 const API_URL = 'http://localhost:8000/api';
 
 function getAuthHeaders(): HeadersInit {
-  const token = localStorage.getItem('localboost_token');
+  const token = localStorage.getItem('vantage_token');
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -58,24 +58,6 @@ export const api = {
     return response.json();
   },
 
-  async getBusinessFeed(page: number = 1, pageSize: number = 10, category?: string, search?: string, sortBy?: string): Promise<{
-    businesses: Business[];
-    total: number;
-    page: number;
-    page_size: number;
-    has_more: boolean;
-  }> {
-    const params = new URLSearchParams();
-    params.append('page', page.toString());
-    params.append('page_size', pageSize.toString());
-    if (category) params.append('category', category);
-    if (search) params.append('search', search);
-    if (sortBy) params.append('sort_by', sortBy);
-    const response = await fetch(`${API_URL}/businesses/feed?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch business feed');
-    return response.json();
-  },
-
   async getNearbyBusinesses(lat: number, lng: number, radius: number): Promise<Business[]> {
     const response = await fetch(
       `${API_URL}/businesses/nearby?lat=${lat}&lng=${lng}&radius=${radius}`
@@ -123,14 +105,99 @@ export const api = {
     return response.json();
   },
 
-  // ─── Categories ──────────────────────────────
-  getCategories(): Category[] {
-    return [
-      { value: 'food', label: 'Food & Dining', icon: 'utensils' },
-      { value: 'retail', label: 'Retail & Shopping', icon: 'shopping-bag' },
-      { value: 'services', label: 'Services', icon: 'wrench' },
-      { value: 'entertainment', label: 'Entertainment', icon: 'music' },
-      { value: 'health', label: 'Health & Wellness', icon: 'heart-pulse' },
-    ];
+  // ─── Claims ──────────────────────────────────
+  async submitClaim(claim: ClaimCreate): Promise<BusinessClaim> {
+    const response = await fetch(`${API_URL}/claims`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(claim),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Failed to submit claim');
+    }
+    return response.json();
   },
+
+  async getMyClaims(): Promise<BusinessClaim[]> {
+    const response = await fetch(`${API_URL}/claims/my`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch claims');
+    return response.json();
+  },
+
+  // ─── Subscriptions ──────────────────────────────
+  async getSubscriptionTiers(): Promise<TierInfo[]> {
+    const response = await fetch(`${API_URL}/subscriptions/tiers`);
+    if (!response.ok) throw new Error('Failed to fetch tiers');
+    return response.json();
+  },
+
+  async createSubscription(sub: SubscriptionCreate): Promise<Subscription> {
+    const response = await fetch(`${API_URL}/subscriptions`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(sub),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Failed to create subscription');
+    }
+    return response.json();
+  },
+
+  async getMySubscriptions(): Promise<Subscription[]> {
+    const response = await fetch(`${API_URL}/subscriptions/my`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch subscriptions');
+    return response.json();
+  },
+
+  async getBusinessSubscription(businessId: string): Promise<Subscription | null> {
+    const response = await fetch(`${API_URL}/subscriptions/business/${businessId}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) return null;
+    return response.json();
+  },
+
+  // ─── Activity / Trust Layer ──────────────────────
+  async checkIn(data: CheckInCreate): Promise<CheckIn> {
+    const response = await fetch(`${API_URL}/checkins`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || 'Failed to check in');
+    }
+    return response.json();
+  },
+
+  async getActivityFeed(page: number = 1, pageSize: number = 20): Promise<ActivityFeedItem[]> {
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('page_size', pageSize.toString());
+    const response = await fetch(`${API_URL}/feed?${params}`);
+    if (!response.ok) throw new Error('Failed to fetch activity feed');
+    return response.json();
+  },
+
+  async getBusinessActivity(businessId: string): Promise<BusinessActivityStatus> {
+    const response = await fetch(`${API_URL}/businesses/${businessId}/activity`);
+    if (!response.ok) throw new Error('Failed to fetch business activity');
+    return response.json();
+  },
+
+  async getMyCredibility(): Promise<UserCredibility> {
+    const response = await fetch(`${API_URL}/credibility/me`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch credibility');
+    return response.json();
+  },
+
 };

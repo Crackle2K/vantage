@@ -1,5 +1,5 @@
 """
-Authentication Routes for LocalBoost
+Authentication Routes for Vantage
 Handles user registration and login with JWT tokens
 """
 
@@ -12,7 +12,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 
-from models.user import UserCreate, UserLogin, User, UserInDB, Token, TokenData
+from models.user import UserCreate, UserLogin, User, Token, TokenData
 from database.mongodb import get_users_collection
 
 load_dotenv()

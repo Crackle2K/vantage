@@ -1,5 +1,5 @@
 """
-Review Routes for LocalBoost
+Review Routes for Vantage
 Handles review creation and retrieval with duplicate prevention
 """
 

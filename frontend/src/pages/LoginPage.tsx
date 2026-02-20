@@ -39,18 +39,18 @@ export default function LoginPage() {
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 gradient-mesh">
       {/* Decorative blobs */}
-<div className="absolute top-32 left-10 w-72 h-72 bg-[#D4C2FC]/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-10 right-10 w-72 h-72 bg-[#D4C2FC]/10 rounded-full blur-3xl animate-float animation-delay-2000" />
+<div className="absolute top-32 left-10 w-72 h-72 bg-[#4ade80]/10 rounded-full blur-3xl animate-float" />
+        <div className="absolute bottom-10 right-10 w-72 h-72 bg-[#4ade80]/10 rounded-full blur-3xl animate-float animation-delay-2000" />
 
       <div className="w-full max-w-md relative animate-fade-in-up">
         <div className="glass-card rounded-2xl p-8 shadow-xl">
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-4 shadow-lg shadow-[#D4C2FC]/25">
+            <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-4 shadow-lg shadow-[#22c55e]/25">
               <Store className="w-7 h-7 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-[hsl(var(--foreground))] mb-1 font-heading">Welcome back</h1>
-            <p className="text-[hsl(var(--muted-foreground))] text-sm font-sub">Sign in to your LocalBoost account</p>
+            <h1 className="text-2xl font-bold text-[hsl(var(--foreground))] mb-1 font-heading">Welcome <span className="font-serif">back</span></h1>
+            <p className="text-[hsl(var(--muted-foreground))] text-sm font-sub">Sign in to your Vantage account</p>
           </div>
 
           {/* Error */}
@@ -105,7 +105,7 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading || !email || !password}
-              className="w-full h-11 gradient-primary text-white border-0 rounded-xl shadow-md shadow-[#D4C2FC]/20 hover:shadow-lg transition-all font-medium"
+              className="w-full h-11 gradient-primary text-white border-0 rounded-xl shadow-md shadow-[#22c55e]/20 hover:shadow-lg transition-all font-medium"
             >
               {loading ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Signing in...</>

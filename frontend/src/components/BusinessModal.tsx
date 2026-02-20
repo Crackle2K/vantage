@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Star, MapPin, Phone, Mail, Globe, Tag, Send, Loader2, MessageSquare, Clock, CheckCircle2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { X, Star, MapPin, Phone, Mail, Globe, Tag, Send, Loader2, MessageSquare, Clock, CheckCircle2, Award, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Business, Review, Deal } from '../types'
+import type { Business, Review, Deal, BusinessActivityStatus } from '../types'
 import { api } from '../api'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -11,17 +12,19 @@ interface BusinessModalProps {
 }
 
 const categoryGradients: Record<string, string> = {
-  food: 'from-[#D4C2FC] to-[#998FC7]',
-  retail: 'from-[#28262C] to-[#D4C2FC]',
-  services: 'from-[#28262C] to-[#998FC7]',
-  entertainment: 'from-[#998FC7] to-[#D4C2FC]',
-  health: 'from-[#D4C2FC] to-[#28262C]',
+  food: 'from-[#4ade80] to-[#22c55e]',
+  retail: 'from-[#052e16] to-[#4ade80]',
+  services: 'from-[#052e16] to-[#22c55e]',
+  entertainment: 'from-[#22c55e] to-[#4ade80]',
+  health: 'from-[#4ade80] to-[#052e16]',
 }
 
 export function BusinessModal({ business, onClose }: BusinessModalProps) {
   const { isAuthenticated, user } = useAuth()
+  const navigate = useNavigate()
   const [reviews, setReviews] = useState<Review[]>([])
   const [deals, setDeals] = useState<Deal[]>([])
+  const [activityStatus, setActivityStatus] = useState<BusinessActivityStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'info' | 'reviews' | 'deals'>('info')
   const [showReviewForm, setShowReviewForm] = useState(false)
@@ -30,19 +33,23 @@ export function BusinessModal({ business, onClose }: BusinessModalProps) {
   const [reviewComment, setReviewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [checkingIn, setCheckingIn] = useState(false)
+  const [checkedIn, setCheckedIn] = useState(false)
 
   const businessId = business.id || business._id || ''
-  const gradient = categoryGradients[business.category] || 'from-[#D4C2FC] to-[#998FC7]'
+  const gradient = categoryGradients[business.category] || 'from-[#4ade80] to-[#22c55e]'
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [reviewsData, dealsData] = await Promise.allSettled([
+      const [reviewsData, dealsData, activityData] = await Promise.allSettled([
         api.getBusinessReviews(businessId),
         api.getBusinessDeals(businessId),
+        api.getBusinessActivity(businessId),
       ])
       if (reviewsData.status === 'fulfilled') setReviews(reviewsData.value)
       if (dealsData.status === 'fulfilled') setDeals(dealsData.value)
+      if (activityData.status === 'fulfilled') setActivityStatus(activityData.value)
     } catch (err) {
       console.error('Failed to load data:', err)
     } finally {
@@ -125,7 +132,7 @@ export function BusinessModal({ business, onClose }: BusinessModalProps) {
 
           {/* Title overlay */}
           <div className="absolute bottom-0 left-0 right-0 p-6">
-            <h2 className="text-2xl font-bold text-white mb-1">{business.name}</h2>
+            <h2 className="text-2xl font-bold text-white mb-1 font-heading tracking-tight">{business.name}</h2>
             <div className="flex items-center gap-3 text-white/80 text-sm">
               <span className="capitalize">{business.category}</span>
               <span>|</span>
@@ -172,10 +179,77 @@ export function BusinessModal({ business, onClose }: BusinessModalProps) {
           {/* INFO TAB */}
           {activeTab === 'info' && (
             <div className="space-y-5 animate-fade-in">
+              {/* Activity Signal */}
+              {activityStatus && activityStatus.is_active_today && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-sm font-medium text-green-700 dark:text-green-400">Active Today</span>
+                  <span className="text-xs text-green-600 dark:text-green-500 ml-auto">
+                    {activityStatus.checkins_today} check-in{activityStatus.checkins_today !== 1 ? 's' : ''} today
+                  </span>
+                </div>
+              )}
+
+              {/* Claimed badge or Claim button */}
+              {business.is_claimed ? (
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span className="font-medium">Verified Business</span>
+                </div>
+              ) : business.is_seed !== false && isAuthenticated && user?.role === 'business_owner' ? (
+                <button
+                  onClick={() => { onClose(); navigate(`/claim?business=${businessId}`) }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[#22c55e]/30 text-[#22c55e] hover:bg-[#22c55e]/5 transition-colors text-sm font-medium"
+                >
+                  <Award className="w-4 h-4" />
+                  Claim This Business
+                </button>
+              ) : null}
+
+              {/* Check-in button */}
+              {isAuthenticated && (
+                <button
+                  onClick={async () => {
+                    if (checkedIn || checkingIn) return
+                    setCheckingIn(true)
+                    try {
+                      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+                      }).catch(() => null)
+                      await api.checkIn({
+                        business_id: businessId,
+                        latitude: pos?.coords.latitude,
+                        longitude: pos?.coords.longitude,
+                      })
+                      setCheckedIn(true)
+                    } catch (err) {
+                      setSubmitError(err instanceof Error ? err.message : 'Check-in failed')
+                    } finally {
+                      setCheckingIn(false)
+                    }
+                  }}
+                  disabled={checkingIn || checkedIn}
+                  className={cn(
+                    'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all',
+                    checkedIn
+                      ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                      : 'gradient-primary text-white shadow-md shadow-[#22c55e]/20 hover:shadow-lg'
+                  )}
+                >
+                  {checkingIn ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : checkedIn ? (
+                    <><CheckCircle2 className="w-4 h-4" /> Checked In!</>
+                  ) : (
+                    <><Zap className="w-4 h-4" /> Check In Here</>
+                  )}
+                </button>
+              )}
+
               <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">{business.description}</p>
 
               <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-[hsl(var(--foreground))] uppercase tracking-wide">Contact</h4>
+                <h4 className="text-sm font-semibold text-[hsl(var(--foreground))] uppercase tracking-wide font-mono">Contact</h4>
                 <div className="space-y-2.5">
                   {business.address && (
                     <div className="flex items-start gap-3 text-sm">
@@ -305,7 +379,7 @@ export function BusinessModal({ business, onClose }: BusinessModalProps) {
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                          {review.verified && <CheckCircle2 className="w-3.5 h-3.5 text-[#D4C2FC]" />}
+                          {review.verified && <CheckCircle2 className="w-3.5 h-3.5 text-[#4ade80]" />}
                           <Clock className="w-3 h-3" />
                           {new Date(review.created_at).toLocaleDateString()}
                         </div>
@@ -336,15 +410,15 @@ export function BusinessModal({ business, onClose }: BusinessModalProps) {
                   <div key={deal.id || deal._id} className="p-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-[#D4C2FC]/15 dark:bg-[#D4C2FC]/20 flex items-center justify-center flex-shrink-0">
-                          <Tag className="w-5 h-5 text-[#D4C2FC] dark:text-[#D4C2FC]" />
+                        <div className="w-10 h-10 rounded-lg bg-[#4ade80]/15 dark:bg-[#4ade80]/20 flex items-center justify-center flex-shrink-0">
+                          <Tag className="w-5 h-5 text-[#4ade80] dark:text-[#4ade80]" />
                         </div>
                         <div>
                           <h4 className="font-semibold text-[hsl(var(--foreground))]">{deal.title}</h4>
                           <p className="text-sm text-[hsl(var(--muted-foreground))]">{deal.description}</p>
                         </div>
                       </div>
-                      <span className="text-lg font-bold text-[#D4C2FC] dark:text-[#D4C2FC] flex-shrink-0">
+                      <span className="text-lg font-bold text-[#4ade80] dark:text-[#4ade80] flex-shrink-0">
                         {deal.discount_type === 'percentage' ? `${deal.discount_value}%` : `$${deal.discount_value}`}
                       </span>
                     </div>

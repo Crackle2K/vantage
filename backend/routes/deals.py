@@ -1,5 +1,5 @@
 """
-Deal Routes for LocalBoost
+Deal Routes for Vantage
 Handles deal/coupon creation and retrieval for businesses
 """
 

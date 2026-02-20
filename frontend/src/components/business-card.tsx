@@ -1,5 +1,3 @@
-"use client"
-
 import { Star, Heart, Tag, MapPin, ArrowUpRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -29,18 +27,18 @@ interface BusinessCardProps {
 }
 
 const categoryColors: Record<string, string> = {
-  food: "from-[#D4C2FC] to-[#998FC7]",
-  retail: "from-[#28262C] to-[#D4C2FC]",
-  services: "from-[#28262C] to-[#998FC7]",
-  entertainment: "from-[#998FC7] to-[#D4C2FC]",
-  health: "from-[#D4C2FC] to-[#28262C]",
-  "Food & Dining": "from-[#D4C2FC] to-[#998FC7]",
-  "Retail": "from-[#28262C] to-[#D4C2FC]",
-  "Beauty & Spa": "from-[#D4C2FC] to-[#28262C]",
-  "Services": "from-[#28262C] to-[#998FC7]",
-  "Coffee & Bakery": "from-[#D4C2FC] to-[#998FC7]",
-  "Fitness": "from-[#998FC7] to-[#D4C2FC]",
-  "Hair & Salon": "from-[#28262C] to-[#D4C2FC]",
+  food: "from-[#4ade80] to-[#22c55e]",
+  retail: "from-[#052e16] to-[#4ade80]",
+  services: "from-[#052e16] to-[#22c55e]",
+  entertainment: "from-[#22c55e] to-[#4ade80]",
+  health: "from-[#4ade80] to-[#052e16]",
+  "Food & Dining": "from-[#4ade80] to-[#22c55e]",
+  "Retail": "from-[#052e16] to-[#4ade80]",
+  "Beauty & Spa": "from-[#4ade80] to-[#052e16]",
+  "Services": "from-[#052e16] to-[#22c55e]",
+  "Coffee & Bakery": "from-[#4ade80] to-[#22c55e]",
+  "Fitness": "from-[#22c55e] to-[#4ade80]",
+  "Hair & Salon": "from-[#052e16] to-[#4ade80]",
 }
 
 export function BusinessCard({ business, isFavorite, onToggleFavorite, onViewDetails }: BusinessCardProps) {
@@ -48,7 +46,7 @@ export function BusinessCard({ business, isFavorite, onToggleFavorite, onViewDet
   const reviewCount = business.review_count || business.reviews || 0
   const imageUrl = business.image_url || business.image || ''
   const hasDeal = business.has_deals || business.hasDeal
-  const gradient = categoryColors[business.category] || "from-[#D4C2FC] to-[#998FC7]"
+  const gradient = categoryColors[business.category] || "from-[#4ade80] to-[#22c55e]"
 
   return (
     <div
@@ -75,7 +73,7 @@ export function BusinessCard({ business, isFavorite, onToggleFavorite, onViewDet
         {/* Deal badge */}
         {hasDeal && (
           <div className="absolute top-3 left-3">
-            <Badge className="bg-[#D4C2FC] hover:bg-[#998FC7] text-white border-0 shadow-lg shadow-[#D4C2FC]/25 gap-1">
+            <Badge className="bg-[#22c55e] hover:bg-[#052e16] text-white border-0 shadow-lg shadow-[#22c55e]/25 gap-1">
               <Tag className="w-3 h-3" />
               Deal
             </Badge>
@@ -106,14 +104,14 @@ export function BusinessCard({ business, isFavorite, onToggleFavorite, onViewDet
       {/* Content */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-1.5">
-          <h3 className="font-semibold text-[hsl(var(--foreground))] group-hover:text-[hsl(var(--primary))] transition-colors line-clamp-1">
+          <h3 className="font-semibold text-[hsl(var(--foreground))] group-hover:text-[hsl(var(--primary))] transition-colors line-clamp-1 font-heading tracking-tight">
             {business.name}
           </h3>
         </div>
 
         <div className="flex items-center gap-2 mb-2.5">
           <span className={`inline-block w-2 h-2 rounded-full bg-gradient-to-r ${gradient}`} />
-          <span className="text-xs font-medium text-[hsl(var(--muted-foreground))] capitalize">{business.category}</span>
+          <span className="text-xs font-medium text-[hsl(var(--muted-foreground))] capitalize font-mono">{business.category}</span>
           {business.distance !== undefined && (
             <>
               <span className="text-[hsl(var(--border))]">|</span>
@@ -128,8 +126,8 @@ export function BusinessCard({ business, isFavorite, onToggleFavorite, onViewDet
         <p className="text-sm text-[hsl(var(--muted-foreground))] mb-3 line-clamp-2 leading-relaxed">{business.description}</p>
 
         {business.dealText && (
-          <div className="mb-3 px-3 py-2 rounded-lg bg-[#D4C2FC]/10 dark:bg-[#D4C2FC]/15 border border-[#D4C2FC]/25 dark:border-[#D4C2FC]/20">
-            <p className="text-xs font-medium text-[#28262C] dark:text-[#D4C2FC]">{business.dealText}</p>
+          <div className="mb-3 px-3 py-2 rounded-lg bg-[#4ade80]/10 dark:bg-[#4ade80]/15 border border-[#4ade80]/25 dark:border-[#4ade80]/20">
+            <p className="text-xs font-medium text-[#052e16] dark:text-[#4ade80]">{business.dealText}</p>
           </div>
         )}
 

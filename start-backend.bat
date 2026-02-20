@@ -1,6 +1,6 @@
 @echo off
 echo ================================================
-echo    LocalBoost Backend - Quick Start
+echo    Vantage Backend - Quick Start
 echo ================================================
 echo.
 

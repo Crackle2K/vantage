@@ -1,5 +1,5 @@
 """
-Business Routes for LocalBoost
+Business Routes for Vantage
 Handles business CRUD operations and location-based search
 """
 
@@ -13,7 +13,6 @@ from models.business import (
     BusinessCreate,
     BusinessUpdate,
     CategoryEnum,
-    GeoLocation
 )
 from models.user import User
 from models.auth import get_current_user

@@ -1,6 +1,6 @@
 """
 Review Model Schema
-Defines review data structures for LocalBoost
+Defines review data structures for Vantage
 Ensures one review per user per business
 """
 
@@ -47,11 +47,6 @@ class Review(ReviewBase):
                 "created_at": "2026-02-15T14:30:00Z"
             }
         }
-
-
-class ReviewInDB(Review):
-    """Review schema as stored in database"""
-    pass
 
 
 class ReviewWithUser(Review):

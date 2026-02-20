@@ -1,5 +1,5 @@
 """
-LocalBoost - FastAPI Backend
+Vantage - FastAPI Backend
 A location-based platform connecting users with local businesses
 """
 
@@ -22,8 +22,8 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="LocalBoost API",
-    description="Backend API for LocalBoost - Discover and support local businesses",
+    title="Vantage API",
+    description="Backend API for Vantage - Discover and support local businesses",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -46,18 +46,24 @@ from models.auth import router as auth_router
 from routes.businesses import router as businesses_router
 from routes.reviews import router as reviews_router
 from routes.deals import router as deals_router
+from routes.claims import router as claims_router
+from routes.subscriptions import router as subscriptions_router
+from routes.activity import router as activity_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(businesses_router, prefix="/api", tags=["Businesses"])
 app.include_router(reviews_router, prefix="/api", tags=["Reviews"])
 app.include_router(deals_router, prefix="/api", tags=["Deals"])
+app.include_router(claims_router, prefix="/api", tags=["Claims"])
+app.include_router(subscriptions_router, prefix="/api", tags=["Subscriptions"])
+app.include_router(activity_router, prefix="/api", tags=["Activity"])
 
 # Root endpoint
 @app.get("/")
 async def root():
     """Root endpoint - API health check"""
     return {
-        "message": "LocalBoost API running",
+        "message": "Vantage API running",
         "status": "active",
         "version": "1.0.0"
     }

@@ -1,8 +1,6 @@
-"use client"
-
 import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { Store, User, LogOut, Moon, Sun, Menu, X, LogIn, UserPlus, LayoutDashboard } from "lucide-react"
+import { Store, User, LogOut, Moon, Sun, Menu, X, LogIn, UserPlus, LayoutDashboard, Award } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
@@ -17,7 +15,7 @@ export function Header() {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   useEffect(() => {
-    const saved = localStorage.getItem('localboost-theme')
+    const saved = localStorage.getItem('vantage-theme')
     if (saved === 'dark') {
       setIsDark(true)
       document.documentElement.classList.add('dark')
@@ -39,7 +37,7 @@ export function Header() {
     const next = !isDark
     setIsDark(next)
     document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('localboost-theme', next ? 'dark' : 'light')
+    localStorage.setItem('vantage-theme', next ? 'dark' : 'light')
   }
 
   const handleSignOut = () => {
@@ -51,6 +49,8 @@ export function Header() {
   const navLinks = [
     { to: '/', label: 'Home' },
     { to: '/businesses', label: 'Explore' },
+    { to: '/activity', label: 'Activity' },
+    { to: '/pricing', label: 'Pricing' },
   ]
 
   const isActive = (path: string) => location.pathname === path
@@ -68,11 +68,11 @@ export function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md shadow-[#D4C2FC]/25 group-hover:shadow-lg group-hover:shadow-[#D4C2FC]/30 transition-shadow duration-300">
+            <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-md shadow-[#22c55e]/25 group-hover:shadow-lg group-hover:shadow-[#22c55e]/30 transition-shadow duration-300">
               <Store className="w-4.5 h-4.5 text-white" />
             </div>
             <span className="text-xl font-bold text-[hsl(var(--foreground))] tracking-tight font-heading">
-              Local<span className="gradient-text">Boost</span>
+              Van<span className="gradient-text font-serif">tage</span>
             </span>
           </Link>
 
@@ -85,7 +85,7 @@ export function Header() {
                 className={cn(
                   "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 font-sub",
                   isActive(link.to)
-                    ? "bg-[hsl(var(--primary))] text-white shadow-md shadow-[#D4C2FC]/25"
+                    ? "bg-[hsl(var(--primary))] text-white shadow-md shadow-[#22c55e]/25"
                     : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]"
                 )}
               >
@@ -129,11 +129,29 @@ export function Header() {
                         <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{user.email}</p>
                       </div>
                       <div className="p-1.5">
+                        {user.role === 'business_owner' && (
+                          <button
+                            onClick={() => { navigate('/dashboard'); setUserMenuOpen(false); }}
+                            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))] transition-colors"
+                          >
+                            <LayoutDashboard className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+                            Dashboard
+                          </button>
+                        )}
+                        {user.role === 'business_owner' && (
+                          <button
+                            onClick={() => { navigate('/claim'); setUserMenuOpen(false); }}
+                            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))] transition-colors"
+                          >
+                            <Award className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+                            Claim Business
+                          </button>
+                        )}
                         <button
                           onClick={() => { navigate('/account'); setUserMenuOpen(false); }}
                           className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))] transition-colors"
                         >
-                          <LayoutDashboard className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+                          <User className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
                           My Account
                         </button>
                         <button
@@ -157,7 +175,7 @@ export function Header() {
                   </Button>
                 </Link>
                 <Link to="/signup">
-                  <Button size="sm" className="gap-1.5 gradient-primary text-white border-0 shadow-md shadow-[#D4C2FC]/25 hover:shadow-lg hover:shadow-[#D4C2FC]/30 transition-shadow">
+                  <Button size="sm" className="gap-1.5 gradient-primary text-white border-0 shadow-md shadow-[#22c55e]/25 hover:shadow-lg hover:shadow-[#22c55e]/30 transition-shadow">
                     <UserPlus className="w-4 h-4" />
                     Sign Up
                   </Button>
@@ -196,6 +214,18 @@ export function Header() {
             </nav>
             {isAuthenticated ? (
               <div className="flex flex-col gap-1 border-t border-[hsl(var(--border))] pt-3">
+                {user?.role === 'business_owner' && (
+                  <Link to="/dashboard" className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]">
+                    <LayoutDashboard className="w-4 h-4" />
+                    Dashboard
+                  </Link>
+                )}
+                {user?.role === 'business_owner' && (
+                  <Link to="/claim" className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]">
+                    <Award className="w-4 h-4" />
+                    Claim Business
+                  </Link>
+                )}
                 <Link to="/account" className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]">
                   <User className="w-4 h-4" />
                   My Account

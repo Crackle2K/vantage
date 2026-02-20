@@ -2,75 +2,75 @@
 
 /* ═══════════════════════════════════════════
    VANTAGE — Confident Startup Design System
-   Palette: Periwinkle · Shadow Grey ·
-            True Cobalt (accent) · Lavender Mist
+   Palette: Black · Blue Slate · Light Blue ·
+            Ghost White · Turf Green
    ═══════════════════════════════════════════ */
 
 @theme {
-  --color-primary: #D4C2FC;
-  --color-primary-hover: #998FC7;
-  --color-accent: #14248A;
-  --color-accent-hover: #0F1C6E;
-  --color-dark: #28262C;
-  --color-slate: #7A7289;
-  --color-snow: #F9F5FF;
+  --color-primary: #4ade80;
+  --color-primary-hover: #22c55e;
+  --color-accent: #22c55e;
+  --color-accent-hover: #16a34a;
+  --color-dark: #052e16;
+  --color-slate: #86efac;
+  --color-snow: #e8f5f0;
   --color-warning: #F59E0B;
   --color-danger: #EF4444;
 }
 
 :root {
-  --background: 264 100% 98%;
-  --foreground: 260 7% 16%;
-  --card: 0 0% 100%;
-  --card-foreground: 260 7% 16%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 260 7% 16%;
-  --primary: 259 91% 87%;
-  --primary-foreground: 260 7% 16%;
-  --secondary: 264 60% 96%;
-  --secondary-foreground: 260 7% 22%;
-  --muted: 264 40% 95%;
-  --muted-foreground: 260 12% 50%;
-  --accent: 232 75% 31%;
+  --background: 150 40% 92%;
+  --foreground: 160 70% 8%;
+  --card: 150 30% 94%;
+  --card-foreground: 160 70% 8%;
+  --popover: 150 30% 94%;
+  --popover-foreground: 160 70% 8%;
+  --primary: 160 50% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 150 25% 88%;
+  --secondary-foreground: 160 55% 18%;
+  --muted: 150 20% 86%;
+  --muted-foreground: 160 25% 35%;
+  --accent: 160 93% 23%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 264 25% 90%;
-  --input: 264 25% 90%;
-  --ring: 259 91% 87%;
+  --border: 150 22% 82%;
+  --input: 150 22% 82%;
+  --ring: 160 60% 30%;
   --radius: 0.75rem;
-  --chart-1: 259 91% 87%;
-  --chart-2: 232 75% 31%;
-  --chart-3: 260 7% 16%;
-  --chart-4: 260 12% 50%;
-  --chart-5: 264 60% 96%;
+  --chart-1: 177 33% 79%;
+  --chart-2: 160 93% 23%;
+  --chart-3: 160 60% 10%;
+  --chart-4: 160 12% 45%;
+  --chart-5: 155 20% 91%;
 }
 
 .dark {
-  --background: 260 7% 7%;
-  --foreground: 264 100% 98%;
-  --card: 260 8% 12%;
-  --card-foreground: 264 100% 98%;
-  --popover: 260 8% 12%;
-  --popover-foreground: 264 100% 98%;
-  --primary: 259 91% 87%;
-  --primary-foreground: 260 7% 16%;
-  --secondary: 260 10% 18%;
-  --secondary-foreground: 264 60% 85%;
-  --muted: 260 10% 18%;
-  --muted-foreground: 260 15% 65%;
-  --accent: 232 75% 31%;
+  --background: 140 50% 4%;
+  --foreground: 0 0% 96%;
+  --card: 140 40% 7%;
+  --card-foreground: 0 0% 96%;
+  --popover: 140 40% 7%;
+  --popover-foreground: 0 0% 96%;
+  --primary: 142 71% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 140 35% 11%;
+  --secondary-foreground: 142 60% 70%;
+  --muted: 140 30% 11%;
+  --muted-foreground: 140 15% 55%;
+  --accent: 142 71% 45%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 260 10% 22%;
-  --input: 260 10% 22%;
-  --ring: 259 91% 87%;
-  --chart-1: 259 91% 87%;
-  --chart-2: 232 75% 31%;
-  --chart-3: 264 100% 98%;
-  --chart-4: 260 15% 65%;
-  --chart-5: 260 10% 25%;
+  --border: 140 30% 15%;
+  --input: 140 30% 15%;
+  --ring: 142 71% 45%;
+  --chart-1: 142 71% 45%;
+  --chart-2: 142 76% 36%;
+  --chart-3: 0 0% 96%;
+  --chart-4: 140 15% 55%;
+  --chart-5: 140 35% 15%;
 }
 
 /* ═══════════════════════════════════════════
@@ -88,24 +88,29 @@ html {
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
 }
 
-/* Font helpers — 3 distinct typefaces for variation */
+/* Font helpers — 4 distinct typefaces for personality */
 .font-heading {
-  font-family: 'Outfit', system-ui, sans-serif;
-  letter-spacing: -0.03em;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  letter-spacing: -0.04em;
 }
 .font-sub {
-  font-family: 'Outfit', system-ui, sans-serif;
-  letter-spacing: -0.01em;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+.font-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+  letter-spacing: 0.01em;
+  font-style: italic;
 }
 .font-mono {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  letter-spacing: -0.02em;
+  font-family: 'Space Mono', 'Fira Code', monospace;
+  letter-spacing: -0.03em;
 }
 
 /* ═══════════════════════════════════════════
@@ -143,8 +148,8 @@ body {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(212, 194, 252, 0.15); }
-  50% { box-shadow: 0 0 40px rgba(212, 194, 252, 0.3); }
+  0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.15); }
+  50% { box-shadow: 0 0 40px rgba(34, 197, 94, 0.3); }
 }
 
 @keyframes gradient-shift {
@@ -189,13 +194,6 @@ body {
   transform: translateZ(0);
   backface-visibility: hidden;
 }
-.animation-delay-500 { animation-delay: 0.5s; }
-.animation-delay-1000 { animation-delay: 1s; }
-.animation-delay-1500 { animation-delay: 1.5s; }
-.animation-delay-2000 { animation-delay: 2s; }
-.animation-delay-2500 { animation-delay: 2.5s; }
-.animation-delay-3000 { animation-delay: 3s; }
-.animation-delay-4000 { animation-delay: 4s; }
 
 /* Staggered children animations */
 .stagger-children > * { opacity: 0; animation: fadeInUp 0.5s ease-out forwards; }
@@ -237,43 +235,43 @@ body {
 }
 .glass-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(212, 194, 252, 0.18);
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(74, 222, 128, 0.3);
 }
 .dark .glass-card:hover {
-  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(212, 194, 252, 0.3);
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(74, 222, 128, 0.3);
 }
 
 /* ═══════════════════════════════════════════
    GRADIENT UTILITIES
    ═══════════════════════════════════════════ */
 
-.gradient-primary { background: linear-gradient(135deg, #D4C2FC, #998FC7); }
-.gradient-accent { background: linear-gradient(135deg, #14248A, #0F1C6E); }
-.gradient-warm { background: linear-gradient(135deg, #D4C2FC, #28262C); }
+.gradient-primary { background: linear-gradient(135deg, #22c55e, #052e16); }
+.gradient-accent { background: linear-gradient(135deg, #052e16, #22c55e); }
+.gradient-warm { background: linear-gradient(135deg, #4ade80, #16a34a); }
 
 .gradient-text {
-  background: linear-gradient(135deg, #998FC7, #14248A);
+  background: linear-gradient(135deg, #4ade80, #22c55e);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  color: #14248A; /* fallback for unsupported browsers */
+  color: #22c55e; /* fallback for unsupported browsers */
 }
 
 .gradient-mesh {
   background:
-    radial-gradient(at 40% 20%, rgba(212, 194, 252, 0.09) 0px, transparent 50%),
-    radial-gradient(at 80% 0%, rgba(40, 38, 44, 0.04) 0px, transparent 50%),
-    radial-gradient(at 0% 50%, rgba(212, 194, 252, 0.05) 0px, transparent 50%),
-    radial-gradient(at 80% 50%, rgba(20, 36, 138, 0.04) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(212, 194, 252, 0.06) 0px, transparent 50%);
+    radial-gradient(at 40% 20%, rgba(74, 222, 128, 0.09) 0px, transparent 50%),
+    radial-gradient(at 80% 0%, rgba(5, 46, 22, 0.06) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, rgba(34, 197, 94, 0.05) 0px, transparent 50%),
+    radial-gradient(at 80% 50%, rgba(74, 222, 128, 0.04) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(34, 197, 94, 0.06) 0px, transparent 50%);
 }
 .dark .gradient-mesh {
   background:
-    radial-gradient(at 40% 20%, rgba(212, 194, 252, 0.12) 0px, transparent 50%),
-    radial-gradient(at 80% 0%, rgba(40, 38, 44, 0.06) 0px, transparent 50%),
-    radial-gradient(at 0% 50%, rgba(212, 194, 252, 0.06) 0px, transparent 50%),
-    radial-gradient(at 80% 50%, rgba(20, 36, 138, 0.04) 0px, transparent 50%),
-    radial-gradient(at 0% 100%, rgba(212, 194, 252, 0.08) 0px, transparent 50%);
+    radial-gradient(at 40% 20%, rgba(74, 222, 128, 0.15) 0px, transparent 50%),
+    radial-gradient(at 80% 0%, rgba(5, 46, 22, 0.10) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, rgba(34, 197, 94, 0.08) 0px, transparent 50%),
+    radial-gradient(at 80% 50%, rgba(74, 222, 128, 0.06) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(34, 197, 94, 0.10) 0px, transparent 50%);
 }
 
 /* ═══════════════════════════════════════════
@@ -362,7 +360,7 @@ body {
   inset: -1px;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg, #D4C2FC, #998FC7, #28262C);
+  background: linear-gradient(135deg, #4ade80, #22c55e, #052e16);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -375,6 +373,43 @@ body {
 }
 .btn-lift:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(212, 194, 252, 0.4);
+  box-shadow: 0 10px 25px -5px rgba(34, 197, 94, 0.35);
+}
+
+/* ═══════════════════════════════════════════
+   SERIF ACCENT UTILITIES
+   ═══════════════════════════════════════════ */
+
+/* Decorative underline for serif-accented words */
+.font-serif {
+  position: relative;
+  display: inline-block;
+}
+.font-serif::after {
+  content: '';
+  position: absolute;
+  bottom: 0.05em;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  border-radius: 2px;
+  opacity: 0.5;
+  transform: scaleX(0.8);
+  transform-origin: left;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.font-serif:hover::after {
+  transform: scaleX(1);
+  opacity: 0.8;
+}
+
+/* Eyebrow / label text with character */
+.label-accent {
+  font-family: 'Space Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 

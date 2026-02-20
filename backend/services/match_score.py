@@ -1,5 +1,5 @@
 """
-Match Score Service for LocalBoost
+Match Score Service for Vantage
 Calculates business relevance scores for user recommendations
 """
 

@@ -12,7 +12,7 @@ load_dotenv()
 
 # MongoDB connection settings
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-DATABASE_NAME = os.getenv("DATABASE_NAME", "localboost")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "vantage")
 
 # Global database client
 client: AsyncIOMotorClient = None
@@ -79,3 +79,28 @@ def get_reviews_collection():
 def get_deals_collection():
     """Get deals collection"""
     return get_database()["deals"]
+
+
+def get_claims_collection():
+    """Get business claims collection"""
+    return get_database()["claims"]
+
+
+def get_checkins_collection():
+    """Get check-ins collection"""
+    return get_database()["checkins"]
+
+
+def get_activity_feed_collection():
+    """Get activity feed collection"""
+    return get_database()["activity_feed"]
+
+
+def get_credibility_collection():
+    """Get user credibility scores collection"""
+    return get_database()["credibility"]
+
+
+def get_subscriptions_collection():
+    """Get subscriptions collection"""
+    return get_database()["subscriptions"]

@@ -1,9 +1,9 @@
-# LocalBoost
+# Vantage
 A location-based platform connecting users with local businesses.
 
 ## Project Overview
 
-LocalBoost helps users discover nearby local businesses and helps businesses grow using analytics and deals.
+Vantage helps users discover nearby local businesses and helps businesses grow using analytics and deals.
 
 **Tech Stack:**
 - **Frontend**: React + TypeScript (Vite)
@@ -72,7 +72,7 @@ API docs available at `http://localhost:8000/docs` when backend is running.
 Create `backend/.env`:
 ```env
 MONGODB_URI=mongodb://localhost:27017
-DATABASE_NAME=localboost
+DATABASE_NAME=vantage
 SECRET_KEY=your-secret-key-here
 ```
 
@@ -96,7 +96,7 @@ frontend/
 
 ## Development Status
 
-✅ **Completed:**
+ **Completed:**
 - FastAPI backend with all routes
 - MongoDB integration with Motor
 - JWT authentication
@@ -110,11 +110,10 @@ frontend/
 - Login/Register pages
 - Business cards with ratings
 
-⏳ **Next Steps:**
-1. Install Node.js (for frontend)
-2. Start MongoDB service
-3. Test end-to-end functionality
-4. Deploy to production
+ **Next Steps:**
+1. Start MongoDB service
+2. Test end-to-end functionality
+3. Deploy to production
 
 ## Troubleshooting
 

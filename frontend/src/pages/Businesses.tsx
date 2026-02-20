@@ -31,7 +31,7 @@ export default function Businesses() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('grid');
 
-  // ─── Blank feed state (no data — ready for API) ───
+  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Blank feed state (no data Ã¢â‚¬â€ ready for API) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   const [feedCards, setFeedCards] = useState<number[]>([]);
   const [feedPage, setFeedPage] = useState(1);
   const [feedHasMore, setFeedHasMore] = useState(true);
@@ -45,12 +45,12 @@ export default function Businesses() {
 
   // Load favorites from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('localboost-favorites');
+    const saved = localStorage.getItem('vantage-favorites');
     if (saved) setFavorites(JSON.parse(saved));
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('localboost-favorites', JSON.stringify(favorites));
+    localStorage.setItem('vantage-favorites', JSON.stringify(favorites));
   }, [favorites]);
 
   const toggleFavorite = (id: string) => {
@@ -192,7 +192,7 @@ export default function Businesses() {
         <div className="absolute inset-0 gradient-mesh opacity-60" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
           <h1 className="text-3xl sm:text-4xl font-bold text-[hsl(var(--foreground))] mb-2 font-heading">
-            Explore Businesses
+            Explore <span className="font-serif">Businesses</span>
           </h1>
           <p className="text-[hsl(var(--muted-foreground))] text-lg font-sub">
             Find, review, and support amazing local businesses near you
@@ -209,7 +209,7 @@ export default function Businesses() {
                 <Button
                   onClick={requestLocation}
                   disabled={loading}
-                  className="gradient-primary text-white border-0 shadow-md shadow-[#D4C2FC]/20 hover:shadow-lg transition-all rounded-xl"
+                  className="gradient-primary text-white border-0 shadow-md shadow-[#22c55e]/20 hover:shadow-lg transition-all rounded-xl"
                 >
                   {loading ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Getting Location...</>
@@ -218,7 +218,7 @@ export default function Businesses() {
                   )}
                 </Button>
               ) : (
-                <div className="flex items-center gap-2 px-4 py-2 bg-[#D4C2FC]/10 dark:bg-[#D4C2FC]/15 text-[#28262C] dark:text-[#D4C2FC] rounded-xl border border-[#D4C2FC]/30 dark:border-[#D4C2FC]/25">
+                <div className="flex items-center gap-2 px-4 py-2 bg-[#4ade80]/10 dark:bg-[#4ade80]/15 text-[#052e16] dark:text-[#4ade80] rounded-xl border border-[#4ade80]/30 dark:border-[#4ade80]/25">
                   <MapPin className="w-4 h-4" />
                   <span className="text-sm font-medium">Location Active</span>
                 </div>
@@ -343,7 +343,7 @@ export default function Businesses() {
             {/* Location Prompt */}
             {viewMode === 'grid' && !locationRequested && !location && !error && businesses.length === 0 && (
               <div className="max-w-lg mx-auto text-center py-20 animate-fade-in">
-                <div className="w-20 h-20 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#D4C2FC]/20">
+                <div className="w-20 h-20 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-[#22c55e]/20">
                   <MapPin className="w-10 h-10 text-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-[hsl(var(--foreground))] mb-3 font-heading">Find Businesses Near You</h2>
@@ -351,7 +351,7 @@ export default function Businesses() {
                 <Button
                   onClick={requestLocation}
                   size="lg"
-                  className="gradient-primary text-white border-0 shadow-lg shadow-[#D4C2FC]/20 rounded-xl px-8 py-6"
+                  className="gradient-primary text-white border-0 shadow-lg shadow-[#22c55e]/20 rounded-xl px-8 py-6"
                 >
                   <Navigation className="w-5 h-5 mr-2" />
                   Enable Location Access
@@ -384,7 +384,7 @@ export default function Businesses() {
               </div>
             )}
 
-            {/* Feed View — Instagram-style Blank Cards (ready for API) */}
+            {/* Feed View Ã¢â‚¬â€ Instagram-style Blank Cards (ready for API) */}
             {viewMode === 'feed' && (
               <div className="max-w-2xl mx-auto space-y-6">
                 {feedCards.length === 0 && !feedLoading && (
@@ -404,7 +404,7 @@ export default function Businesses() {
                       key={cardId}
                       className="glass-card rounded-2xl overflow-hidden animate-fade-in group"
                     >
-                      {/* Header — blank avatar + skeleton name */}
+                      {/* Header Ã¢â‚¬â€ blank avatar + skeleton name */}
                       <div className="flex items-center gap-3 px-5 py-4">
                         <div className="w-10 h-10 rounded-full bg-[hsl(var(--muted))] flex-shrink-0" />
                         <div className="min-w-0 flex-1 space-y-1.5">
@@ -414,13 +414,13 @@ export default function Businesses() {
                         <div className="h-3 w-10 rounded-full skeleton flex-shrink-0" />
                       </div>
 
-                      {/* Image area — blank placeholder */}
+                      {/* Image area Ã¢â‚¬â€ blank placeholder */}
                       <div className="relative aspect-[4/3] overflow-hidden bg-[hsl(var(--muted))]">
-                        <div className="absolute inset-0 bg-gradient-to-br from-[#D4C2FC]/20 via-[#998FC7]/10 to-[#28262C]/10 animate-gradient" />
+                        <div className="absolute inset-0 bg-gradient-to-br from-[#4ade80]/20 via-[#22c55e]/10 to-[#052e16]/10 animate-gradient" />
                         {/* Deal badge placeholder */}
                         {cardId % 3 === 0 && (
                           <div className="absolute top-4 right-4">
-                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-white bg-[#D4C2FC] shadow-lg shadow-[#D4C2FC]/25">
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold text-white bg-[#22c55e] shadow-lg shadow-[#22c55e]/25">
                               <Tag className="w-3 h-3" />
                               Deal
                             </span>
@@ -469,7 +469,7 @@ export default function Businesses() {
                         </button>
                       </div>
 
-                      {/* Description — skeleton lines */}
+                      {/* Description Ã¢â‚¬â€ skeleton lines */}
                       <div className="px-5 py-4 space-y-2">
                         <div className="h-3.5 w-3/4 rounded-full skeleton" />
                         <div className="h-3 w-full rounded-full skeleton" />
@@ -522,7 +522,7 @@ export default function Businesses() {
       {showScrollTop && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="fixed bottom-6 right-6 z-50 w-11 h-11 rounded-full gradient-primary text-white shadow-lg shadow-[#D4C2FC]/25 flex items-center justify-center hover:scale-110 transition-transform"
+          className="fixed bottom-6 right-6 z-50 w-11 h-11 rounded-full gradient-primary text-white shadow-lg shadow-[#22c55e]/25 flex items-center justify-center hover:scale-110 transition-transform"
         >
           <ChevronUp className="w-5 h-5" />
         </button>

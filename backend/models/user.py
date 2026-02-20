@@ -1,6 +1,6 @@
 """
 User Model Schema
-Defines user data structures for LocalBoost
+Defines user data structures for Vantage
 """
 
 from pydantic import BaseModel, EmailStr, Field
@@ -27,12 +27,6 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
     role: UserRole = UserRole.CUSTOMER
-
-
-class UserUpdate(BaseModel):
-    """Schema for updating user information"""
-    name: Optional[str] = Field(None, min_length=2, max_length=100)
-    email: Optional[EmailStr] = None
 
 
 class User(UserBase):

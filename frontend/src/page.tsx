@@ -1,5 +1,3 @@
-"use client"
-
 import { useState, useEffect, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
@@ -9,7 +7,7 @@ import {
   Shield, Zap, Users, ChevronRight,
 } from "lucide-react"
 
-/* ── Scroll-reveal hook ─────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Scroll-reveal hook ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 function useScrollReveal(threshold = 0.15) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
@@ -26,7 +24,7 @@ function useScrollReveal(threshold = 0.15) {
   return { ref, visible }
 }
 
-/* ── Scroll Y tracker for parallax ─────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Scroll Y tracker for parallax ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 function useScrollY() {
   const [y, setY] = useState(0)
   useEffect(() => {
@@ -51,10 +49,10 @@ export default function HomePage() {
   const ctaReveal = useScrollReveal()
 
   const features = [
-    { icon: MapPin,     title: "Location Discovery",  description: "Find businesses near you with precise geolocation and customizable search radius.", gradient: "from-[#D4C2FC] to-[#998FC7]" },
-    { icon: Star,       title: "Trusted Reviews",      description: "Read authentic ratings and reviews from verified customers in your community.",      gradient: "from-[#28262C] to-[#D4C2FC]" },
-    { icon: Tag,        title: "Exclusive Deals",      description: "Access special offers, discounts, and coupon codes from your favorite local spots.", gradient: "from-[#D4C2FC] to-[#998FC7]" },
-    { icon: TrendingUp, title: "Business Analytics",   description: "Business owners get real-time insights on engagement, views, and growth.",            gradient: "from-[#28262C] to-[#998FC7]" },
+    { icon: MapPin,     title: "Location Discovery",  description: "Find businesses near you with precise geolocation and customizable search radius.", gradient: "from-[#4ade80] to-[#22c55e]" },
+    { icon: Star,       title: "Trusted Reviews",      description: "Read authentic ratings and reviews from verified customers in your community.",      gradient: "from-[#052e16] to-[#4ade80]" },
+    { icon: Tag,        title: "Exclusive Deals",      description: "Access special offers, discounts, and coupon codes from your favorite local spots.", gradient: "from-[#4ade80] to-[#22c55e]" },
+    { icon: TrendingUp, title: "Business Analytics",   description: "Business owners get real-time insights on engagement, views, and growth.",            gradient: "from-[#052e16] to-[#22c55e]" },
   ]
 
   const steps = [
@@ -72,7 +70,7 @@ export default function HomePage() {
 
   return (
     <div className="overflow-hidden">
-      {/* ═══════ HERO ═══════ */}
+      {/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â HERO ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */}
       <section className="relative min-h-[92vh] flex items-center overflow-hidden bg-[hsl(var(--background))]">
         {/* Parallax background layers */}
         <div
@@ -80,31 +78,32 @@ export default function HomePage() {
           style={{ transform: `translateY(${scrollY * 0.25}px)` }}
         />
         <div
-          className="absolute top-20 left-[8%] w-[500px] h-[500px] bg-[#D4C2FC]/[0.06] rounded-full blur-3xl parallax-layer"
+          className="absolute top-20 left-[8%] w-[500px] h-[500px] bg-[#4ade80]/[0.06] rounded-full blur-3xl parallax-layer"
           style={{ transform: `translateY(${scrollY * 0.35}px)` }}
         />
         <div
-          className="absolute bottom-20 right-[8%] w-[400px] h-[400px] bg-[#28262C]/[0.04] rounded-full blur-3xl parallax-layer"
+          className="absolute bottom-20 right-[8%] w-[400px] h-[400px] bg-[#052e16]/[0.04] rounded-full blur-3xl parallax-layer"
           style={{ transform: `translateY(${scrollY * 0.2}px)` }}
         />
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-16 lg:py-24 w-full">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-            {/* ── Left: Copy ── */}
+            {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Left: Copy ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
             <div className="order-2 lg:order-1 text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 mb-8 rounded-full bg-[#D4C2FC]/30 dark:bg-[#D4C2FC]/25 text-[#14248A] dark:text-[#D4C2FC] text-sm font-medium animate-fade-in border border-[#D4C2FC]/40">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 mb-8 rounded-full bg-[#4ade80]/30 dark:bg-[#4ade80]/25 text-[#22c55e] dark:text-[#4ade80] text-sm font-medium animate-fade-in border border-[#4ade80]/40">
                 <Zap className="w-3.5 h-3.5" />
                 <span className="font-mono text-xs tracking-wide uppercase">Your community, one tap away</span>
               </div>
 
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 animate-fade-in-up font-heading leading-[1.08]">
-                <span className="text-[#28262C] dark:text-white text-shadow-sm">Discover Local</span>
+                <span className="!text-[#003d26] dark:!text-white">Discover </span>
+                <span className="font-serif !text-[#003d26] dark:!text-white">Local</span>
                 <br />
-                <span className="text-[#28262C] dark:text-white text-shadow-sm">Businesses That </span>
-                <span className="gradient-text">Matter</span>
+                <span className="!text-[#003d26] dark:!text-white">Businesses That </span>
+                <span className="gradient-text font-serif">Matter</span>
               </h1>
 
-              <p className="text-lg sm:text-xl text-[#5A5266] dark:text-slate-400 max-w-xl mx-auto lg:mx-0 mb-10 leading-relaxed animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+              <p className="text-lg sm:text-xl text-[#2d5a47] dark:text-slate-400 max-w-xl mx-auto lg:mx-0 mb-10 leading-relaxed animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
                 Connect with incredible local businesses near you. Browse deals,
                 read real reviews, and support the heart of your community.
               </p>
@@ -112,7 +111,7 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
                 <Button
                   size="lg"
-                  className="text-base px-8 py-6 gradient-primary text-[#28262C] border-0 shadow-lg shadow-[#D4C2FC]/30 hover:shadow-xl hover:shadow-[#D4C2FC]/50 transition-all duration-300 hover:-translate-y-1 rounded-xl btn-lift font-semibold"
+                  className="text-base px-8 py-6 gradient-primary text-white border-0 shadow-lg shadow-[#22c55e]/30 hover:shadow-xl hover:shadow-[#22c55e]/50 transition-all duration-300 hover:-translate-y-1 rounded-xl btn-lift font-semibold"
                   onClick={() => navigate("/businesses")}
                 >
                   <Search className="w-5 h-5 mr-2" />
@@ -122,7 +121,7 @@ export default function HomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="text-base px-8 py-6 border-2 border-[#28262C]/15 dark:border-slate-700 hover:border-[#D4C2FC] hover:bg-[#D4C2FC]/10 transition-all duration-300 rounded-xl text-[#28262C] dark:text-white font-semibold"
+                  className="text-base px-8 py-6 border-2 border-[#052e16]/15 dark:border-slate-700 hover:border-[#4ade80] hover:bg-[#4ade80]/10 transition-all duration-300 rounded-xl text-[#052e16] dark:text-white font-semibold"
                   onClick={() => navigate("/signup")}
                 >
                   <Store className="w-5 h-5 mr-2" />
@@ -131,7 +130,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* ── Right: Canvas Neural Network ── */}
+            {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Right: Canvas Neural Network ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
             <div className="order-1 lg:order-2 flex items-center justify-center relative animate-fade-in" style={{ animationDelay: "0.2s" }}>
               <div
                 className="w-[380px] h-[380px] sm:w-[480px] sm:h-[480px] lg:w-[580px] lg:h-[580px] parallax-layer"
@@ -151,7 +150,7 @@ export default function HomePage() {
               const Icon = stat.icon
               return (
                 <div key={stat.label} className="glass-card rounded-2xl p-5 text-center hover:scale-[1.03] transition-transform duration-300">
-                  <Icon className="w-5 h-5 text-[#14248A] dark:text-[#998FC7] mx-auto mb-2" />
+                  <Icon className="w-5 h-5 text-[#22c55e] dark:text-[#22c55e] mx-auto mb-2" />
                   <div className="text-2xl sm:text-3xl font-bold text-[hsl(var(--foreground))] font-mono tracking-tight">{stat.value}</div>
                   <div className="text-sm text-[hsl(var(--muted-foreground))] mt-0.5">{stat.label}</div>
                 </div>
@@ -161,19 +160,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ═══════ FEATURES (scroll-reveal) ═══════ */}
+      {/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â FEATURES (scroll-reveal) ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */}
       <section className="py-24 bg-white dark:bg-slate-900/50">
         <div
           ref={featuresReveal.ref}
           className={`max-w-7xl mx-auto px-4 sm:px-6 transition-all duration-1000 ${featuresReveal.visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-16"}`}
         >
           <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D4C2FC]/30 dark:bg-[#D4C2FC]/25 text-[#14248A] dark:text-[#D4C2FC] text-xs font-semibold mb-4 border border-[#D4C2FC]/40 font-mono uppercase tracking-wider">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#4ade80]/30 dark:bg-[#4ade80]/25 text-[#22c55e] dark:text-[#4ade80] text-xs font-semibold mb-4 border border-[#4ade80]/40 font-mono uppercase tracking-wider">
               <Shield className="w-3 h-3" />
-              Why LocalBoost?
+              Why Vantage?
             </div>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 font-heading">
-              Everything you need
+              Everything you <span className="font-serif">need</span>
             </h2>
             <p className="text-lg text-slate-700 dark:text-slate-300 max-w-2xl mx-auto">
               Powerful tools to discover, connect with, and support local businesses
@@ -193,11 +192,11 @@ export default function HomePage() {
                 >
                   <div
                     className={`
-                      p-6 rounded-2xl border bg-white dark:bg-[#998FC7]/10 dark:border-[#D4C2FC]/30
+                      p-6 rounded-2xl border bg-white dark:bg-[#22c55e]/10 dark:border-[#4ade80]/30
                       transition-all duration-500 cursor-pointer h-full
                       ${hoveredFeature === i
-                        ? "shadow-xl -translate-y-2 border-[#D4C2FC]/60 dark:border-[#D4C2FC]/50 scale-[1.02]"
-                        : "border-[#D4C2FC]/25 dark:border-[hsl(var(--border))] shadow-sm hover:shadow-md"}
+                        ? "shadow-xl -translate-y-2 border-[#4ade80]/60 dark:border-[#4ade80]/50 scale-[1.02]"
+                        : "border-[#4ade80]/25 dark:border-[hsl(var(--border))] shadow-sm hover:shadow-md"}
                     `}
                   >
                     <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feat.gradient} flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-500`}>
@@ -213,11 +212,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ═══════ HOW IT WORKS (scroll-reveal + parallax) ═══════ */}
+      {/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â HOW IT WORKS (scroll-reveal + parallax) ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */}
       <section className="py-24 gradient-mesh relative overflow-hidden">
         {/* Subtle parallax background decoration */}
         <div
-          className="absolute -top-32 right-[15%] w-[300px] h-[300px] bg-[#D4C2FC]/[0.05] rounded-full blur-3xl parallax-layer pointer-events-none"
+          className="absolute -top-32 right-[15%] w-[300px] h-[300px] bg-[#4ade80]/[0.05] rounded-full blur-3xl parallax-layer pointer-events-none"
           style={{ transform: `translateY(${Math.max(0, scrollY - 600) * 0.15}px)` }}
         />
         <div
@@ -226,7 +225,7 @@ export default function HomePage() {
         >
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[hsl(var(--foreground))] mb-4 font-heading">
-              Three simple steps
+              Three <span className="font-serif">simple</span> steps
             </h2>
             <p className="text-lg text-[hsl(var(--muted-foreground))] max-w-2xl mx-auto">
               Get started in under a minute
@@ -247,7 +246,7 @@ export default function HomePage() {
                   )}
                   <div className="relative inline-flex mb-6">
                     <div className="w-24 h-24 rounded-2xl bg-white dark:bg-slate-800 border border-[hsl(var(--border))] shadow-lg flex items-center justify-center group-hover:-translate-y-2 group-hover:shadow-xl transition-all duration-500">
-                      <Icon className="w-10 h-10 text-[#14248A] dark:text-[#998FC7]" />
+                      <Icon className="w-10 h-10 text-[#22c55e] dark:text-[#22c55e]" />
                     </div>
                     <span className="absolute -top-2 -right-2 w-8 h-8 rounded-full gradient-primary text-white text-sm font-bold flex items-center justify-center shadow-md font-mono">
                       {step.num}
@@ -262,19 +261,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ═══════ CTA (scroll-reveal) ═══════ */}
+      {/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â CTA (scroll-reveal) ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */}
       <section className="py-24">
         <div
           ref={ctaReveal.ref}
           className={`max-w-4xl mx-auto px-4 sm:px-6 transition-all duration-1000 ${ctaReveal.visible ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}
         >
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#D4C2FC] via-[#998FC7] to-[#28262C] p-10 sm:p-16 text-center shadow-2xl shadow-[#D4C2FC]/25">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#4ade80] via-[#22c55e] to-[#052e16] p-10 sm:p-16 text-center shadow-2xl shadow-[#22c55e]/25">
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/3 animate-float" />
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/3 -translate-x-1/4 animate-float animation-delay-2000" />
 
             <div className="relative">
               <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 font-heading text-glow">
-                Ready to explore your city?
+                Ready to explore your <span className="font-serif">city</span>?
               </h2>
               <p className="text-lg text-white/85 mb-8 max-w-xl mx-auto text-shadow-sm">
                 Join thousands of users discovering amazing businesses, exclusive deals, and vibrant local communities.
@@ -282,7 +281,7 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button
                   size="lg"
-                  className="bg-white text-[#28262C] hover:bg-white/90 px-8 py-6 text-base font-semibold rounded-xl shadow-lg hover:-translate-y-0.5 transition-all duration-300"
+                  className="bg-white text-[#052e16] hover:bg-white/90 px-8 py-6 text-base font-semibold rounded-xl shadow-lg hover:-translate-y-0.5 transition-all duration-300"
                   onClick={() => navigate("/signup")}
                 >
                   Get Started Free

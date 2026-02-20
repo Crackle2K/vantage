@@ -1,6 +1,6 @@
 """
 Deal Model Schema
-Defines deal/coupon data structures for LocalBoost
+Defines deal/coupon data structures for Vantage
 """
 
 from pydantic import BaseModel, Field
@@ -58,11 +58,6 @@ class Deal(DealBase):
         }
 
 
-class DealInDB(Deal):
-    """Deal schema as stored in database"""
-    pass
-
-
 class DealWithBusiness(Deal):
     """Deal with business information for display"""
     business_name: str
@@ -118,3 +113,4 @@ async def deactivate_expired_deals():
     return result.modified_count
 ```
 """
+
