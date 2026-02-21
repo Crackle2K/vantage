@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ═══════════════════════════════════════════
    VANTAGE — Confident Startup Design System
    Palette: Black · Blue Slate · Light Blue ·

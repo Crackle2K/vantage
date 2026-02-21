@@ -96,14 +96,14 @@ export default function HomePage() {
               </div>
 
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 animate-fade-in-up font-heading leading-[1.08]">
-                <span className="!text-[#003d26] dark:!text-white">Discover </span>
-                <span className="font-serif !text-[#003d26] dark:!text-white">Local</span>
+                <span className="text-[hsl(var(--foreground))]">Discover </span>
+                <span className="font-serif text-[hsl(var(--foreground))]">Local</span>
                 <br />
-                <span className="!text-[#003d26] dark:!text-white">Businesses That </span>
+                <span className="text-[hsl(var(--foreground))]">Businesses That </span>
                 <span className="gradient-text font-serif">Matter</span>
               </h1>
 
-              <p className="text-lg sm:text-xl text-[#2d5a47] dark:text-slate-400 max-w-xl mx-auto lg:mx-0 mb-10 leading-relaxed animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
+              <p className="text-lg sm:text-xl text-[hsl(var(--muted-foreground))] max-w-xl mx-auto lg:mx-0 mb-10 leading-relaxed animate-fade-in-up" style={{ animationDelay: "0.15s" }}>
                 Connect with incredible local businesses near you. Browse deals,
                 read real reviews, and support the heart of your community.
               </p>
@@ -121,7 +121,7 @@ export default function HomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="text-base px-8 py-6 border-2 border-[#052e16]/15 dark:border-slate-700 hover:border-[#4ade80] hover:bg-[#4ade80]/10 transition-all duration-300 rounded-xl text-[#052e16] dark:text-white font-semibold"
+                  className="text-base px-8 py-6 border-2 border-[hsl(var(--border))] hover:border-[#4ade80] hover:bg-[#4ade80]/10 transition-all duration-300 rounded-xl text-[hsl(var(--foreground))] font-semibold"
                   onClick={() => navigate("/signup")}
                 >
                   <Store className="w-5 h-5 mr-2" />
