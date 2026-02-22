@@ -36,11 +36,30 @@ from database.mongodb import (
 )
 from services.google_places import search_google_places, geo_cell_key
 from services.visibility_score import calculate_live_visibility_score
+from services.local_business_classifier import classify_local_business
 
 router = APIRouter()
 
 MIN_RESULTS = 20         # Threshold before considering a Google backfill
 CACHE_TTL_HOURS = 24     # Don't re-fetch the same area within this window
+
+
+def _sort_businesses(results: list, sort_by: Optional[str]) -> None:
+    """Sort a list of business dicts in-place based on sort_by value."""
+    if sort_by == "local_confidence":
+        results.sort(
+            key=lambda b: (b.get("local_confidence", 0), b.get("live_visibility_score", 0)),
+            reverse=True,
+        )
+    elif sort_by == "rating":
+        results.sort(key=lambda b: b.get("rating_average", 0), reverse=True)
+    elif sort_by == "newest":
+        results.sort(key=lambda b: b.get("created_at", datetime.min), reverse=True)
+    else:  # "score" or default — live_visibility_score, with local_confidence as tiebreaker
+        results.sort(
+            key=lambda b: (b.get("live_visibility_score", 0), b.get("local_confidence", 0)),
+            reverse=True,
+        )
 
 
 def business_helper(doc: dict) -> dict:
@@ -49,9 +68,15 @@ def business_helper(doc: dict) -> dict:
         return doc
     doc["id"] = str(doc["_id"])
     del doc["_id"]
-    doc.setdefault("rating", doc.pop("rating_average", 0.0))
-    doc.setdefault("review_count", doc.pop("total_reviews", 0))
+    # Handle both old (rating_average/total_reviews) and new (rating/review_count) field names
+    if "rating_average" in doc:
+        doc.setdefault("rating", doc.pop("rating_average", 0.0))
+    doc.setdefault("rating", 0.0)
+    if "total_reviews" in doc:
+        doc.setdefault("review_count", doc.pop("total_reviews", 0))
+    doc.setdefault("review_count", 0)
     doc.setdefault("has_deals", False)
+    doc.setdefault("image_url", doc.pop("image", "") if "image" in doc else "")
     if "owner_id" in doc and doc["owner_id"]:
         doc["owner_id"] = str(doc["owner_id"])
     return doc
@@ -66,6 +91,7 @@ async def discover_businesses(
     radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
     category: Optional[str] = None,
     limit: int = Query(50, ge=1, le=100),
+    sort_by: Optional[str] = Query(None, description="Sort: score | local_confidence | rating | newest"),
 ):
     """
     Smart business discovery with aggressive caching.
@@ -100,7 +126,7 @@ async def discover_businesses(
 
     # ── Step 2: Enough results? Return immediately ──────────────────
     if len(results) >= MIN_RESULTS:
-        results.sort(key=lambda b: b.get("live_visibility_score", 0), reverse=True)
+        _sort_businesses(results, sort_by)
         return [business_helper(b) for b in results]
 
     # ── Step 3: Check geo cache before calling Google ───────────────
@@ -144,7 +170,7 @@ async def discover_businesses(
     # ── Step 5: Re-query and return ─────────────────────────────────
     cursor = businesses.find(geo_filter).limit(limit)
     results = await cursor.to_list(length=limit)
-    results.sort(key=lambda b: b.get("live_visibility_score", 0), reverse=True)
+    _sort_businesses(results, sort_by)
 
     return [business_helper(b) for b in results]
 
@@ -272,3 +298,62 @@ async def _recalculate_visibility(business_id: str):
         {"_id": ObjectId(business_id)},
         {"$set": {"live_visibility_score": score}},
     )
+
+
+# ── Chain Purge ─────────────────────────────────────────────────────────────
+
+@router.delete("/purge-chains")
+async def purge_chain_businesses():
+    """
+    Re-classify all Google Places-seeded, unclaimed businesses and remove
+    those that fail the local-independent test (confidence < 0.75).
+    Also back-fills local_confidence on survivors that don't have it yet.
+
+    Call this once after deploying the classifier to clean up existing data.
+    """
+    businesses = get_businesses_collection()
+
+    cursor = businesses.find({"source": "google_places", "is_claimed": {"$ne": True}})
+    docs = await cursor.to_list(length=None)
+
+    to_delete_ids = []
+    confidence_updates = 0
+
+    for doc in docs:
+        # Build a synthetic place dict for re-classification.
+        # Use stored google_types if available (set on docs inserted after the classifier was added).
+        # For legacy docs without google_types, rely only on name/address/status detection; only
+        # delete on hard failures (confidence==0.0 means a name or disqualifying-type match).
+        has_stored_types = bool(doc.get("google_types"))
+        test_place = {
+            "business_status": "OPERATIONAL",
+            "name": doc.get("name", ""),
+            "types": doc.get("google_types", []),
+            "vicinity": doc.get("address") or doc.get("description") or "",
+            "websiteUri": doc.get("website") or "",
+        }
+        is_local, confidence = classify_local_business(test_place)
+
+        if not is_local:
+            # With stored types: full re-classification — delete anything that fails
+            # Without stored types: only delete hard chain-name / disqualifying-type hits
+            if has_stored_types or confidence == 0.0:
+                to_delete_ids.append(doc["_id"])
+        elif doc.get("local_confidence") != confidence:
+            await businesses.update_one(
+                {"_id": doc["_id"]},
+                {"$set": {"local_confidence": confidence}},
+            )
+            confidence_updates += 1
+
+    deleted = 0
+    if to_delete_ids:
+        result = await businesses.delete_many({"_id": {"$in": to_delete_ids}})
+        deleted = result.deleted_count
+        print(f"🧹 purge-chains: removed {deleted} chain/non-local businesses")
+
+    return {
+        "deleted": deleted,
+        "confidence_updated": confidence_updates,
+        "total_scanned": len(docs),
+    }

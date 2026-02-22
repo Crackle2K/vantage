@@ -66,18 +66,6 @@ export const api = {
     return response.json();
   },
 
-  async discoverBusinesses(lat: number, lng: number, radius: number, category?: string): Promise<Business[]> {
-    const params = new URLSearchParams({
-      lat: lat.toString(),
-      lng: lng.toString(),
-      radius: radius.toString(),
-    });
-    if (category) params.append('category', category);
-    const response = await fetch(`${API_URL}/discover?${params}`);
-    if (!response.ok) throw new Error('Failed to discover businesses');
-    return response.json();
-  },
-
   async getBusiness(id: string): Promise<Business> {
     const response = await fetch(`${API_URL}/businesses/${id}`);
     if (!response.ok) throw new Error('Failed to fetch business');
@@ -227,9 +215,19 @@ export const api = {
     params.append('lat', lat.toString());
     params.append('lng', lng.toString());
     params.append('radius', radius.toString());
+    params.append('sort_by', 'local_confidence'); // server pre-sorts by local independent confidence
     if (category) params.append('category', category);
     const response = await fetch(`${API_URL}/discover?${params}`);
     if (!response.ok) throw new Error('Failed to discover businesses');
+    return response.json();
+  },
+
+  async purgeChains(): Promise<{ deleted: number; confidence_updated: number; total_scanned: number }> {
+    const response = await fetch(`${API_URL}/purge-chains`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to purge chain businesses');
     return response.json();
   },
 

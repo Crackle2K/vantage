@@ -10,17 +10,40 @@ from enum import Enum
 
 
 class CategoryEnum(str, Enum):
-    """Business category enumeration"""
+    """Business category enumeration — covers both legacy lowercase and rich Google Places values."""
+    # Legacy lowercase values (user-created businesses)
     FOOD = "food"
     RETAIL = "retail"
     SERVICES = "services"
-    ENTERTAINMENT = "entertainment"
+    ENTERTAINMENT_LOWER = "entertainment"
     HEALTH = "health"
-    EDUCATION = "education"
-    AUTOMOTIVE = "automotive"
+    EDUCATION_LOWER = "education"
+    AUTOMOTIVE_LOWER = "automotive"
     HOME = "home"
-    BEAUTY = "beauty"
-    OTHER = "other"
+    BEAUTY_LOWER = "beauty"
+    OTHER_LOWER = "other"
+    # Rich category names (Google Places seeded businesses)
+    RESTAURANTS = "Restaurants"
+    CAFES = "Cafes & Coffee"
+    BARS = "Bars & Nightlife"
+    SHOPPING = "Shopping"
+    FITNESS = "Fitness & Wellness"
+    BEAUTY = "Beauty & Spas"
+    HEALTH_MEDICAL = "Health & Medical"
+    FINANCIAL = "Financial Services"
+    AUTOMOTIVE = "Automotive"
+    ENTERTAINMENT = "Entertainment"
+    HOTELS = "Hotels & Travel"
+    PROFESSIONAL = "Professional Services"
+    HOME_SERVICES = "Home Services"
+    PETS = "Pets"
+    EDUCATION = "Education"
+    GROCERY = "Grocery"
+    LOCAL_SERVICES = "Local Services"
+    ACTIVE_LIFE = "Active Life"
+    PUBLIC_SERVICES = "Public Services"
+    RELIGIOUS = "Religious Organizations"
+    OTHER = "Other"
 
 
 class GeoLocation(BaseModel):
@@ -98,6 +121,7 @@ class Business(BusinessBase):
     # ── Scoring ─────────────────────────────────────────────────────
     credibility_score: float = 0.0            # Aggregate trust score
     live_visibility_score: float = 0.0        # Real-time ranking score
+    local_confidence: float = 0.0             # Local independent business confidence (0–1)
 
     # ── Community Trust Layer ───────────────────────────────────────
     is_active_today: bool = False             # Had check-ins today?

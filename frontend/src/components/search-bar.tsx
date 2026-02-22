@@ -16,7 +16,7 @@ export function SearchBar({ searchQuery, onSearchChange, sortBy, onSortChange }:
           placeholder="Search businesses..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-ui text-[hsl(var(--foreground))] placeholder-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))] transition-all"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-sm text-[hsl(var(--foreground))] placeholder-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))] transition-all"
         />
       </div>
 
@@ -25,8 +25,9 @@ export function SearchBar({ searchQuery, onSearchChange, sortBy, onSortChange }:
         <select
           value={sortBy}
           onChange={(e) => onSortChange(e.target.value)}
-          className="w-full sm:w-48 pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-ui text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))] transition-all appearance-none cursor-pointer"
+          className="w-full sm:w-48 pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-sm text-[hsl(var(--foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))] transition-all appearance-none cursor-pointer"
         >
+          <option value="recommended">Recommended</option>
           <option value="rating">Highest Rated</option>
           <option value="reviews">Most Reviews</option>
           <option value="newest">Newest</option>

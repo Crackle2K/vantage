@@ -1,4 +1,29 @@
-export type CategoryType = 'food' | 'retail' | 'services' | 'entertainment' | 'health';
+export type CategoryType =
+  | 'Restaurants'
+  | 'Cafes & Coffee'
+  | 'Bars & Nightlife'
+  | 'Shopping'
+  | 'Fitness & Wellness'
+  | 'Beauty & Spas'
+  | 'Health & Medical'
+  | 'Financial Services'
+  | 'Automotive'
+  | 'Entertainment'
+  | 'Hotels & Travel'
+  | 'Professional Services'
+  | 'Home Services'
+  | 'Pets'
+  | 'Education'
+  | 'Grocery'
+  | 'Local Services'
+  | 'Active Life'
+  | 'Other'
+  // Legacy lowercase values (backwards compat)
+  | 'food'
+  | 'retail'
+  | 'services'
+  | 'entertainment'
+  | 'health';
 
 export interface Business {
   id: string;
@@ -7,10 +32,11 @@ export interface Business {
   category: CategoryType;
   description: string;
   address: string;
-  phone: string;
-  email: string;
+  phone?: string;
+  email?: string;
   website?: string;
-  image_url: string;
+  image_url?: string;
+  image?: string;
   rating: number;
   review_count: number;
   has_deals: boolean;
@@ -29,6 +55,11 @@ export interface Business {
   checkins_today?: number;
   trending_score?: number;
   last_activity_at?: string;
+  // Visibility
+  live_visibility_score?: number;
+  local_confidence?: number;
+  created_at?: string;
+  place_id?: string;
 }
 
 export interface Review {
