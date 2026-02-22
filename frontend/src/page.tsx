@@ -6,36 +6,6 @@ import {
   ChevronLeft, ChevronRight, ArrowRight, Mail
 } from "lucide-react"
 
-/* ═══════════════════════════════════════════
-   VIDEO SETUP INSTRUCTIONS
-   ═══════════════════════════════════════════
-   
-   To add your videos:
-   
-   1. Place video files in: frontend/public/videos/
-      - hero1.mp4, hero2.mp4, hero3.mp4 (will cycle through)
-      - feature.mp4
-      - cta.mp4
-   
-   2. Optimal video specs:
-      - Resolution: 1920x1080
-      - Codec: H.264, 5Mbps
-      - Duration: 8-12 seconds each
-      - File size: 2-4MB each
-   
-   3. Video behavior:
-      - Hero: Cycles through playlist (hero1 → hero2 → hero3 → repeat)
-      - Feature/CTA: Single videos, lazy load on scroll
-      - Mobile: Shows posters only
-      - Falls back to poster if video fails to load
-   
-   ═══════════════════════════════════════════ */
-
-/* ═══════════════════════════════════════════
-   HOOKS - Reused from existing codebase
-   ═══════════════════════════════════════════ */
-
-// Scroll Y tracker - Not used for parallax anymore, kept for future use
 function useScrollY() {
   const [y, setY] = useState(0)
   useEffect(() => {
