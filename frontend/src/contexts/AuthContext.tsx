@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (name: string, email: string, password: string, role: string) => Promise<{ error: string | null }>;
+  signInWithGoogle: (credential: string) => Promise<{ error: string | null }>;
   signOut: () => void;
   isAuthenticated: boolean;
 }
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signIn: async () => ({ error: null }),
   signUp: async () => ({ error: null }),
+  signInWithGoogle: async () => ({ error: null }),
   signOut: () => {},
   isAuthenticated: false,
 });
@@ -78,6 +80,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signInWithGoogle = async (credential: string) => {
+    try {
+      const tokens = await api.googleAuth(credential);
+      localStorage.setItem('vantage_token', tokens.access_token);
+      await fetchUser();
+      return { error: null };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Google sign-in failed' };
+    }
+  };
+
   const signOut = () => {
     localStorage.removeItem('vantage_token');
     setUser(null);
@@ -90,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         signIn,
         signUp,
+        signInWithGoogle,
         signOut,
         isAuthenticated: !!user,
       }}

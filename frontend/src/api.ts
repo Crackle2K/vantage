@@ -47,6 +47,19 @@ export const api = {
     return response.json();
   },
 
+  async googleAuth(credential: string): Promise<AuthTokens> {
+    const response = await fetch(`${API_URL}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Google authentication failed');
+    }
+    return response.json();
+  },
+
   // ─── Businesses ──────────────────────────────
   async getBusinesses(category?: string, sortBy?: string, search?: string): Promise<Business[]> {
     const params = new URLSearchParams();

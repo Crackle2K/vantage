@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 export default function SignUpPage() {
   const navigate = useNavigate();
-  const { signUp, isAuthenticated } = useAuth();
+  const { signUp, signInWithGoogle, isAuthenticated } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,6 +47,29 @@ export default function SignUpPage() {
     } else {
       navigate('/businesses');
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    if (!credentialResponse.credential) {
+      setError('Google sign-in failed. Please try again.');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
+    const { error: err } = await signInWithGoogle(credentialResponse.credential);
+
+    if (err) {
+      setError(err);
+      setLoading(false);
+    } else {
+      navigate('/businesses');
+    }
+  };
+
+  const handleGoogleError = () => {
+    setError('Google sign-in failed. Please try again.');
   };
 
   return (
@@ -166,6 +190,26 @@ export default function SignUpPage() {
               )}
             </Button>
           </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4 my-6">
+            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+            <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
+            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+          </div>
+
+          {/* Google Sign In */}
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              theme="outline"
+              size="large"
+              text="signup_with"
+              shape="rectangular"
+              width="100%"
+            />
+          </div>
 
           <div className="mt-6 text-center">
             <p className="text-ui text-[hsl(var(--muted-foreground))]">

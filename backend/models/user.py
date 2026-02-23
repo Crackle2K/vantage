@@ -33,6 +33,8 @@ class User(UserBase):
     """User schema returned to client (without sensitive data)"""
     id: str
     favorites: List[str] = Field(default_factory=list)
+    google_id: Optional[str] = None
+    auth_provider: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -40,7 +42,7 @@ class User(UserBase):
 
 class UserInDB(User):
     """User schema as stored in database (includes password hash)"""
-    hashed_password: str
+    hashed_password: Optional[str] = None  # Optional for OAuth users
 
 
 class UserLogin(BaseModel):

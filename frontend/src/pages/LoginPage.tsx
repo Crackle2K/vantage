@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { signIn, isAuthenticated } = useAuth();
+  const { signIn, signInWithGoogle, isAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,11 +37,34 @@ export default function LoginPage() {
     }
   };
 
+  const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    if (!credentialResponse.credential) {
+      setError('Google sign-in failed. Please try again.');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
+    const { error: err } = await signInWithGoogle(credentialResponse.credential);
+
+    if (err) {
+      setError(err);
+      setLoading(false);
+    } else {
+      navigate('/businesses');
+    }
+  };
+
+  const handleGoogleError = () => {
+    setError('Google sign-in failed. Please try again.');
+  };
+
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 gradient-mesh">
       {/* Decorative blobs */}
-<div className="absolute top-32 left-10 w-72 h-72 bg-brand-light/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-10 right-10 w-72 h-72 bg-brand-light/10 rounded-full blur-3xl animate-float animation-delay-2000" />
+      <div className="absolute top-32 left-10 w-72 h-72 bg-brand-light/10 rounded-full blur-3xl animate-float" />
+      <div className="absolute bottom-10 right-10 w-72 h-72 bg-brand-light/10 rounded-full blur-3xl animate-float animation-delay-2000" />
 
       <div className="w-full max-w-md relative animate-fade-in-up">
         <div className="glass-card rounded-2xl p-8 shadow-xl">
@@ -114,6 +138,27 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4 my-6">
+            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+            <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
+            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+          </div>
+
+          {/* Google Sign In */}
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              useOneTap
+              theme="outline"
+              size="large"
+              text="signin_with"
+              shape="rectangular"
+              width="100%"
+            />
+          </div>
 
           {/* Sign Up Link */}
           <div className="mt-6 text-center">

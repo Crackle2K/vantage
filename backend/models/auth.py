@@ -9,8 +9,11 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from pydantic import BaseModel
 
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, GOOGLE_CLIENT_ID
 from models.user import UserCreate, UserLogin, User, Token, TokenData
 from database.mongodb import get_users_collection
 
@@ -19,6 +22,12 @@ security = HTTPBearer()
 
 # Router
 router = APIRouter()
+
+
+# Request Models
+class GoogleAuthRequest(BaseModel):
+    """Request model for Google authentication"""
+    credential: str  # Google ID token
 
 
 # Helper Functions
@@ -188,3 +197,72 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     Requires valid JWT token
     """
     return current_user
+
+
+@router.post("/google", response_model=Token)
+async def google_auth(auth_request: GoogleAuthRequest):
+    """
+    Authenticate user with Google OAuth
+    - Verifies Google ID token
+    - Creates or updates user account
+    - Returns JWT access token
+    """
+    try:
+        users_collection = get_users_collection()
+    except Exception as db_error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database unavailable: {str(db_error)}"
+        )
+    
+    # Verify the Google token
+    try:
+        idinfo = id_token.verify_oauth2_token(
+            auth_request.credential, 
+            requests.Request(), 
+            GOOGLE_CLIENT_ID
+        )
+        
+        # Extract user information from Google token
+        google_id = idinfo['sub']
+        email = idinfo['email']
+        name = idinfo.get('name', email.split('@')[0])
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google token: {str(e)}"
+        )
+    
+    # Check if user already exists
+    user = await users_collection.find_one({"email": email})
+    
+    if user:
+        # Update existing user's Google ID if not set
+        if "google_id" not in user or user["google_id"] != google_id:
+            await users_collection.update_one(
+                {"email": email},
+                {"$set": {"google_id": google_id, "updated_at": datetime.utcnow()}}
+            )
+        user_id = str(user["_id"])
+    else:
+        # Create new user
+        user_dict = {
+            "name": name,
+            "email": email,
+            "google_id": google_id,
+            "role": "customer",
+            "favorites": [],
+            "created_at": datetime.utcnow(),
+            "auth_provider": "google"
+        }
+        
+        result = await users_collection.insert_one(user_dict)
+        user_id = str(result.inserted_id)
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": email, "user_id": user_id}
+    )
+    
+    return Token(access_token=access_token, token_type="bearer")

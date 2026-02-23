@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AuthProvider } from './contexts/AuthContext'
 import RootLayout from './layout'
 import HomePage from './page'
@@ -14,24 +15,28 @@ import DashboardPage from './pages/DashboardPage'
 import ClaimBusinessPage from './pages/ClaimBusinessPage'
 import './index.css'
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <RootLayout>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/businesses" element={<Businesses />} />
-            <Route path="/activity" element={<ActivityFeedPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/claim" element={<ClaimBusinessPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignUpPage />} />
-            <Route path="/account" element={<AccountPage />} />
-          </Routes>
-        </RootLayout>
-      </AuthProvider>
-    </BrowserRouter>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <BrowserRouter>
+        <AuthProvider>
+          <RootLayout>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/businesses" element={<Businesses />} />
+              <Route path="/activity" element={<ActivityFeedPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/claim" element={<ClaimBusinessPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/account" element={<AccountPage />} />
+            </Routes>
+          </RootLayout>
+        </AuthProvider>
+      </BrowserRouter>
+    </GoogleOAuthProvider>
   </StrictMode>,
 )
