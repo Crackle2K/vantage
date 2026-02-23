@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Enable version updates for npm (frontend)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "Crackle2K"
+    labels:
+      - "dependencies"
+      - "frontend"
+
+  # Enable version updates for pip (backend)
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "Crackle2K"
+    labels:
+      - "dependencies"
+      - "backend"
