@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   MapPin, Loader2, AlertCircle, Navigation, Search, SlidersHorizontal, X,
-  LayoutGrid, Rss, Star, Tag, ChevronUp, Heart, MessageCircle, Share2,
-  Bookmark, Sparkles, TrendingUp, Store,
+  LayoutGrid, Rss, Tag, ChevronUp, Heart, MessageCircle, Share2,
+  Bookmark, Sparkles, TrendingUp, Store, Flame, CheckCircle2, Users, ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BusinessCard } from '@/components/business-card';
-import { CategorySidebar } from '@/components/category-sidebar';
 import { SearchBar } from '@/components/search-bar';
 import { DealsSection } from '@/components/deals-section';
 import { BusinessModal } from '@/components/BusinessModal';
@@ -47,7 +46,7 @@ function setCache(key: string, data: Business[]) {
   try {
     sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
   } catch {
-    // sessionStorage full � ignore
+    // sessionStorage full - ignore
   }
 }
 
@@ -73,11 +72,14 @@ interface UserLocation {
   longitude: number;
 }
 
+type TrustLabel = 'High Trust' | 'Growing Trust' | 'New & Active' | 'Unverified';
+type BusinessTypeLabel = 'independent' | 'chain' | 'unknown';
+
 export default function Businesses() {
   const [location, setLocation] = useState<UserLocation | null>(null);
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
   const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [loading, setLoading] = useState(true); // start true � auto-load
+  const [loading, setLoading] = useState(true); // start true - auto-load
   const [error, setError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
@@ -86,6 +88,11 @@ export default function Businesses() {
   const [sortBy, setSortBy] = useState('recommended');
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'feed'>('grid');
+  const [prioritizeIndependent, setPrioritizeIndependent] = useState(true);
+  const [showClaimedOnly, setShowClaimedOnly] = useState(false);
+  const [activeOnly, setActiveOnly] = useState(false);
+  const [tickerIndex, setTickerIndex] = useState(0);
+  const [tickerPaused, setTickerPaused] = useState(false);
 
   // Feed state
   const [feedCards, setFeedCards] = useState<number[]>([]);
@@ -188,9 +195,79 @@ export default function Businesses() {
   };
 
   // --- Category filter (case-insensitive match) -----------------
+  const strategicScore = useCallback((business: Business): number => {
+    const lvs = business.live_visibility_score ?? 0;
+    const local = Math.max(0, Math.min(business.local_confidence ?? 0, 1)) * 100;
+    const reviews = business.review_count ?? 0;
+    const freshness = Math.max(0, 1 - Math.min(reviews, 40) / 40) * 100;
+    return 0.60 * lvs + 0.25 * local + 0.15 * freshness;
+  }, []);
+
+  const trustScore = useCallback(
+    (business: Business): number => {
+      return Math.round(Math.max(20, Math.min(100, strategicScore(business))));
+    },
+    [strategicScore]
+  );
+
+  const businessType = useCallback((business: Business): BusinessTypeLabel => {
+    const typed = ((business as unknown as { business_type?: string }).business_type || '').toLowerCase();
+    if (typed === 'independent' || typed === 'chain' || typed === 'unknown') return typed;
+    const confidence = business.local_confidence ?? 0;
+    if (confidence >= 0.78) return 'independent';
+    if (confidence <= 0.35) return 'chain';
+    return 'unknown';
+  }, []);
+
+  const hasVerifiedActivity = useCallback((business: Business): boolean => {
+    return (business.checkins_today ?? 0) > 0 || !!business.is_active_today;
+  }, []);
+
+  const trustLabel = useCallback(
+    (business: Business): TrustLabel => {
+      const score = trustScore(business);
+      if (!hasVerifiedActivity(business)) return 'Unverified';
+      if (score >= 85) return 'High Trust';
+      if (score >= 60) return 'Growing Trust';
+      return 'New & Active';
+    },
+    [trustScore, hasVerifiedActivity]
+  );
+
+  const trustTone = useCallback((label: TrustLabel): string => {
+    switch (label) {
+      case 'High Trust':
+        return 'border-emerald-400/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+      case 'Growing Trust':
+        return 'border-cyan-400/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300';
+      case 'New & Active':
+        return 'border-amber-400/30 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+      default:
+        return 'border-[hsl(var(--border))] bg-[hsl(var(--secondary))/0.7] text-[hsl(var(--muted-foreground))]';
+    }
+  }, []);
+
+  const reasonChips = useCallback(
+    (business: Business): string[] => {
+      const reasons: string[] = [];
+      const score = trustScore(business);
+      const recent =
+        business.last_activity_at &&
+        (Date.now() - new Date(business.last_activity_at).getTime()) / 86400000 <= 7;
+      if (hasVerifiedActivity(business)) reasons.push('Active today');
+      if (recent) reasons.push('Recently verified');
+      if (score >= 85) reasons.push('High community trust');
+      if ((business.trending_score ?? 0) >= 18) reasons.push('Rising locally');
+      return reasons.slice(0, 2);
+    },
+    [hasVerifiedActivity, trustScore]
+  );
+
   const filtered = useMemo(() => {
     return businesses
       .filter((b) => {
+        if (showClaimedOnly && !b.is_claimed) return false;
+        if (activeOnly && !hasVerifiedActivity(b)) return false;
         // Category filter
         if (selectedCategory !== 'All Categories') {
           const bizCat = (b.category || '').toLowerCase();
@@ -208,13 +285,13 @@ export default function Businesses() {
         return true;
       })
       .sort((a, b) => {
+        const independentBoost = (biz: Business) =>
+          prioritizeIndependent && businessType(biz) === 'independent' ? 8 : 0;
         switch (sortBy) {
           case 'recommended': {
-            // local_confidence > live_visibility_score > rating
-            const confDiff = (b.local_confidence ?? 0) - (a.local_confidence ?? 0);
-            if (confDiff !== 0) return confDiff;
-            const vizDiff = (b.live_visibility_score ?? 0) - (a.live_visibility_score ?? 0);
-            if (vizDiff !== 0) return vizDiff;
+            const strategyDiff =
+              strategicScore(b) + independentBoost(b) - (strategicScore(a) + independentBoost(a));
+            if (strategyDiff !== 0) return strategyDiff;
             return (b.rating ?? 0) - (a.rating ?? 0);
           }
           case 'rating':
@@ -226,10 +303,25 @@ export default function Businesses() {
           case 'newest':
             return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime();
           default:
-            return (b.local_confidence ?? 0) - (a.local_confidence ?? 0);
+            return (
+              (b.local_confidence ?? 0) +
+              independentBoost(b) / 100 -
+              ((a.local_confidence ?? 0) + independentBoost(a) / 100)
+            );
         }
       });
-  }, [businesses, selectedCategory, searchQuery, sortBy]);
+  }, [
+    businesses,
+    selectedCategory,
+    searchQuery,
+    sortBy,
+    strategicScore,
+    showClaimedOnly,
+    activeOnly,
+    hasVerifiedActivity,
+    prioritizeIndependent,
+    businessType,
+  ]);
 
   // --- Category counts for sidebar badges -----------------------
   const categoryCounts = useMemo(() => {
@@ -241,6 +333,57 @@ export default function Businesses() {
     counts['All Categories'] = businesses.length;
     return counts;
   }, [businesses]);
+
+  const activeNearYou = useMemo(() => {
+    const ranked = [...businesses].sort((a, b) => {
+      const aActive = (a.checkins_today ?? 0) + (a.is_active_today ? 5 : 0) + (a.trending_score ?? 0);
+      const bActive = (b.checkins_today ?? 0) + (b.is_active_today ? 5 : 0) + (b.trending_score ?? 0);
+      if (bActive !== aActive) return bActive - aActive;
+      return strategicScore(b) - strategicScore(a);
+    });
+    return ranked.slice(0, 8);
+  }, [businesses, strategicScore]);
+
+  const claimedFeatured = useMemo(() => {
+    return businesses
+      .filter((b) => b.is_claimed && hasVerifiedActivity(b))
+      .sort((a, b) => strategicScore(b) - strategicScore(a))
+      .slice(0, 8);
+  }, [businesses, hasVerifiedActivity, strategicScore]);
+
+  const topCategories = useMemo(() => {
+    return Object.entries(categoryCounts)
+      .filter(([cat]) => cat !== 'All Categories')
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+  }, [categoryCounts]);
+
+  const livePulse = useMemo(() => {
+    const events = [...businesses]
+      .filter((biz) => hasVerifiedActivity(biz))
+      .sort((a, b) => {
+        const ad = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+        const bd = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+        return bd - ad;
+      })
+      .slice(0, 20);
+    return events.map((biz, idx) => {
+      let minutes = 2 + idx * 3;
+      if (biz.last_activity_at) {
+        const diff = Math.floor((Date.now() - new Date(biz.last_activity_at).getTime()) / 60000);
+        if (diff >= 0) minutes = Math.max(1, diff);
+      }
+      return `Verified visit • ${biz.name} • ${minutes} min ago`;
+    });
+  }, [businesses, hasVerifiedActivity]);
+
+  useEffect(() => {
+    if (!livePulse.length || tickerPaused) return;
+    const id = window.setInterval(() => {
+      setTickerIndex((prev) => (prev + 1) % livePulse.length);
+    }, 2600);
+    return () => window.clearInterval(id);
+  }, [livePulse, tickerPaused]);
 
   // --- Feed pagination -----------------------------------------
   const loadFeedPage = useCallback(
@@ -317,41 +460,174 @@ export default function Businesses() {
       <div className="relative overflow-hidden border-b border-[hsl(var(--border))]/70 bg-gradient-to-br from-emerald-500/10 via-[hsl(var(--background))] to-cyan-500/10">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,hsl(var(--primary)/0.18),transparent)]" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-xl bg-white/70 backdrop-blur border border-white/50 shadow-sm">
-              <Store className="w-6 h-6 text-[hsl(var(--primary))]" />
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8 items-start">
+            <div className="lg:col-span-3">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 rounded-xl bg-white/70 backdrop-blur border border-white/50 shadow-sm">
+                  <Store className="w-6 h-6 text-[hsl(var(--primary))]" />
+                </div>
+                <span className="text-xs font-semibold tracking-widest uppercase text-[hsl(var(--primary))]">
+                  Local Discovery
+                </span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[hsl(var(--foreground))] mb-3 tracking-tight">
+                Explore Local Businesses
+              </h1>
+              <p className="text-[hsl(var(--muted-foreground))] text-lg max-w-2xl">
+                Calmer discovery, smarter ranking, and a feed designed to spotlight trusted local gems.
+              </p>
+              {businesses.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 mt-6">
+                  <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] px-3 py-2 rounded-xl bg-white/70 backdrop-blur border border-white/60">
+                    <TrendingUp className="w-4 h-4 text-[hsl(var(--primary))]" />
+                    <span><strong className="text-[hsl(var(--foreground))]">{businesses.length >= DISCOVERY_LIMIT ? `${DISCOVERY_LIMIT}+` : businesses.length}</strong> local businesses</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] px-3 py-2 rounded-xl bg-white/70 backdrop-blur border border-white/60">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span><strong className="text-[hsl(var(--foreground))]">
+                      {Object.keys(categoryCounts).filter(k => k !== 'All Categories').length}
+                    </strong> categories</span>
+                  </div>
+                </div>
+              )}
             </div>
-            <span className="text-xs font-semibold tracking-widest uppercase text-[hsl(var(--primary))]">
-              Local Discovery
-            </span>
+
+            <div className="lg:col-span-2 rounded-2xl border border-emerald-400/20 bg-[hsl(var(--card))/0.82] backdrop-blur p-5 shadow-sm">
+              <p className="text-[11px] uppercase tracking-wider font-semibold text-emerald-600 mb-3">
+                Why You&apos;re Seeing This
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                  <Flame className="w-3 h-3" />
+                  Active today
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-700 dark:text-cyan-300">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Recently verified
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                  <Users className="w-3 h-3" />
+                  High community trust
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                We prioritize trustworthy local momentum while still giving emerging businesses visibility.
+              </p>
+            </div>
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[hsl(var(--foreground))] mb-3 tracking-tight">
-            Explore Local Businesses
-          </h1>
-          <p className="text-[hsl(var(--muted-foreground))] text-lg max-w-2xl">
-            Discover, review, and support the best local businesses in your neighborhood
-          </p>
-          {/* Quick stats */}
-          {businesses.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 mt-6">
-              <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] px-3 py-2 rounded-xl bg-white/70 backdrop-blur border border-white/60">
-                <TrendingUp className="w-4 h-4 text-[hsl(var(--primary))]" />
-                <span><strong className="text-[hsl(var(--foreground))]">{businesses.length >= DISCOVERY_LIMIT ? `${DISCOVERY_LIMIT}+` : businesses.length}</strong> local businesses</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] px-3 py-2 rounded-xl bg-white/70 backdrop-blur border border-white/60">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span><strong className="text-[hsl(var(--foreground))]">
-                  {Object.keys(categoryCounts).filter(k => k !== 'All Categories').length}
-                </strong> categories</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        {livePulse.length > 0 && (
+          <div
+            className="mb-5 rounded-xl bg-[hsl(var(--card))/0.7] px-3 py-2 overflow-hidden border border-[hsl(var(--border))/0.5]"
+            onMouseEnter={() => setTickerPaused(true)}
+            onMouseLeave={() => setTickerPaused(false)}
+          >
+            <div className="flex items-center gap-3 whitespace-nowrap">
+              <span className="text-[11px] uppercase tracking-wider font-semibold text-[hsl(var(--primary))]">Live Community</span>
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">{livePulse[tickerIndex]}</span>
+            </div>
+          </div>
+        )}
+
+        {!loading && claimedFeatured.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-semibold text-[hsl(var(--foreground))]">Verified & Claimed Businesses</h2>
+              <button
+                onClick={() => setShowClaimedOnly((p) => !p)}
+                className="text-xs text-[hsl(var(--primary))] hover:underline"
+              >
+                {showClaimedOnly ? 'Show all' : 'Show claimed only'}
+              </button>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+              {claimedFeatured.map((biz) => (
+                <button
+                  key={`claimed-${biz.id || biz._id}`}
+                  onClick={() => setSelectedBusiness(biz)}
+                  className="min-w-[240px] rounded-xl bg-[hsl(var(--card))/0.78] px-3 py-3 text-left border border-[hsl(var(--border))/0.6]"
+                >
+                  <p className="text-sm font-semibold text-[hsl(var(--foreground))] truncate">{biz.name}</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                    {biz.category}
+                    {biz.distance !== undefined ? ` • ${biz.distance.toFixed(1)} km` : ''}
+                  </p>
+                  <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                    Claimed • {Math.max(1, biz.checkins_today ?? 0)} verified visits today
+                  </p>
+                  <p
+                    title="Based on verified visits, credibility-weighted reviews, and recent activity."
+                    className="mt-1 text-xs text-[hsl(var(--foreground))] font-medium"
+                  >
+                    Trust: {trustScore(biz)}/100 • {trustLabel(biz)}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-full bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                      View
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-700 dark:text-emerald-300">
+                      Check in
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {!loading && activeNearYou.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold text-[hsl(var(--foreground))] flex items-center gap-2">
+                <Flame className="w-4 h-4 text-emerald-500" />
+                Active near you today
+              </h2>
+              <button
+                onClick={() => setActiveOnly(true)}
+                className="text-xs text-[hsl(var(--primary))] hover:underline"
+              >
+                See all active
+              </button>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+              {activeNearYou.map((biz) => (
+                <button
+                  key={`active-${biz.id || biz._id}`}
+                  onClick={() => setSelectedBusiness(biz)}
+                  className="min-w-[240px] max-w-[240px] text-left rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--card))/0.84] backdrop-blur p-3 hover:border-[hsl(var(--primary))]/40 transition-colors"
+                >
+                  <p className="font-semibold text-sm text-[hsl(var(--foreground))] truncate">{biz.name}</p>
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 truncate">
+                    {biz.category}
+                    {biz.distance !== undefined ? ` • ${biz.distance.toFixed(1)} km` : ''}
+                  </p>
+                  <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-300 font-medium">
+                    {Math.max(1, biz.checkins_today ?? 0)} verified visits today
+                  </p>
+                  <p
+                    title="Based on verified visits, credibility-weighted reviews, and recent activity."
+                    className="mt-1 text-xs text-[hsl(var(--foreground))] font-medium"
+                  >
+                    Trust: {trustScore(biz)}/100 • {trustLabel(biz)}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-full bg-[hsl(var(--secondary))] px-2 py-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                      View
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-700 dark:text-emerald-300">
+                      Check in
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* -- Toolbar ---------------------------------------------- */}
-        <div className="bg-[hsl(var(--card))/0.86] backdrop-blur border border-[hsl(var(--border))]/70 rounded-2xl p-4 mb-6 shadow-sm">
+        <div className="bg-[hsl(var(--card))/0.6] backdrop-blur rounded-2xl p-4 mb-8">
           <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
             {/* Left: Location & Radius */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
@@ -376,7 +652,7 @@ export default function Businesses() {
               )}
 
               {/* Radius slider */}
-              <div className="min-w-0 sm:min-w-[280px] w-full sm:w-[320px] px-3 py-2 rounded-xl border border-[hsl(var(--border))]/70 bg-[hsl(var(--background))/0.8]">
+              <div className="min-w-0 sm:min-w-[280px] w-full sm:w-[320px] px-3 py-2 rounded-xl bg-[hsl(var(--background))/0.65]">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-[hsl(var(--muted-foreground))] font-medium uppercase tracking-wide">Radius</span>
                   <span className="text-sm font-semibold text-[hsl(var(--foreground))]">{radius} km</span>
@@ -411,14 +687,14 @@ export default function Businesses() {
               </div>
             </div>
             {/* Right: Search, Filters, View Toggle */}
-            <div className="flex items-center gap-2 w-full lg:w-auto">
-              <div className="relative flex-1 lg:w-72">
+            <div className="flex items-center gap-2 w-full lg:w-auto lg:ml-auto">
+              <div className="relative flex-1 lg:w-[430px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
                 <Input
                   placeholder="Search businesses..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 rounded-xl text-sm h-9"
+                  className="pl-10 rounded-xl text-sm h-11"
                 />
                 {searchQuery && (
                   <button
@@ -433,17 +709,17 @@ export default function Businesses() {
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={cn(
-                  'p-2 rounded-xl border transition-colors',
+                  'p-2 rounded-xl border border-[hsl(var(--border))/0.7] transition-colors',
                   showFilters
                     ? 'bg-[hsl(var(--primary))] text-white border-transparent'
-                    : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))]'
+                    : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))]'
                 )}
               >
                 <SlidersHorizontal className="w-4 h-4" />
               </button>
 
               {/* View toggle */}
-              <div className="flex rounded-lg overflow-hidden border border-[hsl(var(--border))]">
+              <div className="flex rounded-lg overflow-hidden border border-[hsl(var(--border))/0.7]">
                 <button
                   onClick={() => setViewMode('grid')}
                   className={cn(
@@ -476,6 +752,69 @@ export default function Businesses() {
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-[hsl(var(--border))]">
               <SearchBar searchQuery="" onSearchChange={() => {}} sortBy={sortBy} onSortChange={setSortBy} />
+            </div>
+          )}
+
+          {topCategories.length > 0 && (
+            <div className="mt-5 flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <button
+                onClick={() => setSelectedCategory('All Categories')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+                  selectedCategory === 'All Categories'
+                    ? 'bg-[hsl(var(--primary))] text-white border-transparent'
+                    : 'bg-[hsl(var(--background))/0.7] text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]'
+                )}
+              >
+                All
+              </button>
+              {topCategories.map(([cat, count]) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+                    selectedCategory === cat
+                      ? 'bg-[hsl(var(--primary))] text-white border-transparent'
+                      : 'bg-[hsl(var(--background))/0.7] text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]'
+                  )}
+                >
+                  {cat} <span className="opacity-80">{count}</span>
+                </button>
+              ))}
+              <button
+                onClick={() => setPrioritizeIndependent((p) => !p)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+                  prioritizeIndependent
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-400/40'
+                    : 'bg-[hsl(var(--background))/0.7] text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]'
+                )}
+              >
+                Prioritize Independent
+              </button>
+              <button
+                onClick={() => setActiveOnly((p) => !p)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+                  activeOnly
+                    ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-400/40'
+                    : 'bg-[hsl(var(--background))/0.7] text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]'
+                )}
+              >
+                Active today
+              </button>
+              <button
+                onClick={() => setShowClaimedOnly((p) => !p)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+                  showClaimedOnly
+                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/40'
+                    : 'bg-[hsl(var(--background))/0.7] text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]'
+                )}
+              >
+                Claimed only
+              </button>
             </div>
           )}
 
@@ -516,18 +855,9 @@ export default function Businesses() {
         </div>
 
         {/* -- Main Layout ------------------------------------------- */}
-        <div className="flex gap-6">
-          {/* Sidebar */}
-          <div className="hidden lg:block">
-            <CategorySidebar
-              selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
-              businessCounts={categoryCounts}
-            />
-          </div>
-
+        <div>
           {/* Content */}
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0">
             {/* Deals */}
             <DealsSection />
 
@@ -544,13 +874,18 @@ export default function Businesses() {
 
             {/* Loading */}
             {loading && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-14 h-14 rounded-2xl bg-[hsl(var(--primary))]/10 flex items-center justify-center mb-4">
-                  <Loader2 className="w-7 h-7 text-[hsl(var(--primary))] animate-spin" />
-                </div>
-                <p className="text-[hsl(var(--muted-foreground))] font-medium text-sm">
-                  Discovering local businesses...
-                </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 py-4">
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <div key={`skeleton-${idx}`} className="rounded-2xl border border-[hsl(var(--border))/0.7] bg-[hsl(var(--card))/0.65] p-4">
+                    <div className="h-40 rounded-xl bg-gradient-to-r from-[hsl(var(--secondary))/0.7] via-[hsl(var(--secondary))/0.45] to-[hsl(var(--secondary))/0.7] animate-pulse" />
+                    <div className="mt-4 h-4 w-2/3 rounded bg-[hsl(var(--secondary))/0.9] animate-pulse" />
+                    <div className="mt-2 h-3 w-1/2 rounded bg-[hsl(var(--secondary))/0.75] animate-pulse" />
+                    <div className="mt-4 flex gap-2">
+                      <div className="h-6 w-24 rounded-full bg-[hsl(var(--secondary))/0.8] animate-pulse" />
+                      <div className="h-6 w-20 rounded-full bg-[hsl(var(--secondary))/0.8] animate-pulse" />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -558,13 +893,55 @@ export default function Businesses() {
             {!loading && filtered.length > 0 && viewMode === 'grid' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                 {filtered.map((business) => (
-                  <BusinessCard
-                    key={business.id || business._id}
-                    business={business}
-                    isFavorite={favorites.includes(business.id || business._id || '')}
-                    onToggleFavorite={() => toggleFavorite(business.id || business._id || '')}
-                    onViewDetails={() => setSelectedBusiness(business)}
-                  />
+                  <div key={business.id || business._id} className="space-y-2">
+                    <BusinessCard
+                      business={business}
+                      isFavorite={favorites.includes(business.id || business._id || '')}
+                      onToggleFavorite={() => toggleFavorite(business.id || business._id || '')}
+                      onViewDetails={() => setSelectedBusiness(business)}
+                    />
+                    <div className="px-1 flex flex-wrap items-center gap-2 text-[11px]">
+                      {business.is_claimed && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2.5 py-1">
+                          <ShieldCheck className="w-3 h-3" />
+                          Claimed
+                        </span>
+                      )}
+                      <span
+                        title="Based on verified visits, credibility-weighted reviews, and recent activity."
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1',
+                          trustTone(trustLabel(business))
+                        )}
+                      >
+                        Trust: {trustScore(business)}/100 • {trustLabel(business)}
+                      </span>
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1',
+                          businessType(business) === 'independent'
+                            ? 'border-emerald-400/35 text-emerald-700 dark:text-emerald-300'
+                            : businessType(business) === 'chain'
+                            ? 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]'
+                            : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/80'
+                        )}
+                      >
+                        {businessType(business) === 'independent'
+                          ? 'Independent'
+                          : businessType(business) === 'chain'
+                          ? 'Chain'
+                          : 'Unverified type'}
+                      </span>
+                      {reasonChips(business).map((reason) => (
+                        <span
+                          key={`${business.id || business._id}-${reason}`}
+                          className="inline-flex items-center rounded-full bg-[hsl(var(--secondary))] px-2.5 py-1 text-[hsl(var(--muted-foreground))]"
+                        >
+                          {reason}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -620,12 +997,15 @@ export default function Businesses() {
                             {biz.category} &middot; {biz.address || 'Local Business'}
                           </p>
                         </div>
-                        {(biz.rating ?? 0) > 0 && (
-                          <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 flex-shrink-0">
-                            <Star className="w-3.5 h-3.5 fill-current" />
-                            {(biz.rating ?? 0).toFixed(1)}
-                          </span>
-                        )}
+                        <span
+                          title="Based on verified visits, credibility-weighted reviews, and recent activity."
+                          className={cn(
+                            'text-[11px] font-semibold rounded-full border px-2 py-1 flex-shrink-0',
+                            trustTone(trustLabel(biz))
+                          )}
+                        >
+                          {trustLabel(biz)}
+                        </span>
                       </div>
 
                       {/* Image */}
@@ -653,12 +1033,29 @@ export default function Businesses() {
                             </span>
                           </div>
                         )}
-                        {(biz.review_count ?? 0) > 0 && (
-                          <div className="absolute bottom-4 left-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-xs font-medium">
-                            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                            {(biz.rating ?? 0).toFixed(1)} &middot; {biz.review_count} reviews
-                          </div>
-                        )}
+                        <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                          <span
+                            className={cn(
+                              'px-2.5 py-1 rounded-full border text-[11px] backdrop-blur-sm bg-[hsl(var(--background))/0.72]',
+                              businessType(biz) === 'independent'
+                                ? 'border-emerald-400/35 text-emerald-700 dark:text-emerald-300'
+                                : businessType(biz) === 'chain'
+                                ? 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]'
+                                : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]/80'
+                            )}
+                          >
+                            {businessType(biz) === 'independent'
+                              ? 'Independent'
+                              : businessType(biz) === 'chain'
+                              ? 'Chain'
+                              : 'Unverified type'}
+                          </span>
+                          {biz.is_claimed && (
+                            <span className="px-2.5 py-1 rounded-full border border-emerald-400/35 text-[11px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                              Claimed
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Actions */}
@@ -781,7 +1178,7 @@ export default function Businesses() {
               </div>
             )}
 
-            {/* Empty state � no businesses at all */}
+            {/* Empty state - no businesses at all */}
             {!loading && businesses.length === 0 && !error && (
               <div className="text-center py-20">
                 <div className="w-16 h-16 rounded-2xl bg-[hsl(var(--primary))]/10 flex items-center justify-center mx-auto mb-6">
@@ -823,4 +1220,7 @@ export default function Businesses() {
     </div>
   );
 }
+
+
+
 

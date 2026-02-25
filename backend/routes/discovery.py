@@ -32,10 +32,14 @@ from database.mongodb import (
     get_visits_collection,
     get_reviews_collection,
     get_checkins_collection,
+    get_credibility_collection,
     get_geo_cache_collection,
 )
 from services.google_places import search_google_places, geo_cell_key
-from services.visibility_score import calculate_live_visibility_score
+from services.visibility_score import (
+    calculate_live_visibility_score,
+    reviewer_credibility_weight,
+)
 from services.local_business_classifier import classify_local_business
 
 router = APIRouter()
@@ -44,11 +48,30 @@ MIN_RESULTS = 80         # Threshold before considering a Google backfill
 CACHE_TTL_HOURS = 24     # Don't re-fetch the same area within this window
 
 
+def _strategic_rank_score(business: dict) -> float:
+    """
+    Blend trust and discovery so the feed feels credible but still welcoming.
+    - Credibility-weighted LVS is the core signal.
+    - Local confidence remains strong.
+    - A small freshness boost gives newer/under-reviewed businesses visibility.
+    """
+    lvs = float(business.get("live_visibility_score", 0.0))
+    local_conf = max(0.0, min(float(business.get("local_confidence", 0.0)), 1.0))
+    review_count = int(business.get("review_count", business.get("total_reviews", 0)) or 0)
+
+    freshness = max(0.0, 1.0 - min(review_count, 40) / 40.0)
+    return (
+        0.60 * lvs
+        + 0.25 * (local_conf * 100.0)
+        + 0.15 * (freshness * 100.0)
+    )
+
+
 def _sort_businesses(results: list, sort_by: Optional[str]) -> None:
     """Sort a list of business dicts in-place based on sort_by value."""
     if sort_by == "local_confidence":
         results.sort(
-            key=lambda b: (b.get("local_confidence", 0), b.get("live_visibility_score", 0)),
+            key=lambda b: (_strategic_rank_score(b), b.get("local_confidence", 0)),
             reverse=True,
         )
     elif sort_by == "rating":
@@ -57,7 +80,7 @@ def _sort_businesses(results: list, sort_by: Optional[str]) -> None:
         results.sort(key=lambda b: b.get("created_at", datetime.min), reverse=True)
     else:  # "score" or default — live_visibility_score, with local_confidence as tiebreaker
         results.sort(
-            key=lambda b: (b.get("live_visibility_score", 0), b.get("local_confidence", 0)),
+            key=lambda b: (_strategic_rank_score(b), b.get("live_visibility_score", 0)),
             reverse=True,
         )
 
@@ -263,9 +286,29 @@ async def _recalculate_visibility(business_id: str):
     visits = get_visits_collection()
     reviews = get_reviews_collection()
     checkins = get_checkins_collection()
+    credibility = get_credibility_collection()
 
     verified_visit_count = await visits.count_documents({"business_id": business_id, "verified": True})
-    review_count = await reviews.count_documents({"business_id": business_id})
+    review_docs = await reviews.find({"business_id": business_id}, {"user_id": 1, "created_at": 1}).to_list(length=None)
+    review_count = len(review_docs)
+
+    reviewer_ids = sorted({doc.get("user_id") for doc in review_docs if doc.get("user_id")})
+    credibility_by_user = {}
+    if reviewer_ids:
+        credibility_cursor = credibility.find(
+            {"user_id": {"$in": reviewer_ids}},
+            {"user_id": 1, "credibility_score": 1},
+        )
+        credibility_docs = await credibility_cursor.to_list(length=None)
+        credibility_by_user = {
+            doc.get("user_id"): doc.get("credibility_score")
+            for doc in credibility_docs
+        }
+
+    weighted_review_count = 0.0
+    for review in review_docs:
+        reviewer_score = credibility_by_user.get(review.get("user_id"))
+        weighted_review_count += reviewer_credibility_weight(reviewer_score)
 
     # Last activity timestamp (most recent of visit or review)
     last_visit = await visits.find_one({"business_id": business_id}, sort=[("created_at", -1)])
@@ -290,6 +333,7 @@ async def _recalculate_visibility(business_id: str):
     score = calculate_live_visibility_score(
         verified_visit_count=verified_visit_count,
         review_count=review_count,
+        credibility_weighted_review_count=weighted_review_count,
         last_activity_at=last_activity_at,
         engagement_actions=engagement_actions,
         total_potential_engagements=total_potential,
@@ -297,7 +341,17 @@ async def _recalculate_visibility(business_id: str):
 
     await businesses.update_one(
         {"_id": ObjectId(business_id)},
-        {"$set": {"live_visibility_score": score}},
+        {
+            "$set": {
+                "live_visibility_score": score,
+                "ranking_components": {
+                    "verified_visits": verified_visit_count,
+                    "credibility_weighted_reviews": round(weighted_review_count, 2),
+                    "raw_review_count": review_count,
+                    "engagement_actions": engagement_actions,
+                },
+            }
+        },
     )
 
 

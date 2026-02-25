@@ -274,8 +274,9 @@ async def search_google_places(
                 "type": "Point",
                 "coordinates": [p_lng, p_lat],
             },
-            "rating_average": place.get("rating", 0),
-            "total_reviews": place.get("user_ratings_total", 0),
+            # Platform-native reviews only: never ingest Google stars/counts.
+            "rating_average": 0.0,
+            "total_reviews": 0,
             "image_url": image_url,
             "phone": "",
             "email": "",
