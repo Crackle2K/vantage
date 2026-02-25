@@ -50,6 +50,12 @@ export interface Business {
   is_claimed?: boolean;
   owner_id?: string;
   claim_status?: string;
+  business_type?: 'independent' | 'chain' | 'unknown';
+  trust_score?: number;
+  trust_label?: 'High Trust' | 'Growing Trust' | 'New & Active' | 'Unverified';
+  verified_visits_today?: number;
+  last_verified_at?: string | null;
+  badges?: string[];
   // Activity signals
   is_active_today?: boolean;
   checkins_today?: number;
