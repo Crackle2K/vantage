@@ -226,7 +226,23 @@ export interface ActivityFeedItem {
   description?: string;
   likes: number;
   comments: number;
+  liked_by?: string[];
+  comments_list?: ActivityComment[];
   created_at: string;
+}
+
+export interface ActivityComment {
+  id: string;
+  user_id: string;
+  user_name: string;
+  content: string;
+  created_at: string;
+}
+
+export interface ActivityLikeResult {
+  liked: boolean;
+  likes: number;
+  comments: number;
 }
 
 export interface BusinessActivityStatus {

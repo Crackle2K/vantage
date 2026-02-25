@@ -17,6 +17,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from bson import ObjectId
+from pydantic import BaseModel, Field
 
 from models.activity import (
     CheckInCreate,
@@ -36,6 +37,18 @@ from database.mongodb import (
 )
 
 router = APIRouter()
+
+
+class ActivityCommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=500)
+
+
+class ActivityComment(BaseModel):
+    id: str
+    user_id: str
+    user_name: str
+    content: str
+    created_at: datetime
 
 
 def checkin_helper(doc) -> dict:
@@ -264,6 +277,125 @@ async def get_activity_feed(
         "page": page,
         "page_size": page_size,
         "has_more": skip + page_size < total,
+    }
+
+
+@router.post("/feed/{activity_id}/like")
+async def toggle_activity_like(
+    activity_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Toggle like on an activity feed item for the current user."""
+    activity_feed = get_activity_feed_collection()
+
+    if not ObjectId.is_valid(activity_id):
+        raise HTTPException(status_code=400, detail="Invalid activity ID")
+
+    target_id = ObjectId(activity_id)
+
+    unlike_result = await activity_feed.update_one(
+        {"_id": target_id, "liked_by": current_user.id},
+        {
+            "$pull": {"liked_by": current_user.id},
+            "$inc": {"likes": -1},
+        },
+    )
+
+    liked = False
+    if unlike_result.matched_count == 0:
+        like_result = await activity_feed.update_one(
+            {"_id": target_id, "liked_by": {"$ne": current_user.id}},
+            {
+                "$addToSet": {"liked_by": current_user.id},
+                "$inc": {"likes": 1},
+            },
+        )
+        if like_result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Activity item not found")
+        liked = True
+
+    item = await activity_feed.find_one({"_id": target_id})
+    if not item:
+        raise HTTPException(status_code=404, detail="Activity item not found")
+
+    likes_count = max(0, int(item.get("likes", 0)))
+    if likes_count != item.get("likes", 0):
+        await activity_feed.update_one({"_id": target_id}, {"$set": {"likes": likes_count}})
+
+    return {
+        "liked": liked,
+        "likes": likes_count,
+        "comments": int(item.get("comments", 0)),
+    }
+
+
+@router.get("/feed/{activity_id}/comments", response_model=List[ActivityComment])
+async def get_activity_comments(activity_id: str):
+    """Fetch comments for a specific activity feed item."""
+    activity_feed = get_activity_feed_collection()
+
+    if not ObjectId.is_valid(activity_id):
+        raise HTTPException(status_code=400, detail="Invalid activity ID")
+
+    item = await activity_feed.find_one(
+        {"_id": ObjectId(activity_id)},
+        {"comments_list": 1},
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Activity item not found")
+
+    comments = item.get("comments_list", [])
+    comments_sorted = sorted(comments, key=lambda c: c.get("created_at", datetime.min))
+    return [
+        ActivityComment(
+            id=str(comment.get("id") or ""),
+            user_id=comment.get("user_id", ""),
+            user_name=comment.get("user_name", "Anonymous"),
+            content=comment.get("content", ""),
+            created_at=comment.get("created_at", datetime.utcnow()),
+        )
+        for comment in comments_sorted
+    ]
+
+
+@router.post("/feed/{activity_id}/comments", status_code=status.HTTP_201_CREATED)
+async def add_activity_comment(
+    activity_id: str,
+    payload: ActivityCommentCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Add a comment to an activity feed item."""
+    activity_feed = get_activity_feed_collection()
+
+    if not ObjectId.is_valid(activity_id):
+        raise HTTPException(status_code=400, detail="Invalid activity ID")
+
+    target_id = ObjectId(activity_id)
+    comment_doc = {
+        "id": str(ObjectId()),
+        "user_id": current_user.id,
+        "user_name": current_user.name,
+        "content": payload.content.strip(),
+        "created_at": datetime.utcnow(),
+    }
+
+    if not comment_doc["content"]:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+
+    result = await activity_feed.update_one(
+        {"_id": target_id},
+        {
+            "$push": {"comments_list": comment_doc},
+            "$inc": {"comments": 1},
+        },
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Activity item not found")
+
+    item = await activity_feed.find_one({"_id": target_id}, {"comments": 1})
+    return {
+        "comment": comment_doc,
+        "comments": int(item.get("comments", 0)) if item else 0,
     }
 
 

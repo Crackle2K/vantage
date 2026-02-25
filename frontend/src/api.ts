@@ -1,4 +1,4 @@
-import type { Business, Review, Deal, ReviewCreate, User, AuthTokens, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, BusinessActivityStatus } from './types';
+import type { Business, Review, Deal, ReviewCreate, User, AuthTokens, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, BusinessActivityStatus, ActivityComment, ActivityLikeResult } from './types';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -219,6 +219,40 @@ export const api = {
       headers: getAuthHeaders(),
     });
     if (!response.ok) throw new Error('Failed to fetch credibility');
+    return response.json();
+  },
+
+  async toggleActivityLike(activityId: string): Promise<ActivityLikeResult> {
+    const response = await fetch(`${API_URL}/feed/${activityId}/like`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Failed to like activity');
+    }
+    return response.json();
+  },
+
+  async getActivityComments(activityId: string): Promise<ActivityComment[]> {
+    const response = await fetch(`${API_URL}/feed/${activityId}/comments`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Failed to fetch comments');
+    }
+    return response.json();
+  },
+
+  async addActivityComment(activityId: string, content: string): Promise<{ comment: ActivityComment; comments: number }> {
+    const response = await fetch(`${API_URL}/feed/${activityId}/comments`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Failed to add comment');
+    }
     return response.json();
   },
 

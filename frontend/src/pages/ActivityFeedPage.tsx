@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api'
-import type { ActivityFeedItem, UserCredibility, CredibilityTier } from '../types'
+import type { ActivityFeedItem, UserCredibility, CredibilityTier, ActivityComment } from '../types'
 import {
   MapPin, Star, Tag, Calendar, Award, TrendingUp,
   ThumbsUp, MessageCircle, Clock, Shield, CheckCircle2,
-  Users, Flame, ChevronUp
+  Users, Flame, ChevronUp, Send
 } from 'lucide-react'
 
 const activityIcons: Record<string, typeof MapPin> = {
@@ -59,7 +59,7 @@ function CredibilityBadge({ tier }: { tier: CredibilityTier }) {
 }
 
 export default function ActivityFeedPage() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const [feedItems, setFeedItems] = useState<ActivityFeedItem[]>([])
   const [myCredibility, setMyCredibility] = useState<UserCredibility | null>(null)
   const [loading, setLoading] = useState(true)
@@ -67,6 +67,13 @@ export default function ActivityFeedPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
+  const [likedItems, setLikedItems] = useState<Set<string>>(new Set())
+  const [commentsByItem, setCommentsByItem] = useState<Record<string, ActivityComment[]>>({})
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set())
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({})
+  const [pendingLikes, setPendingLikes] = useState<Set<string>>(new Set())
+  const [pendingComments, setPendingComments] = useState<Set<string>>(new Set())
+  const [actionError, setActionError] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const loadFeed = useCallback(async (pageNum: number, append: boolean = false) => {
@@ -79,6 +86,17 @@ export default function ActivityFeedPage() {
 
       setHasMore(result.has_more)
       setFeedItems(prev => append ? [...prev, ...items] : items)
+      if (user?.id) {
+        const liked = items
+          .filter(item => item.liked_by?.includes(user.id))
+          .map(item => item.id)
+        setLikedItems(prev => {
+          const next = new Set(prev)
+          if (!append) next.clear()
+          liked.forEach(id => next.add(id))
+          return next
+        })
+      }
       setPage(pageNum)
     } catch (err) {
       console.error('Failed to load feed:', err)
@@ -90,11 +108,107 @@ export default function ActivityFeedPage() {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     loadFeed(1)
   }, [loadFeed])
+
+  const loadComments = useCallback(async (activityId: string) => {
+    try {
+      const comments = await api.getActivityComments(activityId)
+      setCommentsByItem(prev => ({ ...prev, [activityId]: comments }))
+    } catch (err) {
+      console.error('Failed to load comments:', err)
+      setActionError('Could not load comments right now.')
+    }
+  }, [])
+
+  const toggleLike = useCallback(async (activityId: string) => {
+    if (!isAuthenticated) {
+      setActionError('Please sign in to like posts.')
+      return
+    }
+    if (pendingLikes.has(activityId)) return
+
+    setPendingLikes(prev => new Set(prev).add(activityId))
+    setActionError(null)
+    try {
+      const result = await api.toggleActivityLike(activityId)
+      setLikedItems(prev => {
+        const next = new Set(prev)
+        if (result.liked) next.add(activityId)
+        else next.delete(activityId)
+        return next
+      })
+      setFeedItems(prev => prev.map(item => (
+        item.id === activityId
+          ? { ...item, likes: result.likes, comments: result.comments }
+          : item
+      )))
+    } catch (err) {
+      console.error('Failed to toggle like:', err)
+      setActionError(err instanceof Error ? err.message : 'Could not update like.')
+    } finally {
+      setPendingLikes(prev => {
+        const next = new Set(prev)
+        next.delete(activityId)
+        return next
+      })
+    }
+  }, [isAuthenticated, pendingLikes])
+
+  const toggleComments = useCallback(async (activityId: string) => {
+    const isOpen = expandedComments.has(activityId)
+    if (isOpen) {
+      setExpandedComments(prev => {
+        const next = new Set(prev)
+        next.delete(activityId)
+        return next
+      })
+      return
+    }
+
+    setExpandedComments(prev => new Set(prev).add(activityId))
+    if (!commentsByItem[activityId]) {
+      await loadComments(activityId)
+    }
+  }, [commentsByItem, expandedComments, loadComments])
+
+  const submitComment = useCallback(async (activityId: string) => {
+    const content = (commentDrafts[activityId] || '').trim()
+    if (!content) return
+    if (!isAuthenticated) {
+      setActionError('Please sign in to comment.')
+      return
+    }
+    if (pendingComments.has(activityId)) return
+
+    setPendingComments(prev => new Set(prev).add(activityId))
+    setActionError(null)
+    try {
+      const result = await api.addActivityComment(activityId, content)
+      setCommentsByItem(prev => {
+        const current = prev[activityId] || []
+        return { ...prev, [activityId]: [...current, result.comment] }
+      })
+      setCommentDrafts(prev => ({ ...prev, [activityId]: '' }))
+      setFeedItems(prev => prev.map(item => (
+        item.id === activityId
+          ? { ...item, comments: result.comments }
+          : item
+      )))
+    } catch (err) {
+      console.error('Failed to add comment:', err)
+      setActionError(err instanceof Error ? err.message : 'Could not post comment.')
+    } finally {
+      setPendingComments(prev => {
+        const next = new Set(prev)
+        next.delete(activityId)
+        return next
+      })
+    }
+  }, [commentDrafts, isAuthenticated, pendingComments])
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -141,6 +255,11 @@ export default function ActivityFeedPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Feed */}
           <div className="lg:col-span-2 space-y-4">
+            {actionError && (
+              <div className="glass-card rounded-2xl p-3 border border-red-300/40 bg-red-500/5">
+                <p className="text-caption text-red-600 dark:text-red-400">{actionError}</p>
+              </div>
+            )}
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="glass-card rounded-2xl p-5 animate-pulse">
@@ -183,6 +302,11 @@ export default function ActivityFeedPage() {
               feedItems.map((item, index) => {
                 const Icon = activityIcons[item.activity_type] || TrendingUp
                 const color = activityColors[item.activity_type] || 'bg-surface-elevated'
+                const isLiked = likedItems.has(item.id)
+                const isCommentsOpen = expandedComments.has(item.id)
+                const itemComments = commentsByItem[item.id] || item.comments_list || []
+                const isLikePending = pendingLikes.has(item.id)
+                const isCommentPending = pendingComments.has(item.id)
 
                 return (
                   <div
@@ -236,15 +360,65 @@ export default function ActivityFeedPage() {
 
                         {/* Engagement */}
                         <div className="flex items-center gap-4 mt-3">
-                          <button className="flex items-center gap-1.5 text-caption text-[hsl(var(--muted-foreground))] hover:text-brand transition-colors">
+                          <button
+                            onClick={() => toggleLike(item.id)}
+                            disabled={isLikePending}
+                            className={`flex items-center gap-1.5 text-caption transition-colors ${isLiked ? 'text-brand' : 'text-[hsl(var(--muted-foreground))] hover:text-brand'} ${isLikePending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
                             <ThumbsUp className="w-3.5 h-3.5" />
-                            {item.likes > 0 && item.likes}
+                            <span>{item.likes > 0 ? item.likes : (isLiked ? 1 : 'Like')}</span>
                           </button>
-                          <button className="flex items-center gap-1.5 text-caption text-[hsl(var(--muted-foreground))] hover:text-brand transition-colors">
+                          <button
+                            onClick={() => toggleComments(item.id)}
+                            className={`flex items-center gap-1.5 text-caption transition-colors ${isCommentsOpen ? 'text-brand' : 'text-[hsl(var(--muted-foreground))] hover:text-brand'}`}
+                          >
                             <MessageCircle className="w-3.5 h-3.5" />
-                            {item.comments > 0 && item.comments}
+                            <span>{item.comments > 0 ? item.comments : 'Comment'}</span>
                           </button>
                         </div>
+
+                        {isCommentsOpen && (
+                          <div className="mt-3 pt-3 border-t border-[hsl(var(--border))] space-y-2.5">
+                            {itemComments.length === 0 ? (
+                              <p className="text-caption text-[hsl(var(--muted-foreground))]">No comments yet.</p>
+                            ) : (
+                              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                                {itemComments.map((comment) => (
+                                  <div key={comment.id} className="rounded-lg bg-[hsl(var(--secondary))]/50 px-2.5 py-2">
+                                    <p className="text-caption font-medium text-[hsl(var(--foreground))]">{comment.user_name}</p>
+                                    <p className="text-ui text-[hsl(var(--muted-foreground))] break-words">{comment.content}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={commentDrafts[item.id] || ''}
+                                onChange={(e) => setCommentDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    submitComment(item.id)
+                                  }
+                                }}
+                                placeholder={isAuthenticated ? 'Write a comment…' : 'Sign in to comment'}
+                                disabled={!isAuthenticated || isCommentPending}
+                                maxLength={500}
+                                className="flex-1 h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] disabled:opacity-60"
+                              />
+                              <button
+                                onClick={() => submitComment(item.id)}
+                                disabled={!isAuthenticated || isCommentPending || !(commentDrafts[item.id] || '').trim()}
+                                className="h-9 w-9 rounded-lg bg-brand text-brand-on-primary flex items-center justify-center disabled:opacity-50"
+                                aria-label="Post comment"
+                              >
+                                <Send className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
