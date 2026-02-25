@@ -203,7 +203,6 @@ function LazyVideoComponent({ videoSrc, posterSrc }: { videoSrc: string, posterS
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const scrollY = useScrollY()
   
   // Mobile detection for video optimization
   const [isMobile, setIsMobile] = useState(false)
