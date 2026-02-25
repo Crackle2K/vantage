@@ -519,12 +519,12 @@ body {
 
 /* Gradient text with hover effect - dark green to light green */
 .text-gradient-green-hover {
-  background: linear-gradient(90deg, var(--surface-elevated-dark), #5c5c5cee);
+  background: linear-gradient(90deg, var(--brand-secondary), var(--brand-secondary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   color: transparent;
-  transition: 1000ms ease-in;
+  transition: background 0.3s ease;
 }
 
 .text-gradient-green-hover:hover {
@@ -533,7 +533,6 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   color: transparent;
-  transition: 1000ms ease-out;
 }
 
 .gradient-mesh {
