@@ -3,11 +3,14 @@ Vantage - FastAPI Backend
 A location-based platform connecting users with local businesses
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from pymongo.errors import PyMongoError
 
 from database.mongodb import connect_to_mongo, close_mongo_connection
+from database.mongodb import DatabaseUnavailableError
 from models.auth import router as auth_router
 from routes.businesses import router as businesses_router
 from routes.reviews import router as reviews_router
@@ -65,6 +68,28 @@ app.include_router(subscriptions_router, prefix="/api", tags=["Subscriptions"])
 app.include_router(activity_router, prefix="/api", tags=["Activity"])
 app.include_router(discovery_router, prefix="/api", tags=["Discovery"])
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
+
+
+@app.exception_handler(DatabaseUnavailableError)
+async def handle_db_unavailable(_: Request, exc: DatabaseUnavailableError):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": str(exc),
+            "error": "database_unavailable",
+        },
+    )
+
+
+@app.exception_handler(PyMongoError)
+async def handle_pymongo_error(_: Request, exc: PyMongoError):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": f"Database query failed: {str(exc)}",
+            "error": "database_query_failed",
+        },
+    )
 
 
 @app.get("/")

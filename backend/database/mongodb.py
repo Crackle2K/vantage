@@ -14,12 +14,16 @@ client: AsyncIOMotorClient = None
 database = None
 
 
+class DatabaseUnavailableError(RuntimeError):
+    """Raised when MongoDB is not connected for request handling."""
+
+
 async def connect_to_mongo():
     """Establish connection to MongoDB Atlas. Called on app startup."""
     global client, database
     try:
         # Configure client for serverless/cloud deployment with connection pooling
-        client = AsyncIOMotorClient(
+        temp_client = AsyncIOMotorClient(
             MONGODB_URI,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=10000,
@@ -29,12 +33,16 @@ async def connect_to_mongo():
             maxIdleTimeMS=45000,
             retryWrites=True
         )
-        database = client[DATABASE_NAME]
-        await client.admin.command("ping")
+        temp_database = temp_client[DATABASE_NAME]
+        await temp_client.admin.command("ping")
+        client = temp_client
+        database = temp_database
         print(f"Connected to MongoDB: {DATABASE_NAME}")
         await _ensure_indexes()
         await _normalize_platform_review_metrics()
     except Exception as e:
+        client = None
+        database = None
         print(f"MongoDB connection warning: {e}")
         print("Server will start without database. Some features may not work.")
 
@@ -130,7 +138,7 @@ async def close_mongo_connection():
 def get_database():
     """Get the database instance."""
     if database is None:
-        raise Exception(
+        raise DatabaseUnavailableError(
             "MongoDB is not connected. Please ensure MongoDB is running and accessible at the configured URI. "
             "Start MongoDB or check your MONGODB_URI in the .env file."
         )

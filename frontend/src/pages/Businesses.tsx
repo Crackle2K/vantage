@@ -151,8 +151,8 @@ export default function Businesses() {
           try {
             const data = await api.getBusinesses();
             setBusinesses(data);
-          } catch {
-            setError('Failed to load businesses');
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load businesses');
             setBusinesses([]);
           }
         }

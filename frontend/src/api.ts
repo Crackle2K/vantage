@@ -2,6 +2,19 @@ import type { Business, Review, Deal, ReviewCreate, User, AuthTokens, BusinessCl
 
 const API_URL = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:8000/api';
 
+async function throwApiError(response: Response, fallback: string): Promise<never> {
+  let message = `${fallback} (HTTP ${response.status})`;
+  try {
+    const data = await response.json();
+    if (data?.detail && typeof data.detail === 'string') {
+      message = data.detail;
+    }
+  } catch {
+    // Keep fallback message when body is not JSON.
+  }
+  throw new Error(message);
+}
+
 function getAuthHeaders(): HeadersInit {
   const token = localStorage.getItem('vantage_token');
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -104,7 +117,7 @@ export const api = {
     if (sortBy) params.append('sort_by', sortBy);
     if (search) params.append('search', search);
     const response = await fetch(`${API_URL}/businesses?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch businesses');
+    if (!response.ok) await throwApiError(response, 'Failed to fetch businesses');
     return response.json();
   },
 
@@ -112,13 +125,13 @@ export const api = {
     const response = await fetch(
       `${API_URL}/businesses/nearby?lat=${lat}&lng=${lng}&radius=${radius}`
     );
-    if (!response.ok) throw new Error('Failed to fetch nearby businesses');
+    if (!response.ok) await throwApiError(response, 'Failed to fetch nearby businesses');
     return response.json();
   },
 
   async getBusiness(id: string): Promise<Business> {
     const response = await fetch(`${API_URL}/businesses/${id}`);
-    if (!response.ok) throw new Error('Failed to fetch business');
+    if (!response.ok) await throwApiError(response, 'Failed to fetch business');
     return response.json();
   },
 
@@ -311,7 +324,7 @@ export const api = {
     params.append('sort_by', 'local_confidence'); // server pre-sorts by local independent confidence
     if (category) params.append('category', category);
     const response = await fetch(`${API_URL}/discover?${params}`);
-    if (!response.ok) throw new Error('Failed to discover businesses');
+    if (!response.ok) await throwApiError(response, 'Failed to discover businesses');
     return response.json();
   },
 
