@@ -35,6 +35,9 @@ class User(UserBase):
     favorites: List[str] = Field(default_factory=list)
     google_id: Optional[str] = None
     auth_provider: Optional[str] = None
+    profile_picture: Optional[str] = None
+    about_me: Optional[str] = None
+    created_at: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -43,6 +46,13 @@ class User(UserBase):
 class UserInDB(User):
     """User schema as stored in database (includes password hash)"""
     hashed_password: Optional[str] = None  # Optional for OAuth users
+
+
+class UserUpdate(BaseModel):
+    """Schema for updating user profile"""
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    profile_picture: Optional[str] = Field(None, max_length=500)
+    about_me: Optional[str] = Field(None, max_length=500)
 
 
 class UserLogin(BaseModel):

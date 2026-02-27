@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate, Link } from 'react-router-dom'
-import { User, Mail, Shield, Calendar, LogOut, Edit3, Save, X, ArrowLeft, Store, Heart } from 'lucide-react'
+import { User, Mail, Shield, Calendar, LogOut, Edit3, Save, X, ArrowLeft, Store, Heart, ImageIcon, FileText } from 'lucide-react'
+import { api } from '../api'
 
 export default function AccountPage() {
-  const { user, isAuthenticated, signOut } = useAuth()
+  const { user, isAuthenticated, signOut, setUser } = useAuth()
   const navigate = useNavigate()
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState(() => user?.name || '')
-  const [email, setEmail] = useState(() => user?.email || '')
+  const [profilePicture, setProfilePicture] = useState(() => user?.profile_picture || '')
+  const [aboutMe, setAboutMe] = useState(() => user?.about_me || '')
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState('')
 
   if (!isAuthenticated || !user) {
     return (
@@ -33,6 +37,31 @@ export default function AccountPage() {
   const handleSignOut = async () => {
     await signOut()
     navigate('/')
+  }
+
+  const handleSaveProfile = async () => {
+    setError('')
+    setIsSaving(true)
+    
+    try {
+      const updates: any = {}
+      if (name !== user?.name) updates.name = name
+      if (profilePicture !== user?.profile_picture) updates.profile_picture = profilePicture
+      if (aboutMe !== user?.about_me) updates.about_me = aboutMe
+      
+      if (Object.keys(updates).length === 0) {
+        setIsEditing(false)
+        return
+      }
+      
+      const updatedUser = await api.updateMyProfile(updates)
+      setUser(updatedUser) // Update context with new user data
+      setIsEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update profile')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const roleLabels: Record<string, string> = {
@@ -61,13 +90,26 @@ export default function AccountPage() {
           <div className="glass-card rounded-2xl p-8 mb-6">
             <div className="flex items-start gap-5">
               {/* Avatar */}
-              <div className="w-20 h-20 rounded-2xl gradient-primary flex items-center justify-center text-heading font-bold text-on-primary shadow-lg shadow-brand/20 flex-shrink-0">
-                {(user.name || user.email)[0].toUpperCase()}
+              <div className="w-20 h-20 rounded-2xl flex-shrink-0 overflow-hidden shadow-lg shadow-brand/20">
+                {user.profile_picture ? (
+                  <img 
+                    src={user.profile_picture} 
+                    alt={user.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full gradient-primary flex items-center justify-center text-heading font-bold text-on-primary">
+                    {(user.name || user.email)[0].toUpperCase()}
+                  </div>
+                )}
               </div>
 
               <div className="flex-1 min-w-0">
                 <h1 className="text-subheading font-bold text-[hsl(var(--foreground))] font-heading">{user.name}</h1>
                 <p className="text-[hsl(var(--muted-foreground))]">{user.email}</p>
+                {user.about_me && (
+                  <p className="text-ui text-[hsl(var(--foreground))] mt-2">{user.about_me}</p>
+                )}
                 <div className="flex items-center gap-2 mt-2">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-caption font-medium bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]">
                     <RoleIcon className="w-3 h-3" />
@@ -95,6 +137,11 @@ export default function AccountPage() {
           {isEditing && (
             <div className="glass-card rounded-2xl p-6 mb-6 animate-fade-in">
               <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Edit Profile</h3>
+              {error && (
+                <div className="mb-4 p-3 rounded-lg bg-error/10 border border-error/20 text-error text-ui">
+                  {error}
+                </div>
+              )}
               <div className="space-y-4">
                 <div>
                   <label className="text-ui font-medium text-[hsl(var(--foreground))] mb-1.5 block">Name</label>
@@ -114,19 +161,63 @@ export default function AccountPage() {
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
                     <input
                       type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={user?.email || ''}
+                      disabled
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))] text-ui opacity-60 cursor-not-allowed"
+                    />
+                  </div>
+                  <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1.5">Email cannot be changed</p>
+                </div>
+                <div>
+                  <label className="text-ui font-medium text-[hsl(var(--foreground))] mb-1.5 block">Profile Picture URL</label>
+                  <div className="relative">
+                    <ImageIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+                    <input
+                      type="url"
+                      value={profilePicture}
+                      onChange={(e) => setProfilePicture(e.target.value)}
+                      placeholder="https://example.com/photo.jpg"
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-ui focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))]"
                     />
                   </div>
+                  <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1.5">Enter a URL to your profile picture</p>
+                </div>
+                <div>
+                  <label className="text-ui font-medium text-[hsl(var(--foreground))] mb-1.5 block">About Me</label>
+                  <div className="relative">
+                    <FileText className="absolute left-3.5 top-3 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+                    <textarea
+                      value={aboutMe}
+                      onChange={(e) => setAboutMe(e.target.value)}
+                      placeholder="Tell others about yourself..."
+                      maxLength={500}
+                      rows={4}
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-ui focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))] resize-none"
+                    />
+                  </div>
+                  <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1.5">{aboutMe.length}/500 characters</p>
                 </div>
                 <div className="flex gap-2 justify-end pt-2">
-                  <button onClick={() => setIsEditing(false)} className="px-4 py-2.5 rounded-xl text-ui font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] transition-colors">
+                  <button 
+                    onClick={() => {
+                      setIsEditing(false)
+                      setError('')
+                      setName(user?.name || '')
+                      setProfilePicture(user?.profile_picture || '')
+                      setAboutMe(user?.about_me || '')
+                    }} 
+                    className="px-4 py-2.5 rounded-xl text-ui font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] transition-colors"
+                    disabled={isSaving}
+                  >
                     Cancel
                   </button>
-                  <button className="px-5 py-2.5 rounded-xl text-ui font-medium gradient-primary text-on-primary flex items-center gap-2 shadow-lg shadow-brand/20">
+                  <button 
+                    onClick={handleSaveProfile}
+                    disabled={isSaving}
+                    className="px-5 py-2.5 rounded-xl text-ui font-medium gradient-primary text-on-primary flex items-center gap-2 shadow-lg shadow-brand/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <Save className="w-4 h-4" />
-                    Save Changes
+                    {isSaving ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </div>

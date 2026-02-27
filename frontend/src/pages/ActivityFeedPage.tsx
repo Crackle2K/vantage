@@ -170,10 +170,9 @@ export default function ActivityFeedPage() {
     }
 
     setExpandedComments(prev => new Set(prev).add(activityId))
-    if (!commentsByItem[activityId]) {
-      await loadComments(activityId)
-    }
-  }, [commentsByItem, expandedComments, loadComments])
+    // Always refresh comments to ensure we have latest data with profile pictures
+    await loadComments(activityId)
+  }, [expandedComments, loadComments])
 
   const submitComment = useCallback(async (activityId: string) => {
     const content = (commentDrafts[activityId] || '').trim()
@@ -385,8 +384,26 @@ export default function ActivityFeedPage() {
                               <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                                 {itemComments.map((comment) => (
                                   <div key={comment.id} className="rounded-lg bg-[hsl(var(--secondary))]/50 px-2.5 py-2">
-                                    <p className="text-caption font-medium text-[hsl(var(--foreground))]">{comment.user_name}</p>
-                                    <p className="text-ui text-[hsl(var(--muted-foreground))] break-words">{comment.content}</p>
+                                    <div className="flex items-start gap-2">
+                                      {/* User Avatar */}
+                                      <div className="w-6 h-6 rounded-full flex-shrink-0 overflow-hidden">
+                                        {comment.profile_picture ? (
+                                          <img 
+                                            src={comment.profile_picture} 
+                                            alt={comment.user_name || 'User'}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full gradient-primary flex items-center justify-center text-[10px] font-bold text-on-primary">
+                                            {(comment.user_name || 'A')[0].toUpperCase()}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-caption font-medium text-[hsl(var(--foreground))]">{comment.user_name || 'Anonymous'}</p>
+                                        <p className="text-ui text-[hsl(var(--muted-foreground))] break-words">{comment.content}</p>
+                                      </div>
+                                    </div>
                                   </div>
                                 ))}
                               </div>

@@ -120,6 +120,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise credentials_exception
     
     user["id"] = str(user["_id"])
+    
+    # Convert datetime to string for created_at field
+    if "created_at" in user and user["created_at"]:
+        user["created_at"] = user["created_at"].isoformat()
+    
     return User(**user)
 
 
