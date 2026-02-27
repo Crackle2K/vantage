@@ -5,7 +5,7 @@ import { api } from '../api'
 import type { Business, Deal, Review, Subscription, BusinessActivityStatus, BusinessClaim } from '../types'
 import {
   Store, Star, Tag, TrendingUp, Plus,
-  MapPin, Clock, Eye, CheckCircle2, Crown,
+  MapPin, Phone, Clock, Eye, CheckCircle2, Crown,
   ArrowUpRight, Flame, ChevronRight, Shield
 } from 'lucide-react'
 
@@ -281,7 +281,7 @@ export default function DashboardPage() {
                       </div>
                       {selectedBiz.phone && (
                         <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))]">
-                          <span className="w-4 h-4 text-center">Ã°Å¸â€œÅ¾</span>
+                          <Phone className="w-4 h-4" />
                           {selectedBiz.phone}
                         </div>
                       )}
@@ -378,7 +378,7 @@ export default function DashboardPage() {
                   ) : (
                     <div>
                       <p className="text-ui text-[hsl(var(--muted-foreground))] mb-3">
-                        Free plan Ã¢â‚¬â€ upgrade to unlock analytics, more deals, events & boosts.
+                        Free plan - upgrade to unlock analytics, more deals, events & boosts.
                       </p>
                       <Link
                         to="/pricing"
@@ -408,7 +408,7 @@ export default function DashboardPage() {
                         <div key={deal.id} className="p-3 rounded-lg bg-[hsl(var(--secondary))]/50">
                           <p className="text-ui font-medium text-[hsl(var(--foreground))]">{deal.title}</p>
                           <p className="text-caption text-[hsl(var(--muted-foreground))]">
-                            {deal.discount_value}% off Ã¢â‚¬Â¢ Expires {new Date(deal.valid_until).toLocaleDateString()}
+                            {deal.discount_value}% off - Expires {new Date(deal.valid_until).toLocaleDateString()}
                           </p>
                         </div>
                       ))}
