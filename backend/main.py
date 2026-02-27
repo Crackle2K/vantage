@@ -16,6 +16,7 @@ from routes.claims import router as claims_router
 from routes.subscriptions import router as subscriptions_router
 from routes.activity import router as activity_router
 from routes.discovery import router as discovery_router
+from routes.users import router as users_router
 
 
 @asynccontextmanager
@@ -63,6 +64,7 @@ app.include_router(claims_router, prefix="/api", tags=["Claims"])
 app.include_router(subscriptions_router, prefix="/api", tags=["Subscriptions"])
 app.include_router(activity_router, prefix="/api", tags=["Activity"])
 app.include_router(discovery_router, prefix="/api", tags=["Discovery"])
+app.include_router(users_router, prefix="/api/users", tags=["Users"])
 
 
 @app.get("/")

@@ -107,6 +107,14 @@ export interface User {
   email: string;
   role: 'customer' | 'business_owner' | 'admin';
   created_at?: string;
+  profile_picture?: string;
+  about_me?: string;
+}
+
+export interface UserUpdate {
+  name?: string;
+  profile_picture?: string;
+  about_me?: string;
 }
 
 export interface AuthTokens {
@@ -241,6 +249,7 @@ export interface ActivityComment {
   id: string;
   user_id: string;
   user_name: string;
+  profile_picture?: string;
   content: string;
   created_at: string;
 }

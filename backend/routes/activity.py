@@ -47,6 +47,7 @@ class ActivityComment(BaseModel):
     id: str
     user_id: str
     user_name: str
+    profile_picture: Optional[str] = None
     content: str
     created_at: datetime
 
@@ -62,6 +63,12 @@ def activity_helper(doc) -> dict:
     if doc:
         doc["id"] = str(doc["_id"])
         del doc["_id"]
+        # Don't include comments_list in feed - fetch separately via /comments endpoint
+        if "comments_list" in doc:
+            del doc["comments_list"]
+        # Don't include liked_by array in feed - it can be large
+        if "liked_by" in doc:
+            del doc["liked_by"]
     return doc
 
 
@@ -351,6 +358,7 @@ async def get_activity_comments(activity_id: str):
             id=str(comment.get("id") or ""),
             user_id=comment.get("user_id", ""),
             user_name=comment.get("user_name", "Anonymous"),
+            profile_picture=comment.get("profile_picture"),
             content=comment.get("content", ""),
             created_at=comment.get("created_at", datetime.utcnow()),
         )
@@ -375,6 +383,7 @@ async def add_activity_comment(
         "id": str(ObjectId()),
         "user_id": current_user.id,
         "user_name": current_user.name,
+        "profile_picture": current_user.profile_picture,
         "content": payload.content.strip(),
         "created_at": datetime.utcnow(),
     }

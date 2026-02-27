@@ -1,4 +1,4 @@
-import type { Business, Review, Deal, ReviewCreate, User, AuthTokens, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, BusinessActivityStatus, ActivityComment, ActivityLikeResult } from './types';
+import type { Business, Review, Deal, ReviewCreate, User, AuthTokens, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:8000/api';
 
@@ -56,6 +56,29 @@ export const api = {
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.detail || 'Google authentication failed');
+    }
+    return response.json();
+  },
+
+  // ─── Users ───────────────────────────────────
+  async getUserProfile(userId: string): Promise<User> {
+    const response = await fetch(`${API_URL}/users/${userId}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Failed to fetch user profile');
+    }
+    return response.json();
+  },
+
+  async updateMyProfile(updates: UserUpdate): Promise<User> {
+    const response = await fetch(`${API_URL}/users/me`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || 'Failed to update profile');
     }
     return response.json();
   },
