@@ -328,9 +328,9 @@ export default function HomePage() {
               <h1 className="text-title md:text-[5rem] lg:text-[6rem] leading-tight font-bold text-on-primary mb-6 font-heading">
                 Find your next
                 <br />
-                <span className="text-brand-light">{animatedWord}<span className="animate-pulse">|</span></span>
+                <span className="text-hero-typed">{animatedWord}<span className="animate-pulse">|</span></span>
               </h1>
-              <p className="text-heading md:text-heading text-on-primary/90 mb-10">
+              <p className="text-heading md:text-heading text-on-primary mb-10">
                 Building real trust for local discovery
               </p>
 
@@ -338,7 +338,7 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button 
                   size="lg"
-                  className="gradient-primary text-on-primary px-10 py-7 text-body rounded-xl hover:opacity-90 transition-opacity shadow-2xl"
+                  className="gradient-primary !text-white hover:!text-white px-10 py-7 text-body rounded-xl hover:opacity-90 transition-opacity shadow-2xl"
                   onClick={() => navigate("/businesses")}
                 >
                   Explore Businesses
@@ -347,7 +347,7 @@ export default function HomePage() {
                 <Button 
                   size="lg"
                   variant="outline"
-                  className="brand-primary backdrop-blur-sm border-2 border-outline-variant text-on-primary px-10 py-7 text-body rounded-xl hover:bg-surface/20 transition-colors shadow-2xl"
+                  className="brand-primary backdrop-blur-sm border-2 border-outline-variant !text-white hover:!text-white px-10 py-7 text-body rounded-xl hover:bg-surface/20 transition-colors shadow-2xl"
                   onClick={() => navigate("/pricing")}
                 >
                   For Business Owners
@@ -602,27 +602,27 @@ export default function HomePage() {
             Your trusted partner in tour
           </h2>
 
-          <div className="bg-gradient-to-br from-brand-light to-brand rounded-3xl p-12 md:p-16 shadow-2xl">
-            <div className="text-brand-on-primary">
+          <div className="rounded-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-12 shadow-lg md:p-16">
+            <div className="text-[hsl(var(--foreground))]">
               <p className="text-subheading md:text-heading font-serif italic mb-8 leading-relaxed">
                 "{testimonials[testimonialIndex].quote}"
               </p>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-subheading font-bold mb-1">{testimonials[testimonialIndex].name}</p>
-                  <p className="text-secondary">{testimonials[testimonialIndex].title}</p>
+                    <p className="text-subheading font-bold mb-1">{testimonials[testimonialIndex].name}</p>
+                    <p className="text-secondary">{testimonials[testimonialIndex].title}</p>
                 </div>
                 <div className="flex gap-3">
                   <button
                     onClick={prevTestimonial}
-                    className="w-12 h-12 rounded-full bg-surface/20 backdrop-blur-sm text-on-primary flex items-center justify-center hover:bg-surface/30 transition-colors"
+                    className="w-12 h-12 rounded-full bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))] flex items-center justify-center hover:bg-[hsl(var(--accent))] transition-colors"
                     aria-label="Previous testimonial"
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
                   <button
                     onClick={nextTestimonial}
-                    className="w-12 h-12 rounded-full bg-surface/20 backdrop-blur-sm text-on-primary flex items-center justify-center hover:bg-surface/30 transition-colors"
+                    className="w-12 h-12 rounded-full bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))] flex items-center justify-center hover:bg-[hsl(var(--accent))] transition-colors"
                     aria-label="Next testimonial"
                   >
                     <ChevronRight className="w-6 h-6" />
@@ -703,12 +703,12 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════
           NEWSLETTER SECTION - Email signup
           ═══════════════════════════════════════════ */}
-      <section className="py-20 bg-gradient-to-br from-brand-light to-brand">
+      <section className="py-20 bg-[hsl(var(--card))] border-t border-[hsl(var(--border))]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-heading md:text-heading font-bold text-on-primary mb-4 font-heading">
+          <h2 className="text-heading md:text-heading font-bold text-[hsl(var(--foreground))] mb-4 font-heading">
             Stay updated with local deals
           </h2>
-          <p className="text-body text-on-primary/90 mb-8">
+          <p className="text-body text-[hsl(var(--muted-foreground))] mb-8">
             Get exclusive offers and discover new businesses delivered to your inbox every week.
           </p>
 

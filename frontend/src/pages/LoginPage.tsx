@@ -62,10 +62,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 gradient-mesh">
-      {/* Decorative blobs */}
-      <div className="absolute top-32 left-10 w-72 h-72 bg-brand-light/10 rounded-full blur-3xl animate-float" />
-      <div className="absolute bottom-10 right-10 w-72 h-72 bg-brand-light/10 rounded-full blur-3xl animate-float animation-delay-2000" />
-
       <div className="w-full max-w-md relative animate-fade-in-up">
         <div className="glass-card rounded-2xl p-8 shadow-xl">
           {/* Header */}

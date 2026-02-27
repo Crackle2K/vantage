@@ -24,6 +24,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from bson import ObjectId
+from pymongo import UpdateOne
 
 from models.user import User
 from models.auth import get_current_user
@@ -35,7 +36,11 @@ from database.mongodb import (
     get_credibility_collection,
     get_geo_cache_collection,
 )
-from services.google_places import search_google_places, geo_cell_key
+from services.google_places import (
+    search_google_places,
+    geo_cell_key,
+    enrich_business_photo_urls,
+)
 from services.visibility_score import (
     calculate_live_visibility_score,
     reviewer_credibility_weight,
@@ -85,6 +90,80 @@ def _sort_businesses(results: list, sort_by: Optional[str]) -> None:
         )
 
 
+def _dedupe_discovery_results(results: list[dict], limit: int) -> list[dict]:
+    """
+    Remove repeated businesses in API output.
+    Primary key: place_id
+    Fallback key: normalized name+address for legacy docs without place_id.
+    """
+    deduped: list[dict] = []
+    seen_place_ids: set[str] = set()
+    seen_fallback_keys: set[tuple[str, str]] = set()
+
+    for doc in results:
+        place_id = (doc.get("place_id") or "").strip()
+        if place_id:
+            if place_id in seen_place_ids:
+                continue
+            seen_place_ids.add(place_id)
+        else:
+            name_key = (doc.get("name") or "").strip().lower()
+            addr_key = (
+                (doc.get("address") or doc.get("description") or "")
+                .strip()
+                .lower()
+            )
+            fallback_key = (name_key, addr_key)
+            if fallback_key in seen_fallback_keys:
+                continue
+            seen_fallback_keys.add(fallback_key)
+
+        deduped.append(doc)
+        if len(deduped) >= limit:
+            break
+
+    return deduped
+
+
+async def _enrich_missing_result_images(
+    businesses_collection,
+    results: list[dict],
+    max_updates: int = 24,
+) -> None:
+    """
+    Opportunistically enrich missing/low-quality images for Google Places docs.
+    Updates MongoDB and in-memory result docs so response reflects improvements immediately.
+    """
+    updates = await enrich_business_photo_urls(results, max_to_enrich=max_updates)
+    if not updates:
+        return
+
+    ops = []
+    now = datetime.utcnow()
+    for doc in results:
+        place_id = doc.get("place_id")
+        if not place_id or place_id not in updates:
+            continue
+        doc["image_url"] = updates[place_id]
+        if doc.get("_id"):
+            ops.append(
+                UpdateOne(
+                    {"_id": doc["_id"]},
+                    {"$set": {"image_url": updates[place_id], "updated_at": now}},
+                )
+            )
+
+    if ops:
+        await businesses_collection.bulk_write(ops, ordered=False)
+
+
+def _finalize_discovery_results(results: list[dict], sort_by: Optional[str], limit: int) -> list[dict]:
+    """Sort, de-duplicate, and shape discovery response payload."""
+    _sort_businesses(results, sort_by)
+    unique_results = _dedupe_discovery_results(results, limit)
+    return [business_helper(b) for b in unique_results]
+
+
 def business_helper(doc: dict) -> dict:
     """Convert a MongoDB business document for the API response."""
     if doc is None:
@@ -132,6 +211,7 @@ async def discover_businesses(
     businesses = get_businesses_collection()
     geo_cache = get_geo_cache_collection()
     radius_meters = radius * 1000
+    candidate_limit = min(max(limit * 2, limit), 300)
 
     # ── Step 1: MongoDB geo query ───────────────────────────────────
     geo_filter = {
@@ -145,13 +225,13 @@ async def discover_businesses(
     if category:
         geo_filter["category"] = category
 
-    cursor = businesses.find(geo_filter).limit(limit)
-    results = await cursor.to_list(length=limit)
+    cursor = businesses.find(geo_filter).limit(candidate_limit)
+    results = await cursor.to_list(length=candidate_limit)
 
     # ── Step 2: Enough results? Return immediately ──────────────────
     if len(results) >= MIN_RESULTS:
-        _sort_businesses(results, sort_by)
-        return [business_helper(b) for b in results]
+        await _enrich_missing_result_images(businesses, results)
+        return _finalize_discovery_results(results, sort_by, limit)
 
     # ── Step 3: Check geo cache before calling Google ───────────────
     cell = geo_cell_key(lat, lng, int(radius_meters))
@@ -164,11 +244,16 @@ async def discover_businesses(
 
     if cached and not refresh:
         # Already fetched this area recently — return what MongoDB has
-        _sort_businesses(results, sort_by)
-        return [business_helper(b) for b in results]
+        await _enrich_missing_result_images(businesses, results)
+        return _finalize_discovery_results(results, sort_by, limit)
 
     # ── Step 4: Call Google Places (cache miss) ─────────────────────
-    new_places = await search_google_places(lat, lng, int(radius_meters), max_results=limit)
+    new_places = await search_google_places(
+        lat,
+        lng,
+        int(radius_meters),
+        max_results=candidate_limit,
+    )
 
     if new_places:
         # Bulk dedup: collect all incoming place_ids, query MongoDB once
@@ -192,14 +277,73 @@ async def discover_businesses(
     )
 
     # ── Step 5: Re-query and return ─────────────────────────────────
-    cursor = businesses.find(geo_filter).limit(limit)
-    results = await cursor.to_list(length=limit)
-    _sort_businesses(results, sort_by)
-
-    return [business_helper(b) for b in results]
+    cursor = businesses.find(geo_filter).limit(candidate_limit)
+    results = await cursor.to_list(length=candidate_limit)
+    await _enrich_missing_result_images(businesses, results)
+    return _finalize_discovery_results(results, sort_by, limit)
 
 
 # ── Verified Visits ─────────────────────────────────────────────────
+
+
+@router.post("/discover/enrich-photos")
+async def enrich_google_place_photos(
+    limit: int = Query(1200, ge=1, le=5000, description="Max businesses to scan"),
+    batch_size: int = Query(120, ge=10, le=300, description="Batch size per enrichment pass"),
+):
+    """
+    Bulk-enrich existing Google Places business images.
+    Useful when many cards still have missing/legacy low-res images.
+    """
+    businesses = get_businesses_collection()
+    candidate_query = {
+        "source": "google_places",
+        "place_id": {"$exists": True, "$nin": [None, ""]},
+        "$or": [
+            {"image_url": {"$exists": False}},
+            {"image_url": ""},
+            {"image_url": {"$regex": "maxwidth=400"}},
+        ],
+    }
+    candidates = await businesses.find(candidate_query).limit(limit).to_list(length=limit)
+
+    if not candidates:
+        return {
+            "scanned": 0,
+            "updated": 0,
+            "message": "No candidate businesses need image enrichment.",
+        }
+
+    updated = 0
+    scanned = 0
+
+    for idx in range(0, len(candidates), batch_size):
+        batch = candidates[idx: idx + batch_size]
+        scanned += len(batch)
+        photo_updates = await enrich_business_photo_urls(batch, max_to_enrich=batch_size)
+        if not photo_updates:
+            continue
+
+        now = datetime.utcnow()
+        ops = [
+            UpdateOne(
+                {"_id": doc["_id"]},
+                {"$set": {"image_url": photo_updates[doc["place_id"]], "updated_at": now}},
+            )
+            for doc in batch
+            if doc.get("place_id") in photo_updates and doc.get("_id")
+        ]
+        if not ops:
+            continue
+
+        await businesses.bulk_write(ops, ordered=False)
+        updated += len(ops)
+
+    return {
+        "scanned": scanned,
+        "updated": updated,
+        "message": "Bulk photo enrichment completed.",
+    }
 
 VISIT_MAX_DISTANCE_METERS = 100  # Must be within 100 m
 
@@ -412,3 +556,4 @@ async def purge_chain_businesses():
         "confidence_updated": confidence_updates,
         "total_scanned": len(docs),
     }
+

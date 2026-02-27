@@ -138,7 +138,132 @@ def geo_cell_key(lat: float, lng: float, radius_m: int) -> dict:
 # ── Main search function ───────────────────────────────────────────
 
 GOOGLE_NEARBY_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+GOOGLE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+GOOGLE_PHOTO_URL = "https://maps.googleapis.com/maps/api/place/photo"
 MAX_RETURN_RESULTS = 250
+PHOTO_MAX_WIDTH = 1200
+PHOTO_ENRICHMENT_CONCURRENCY = 6
+
+
+def _build_photo_url(photo_reference: str, max_width: int = PHOTO_MAX_WIDTH) -> str:
+    """Build a Google Places Photo URL for a place photo_reference."""
+    if not photo_reference or not GOOGLE_API_KEY:
+        return ""
+    return (
+        f"{GOOGLE_PHOTO_URL}"
+        f"?maxwidth={max_width}&photo_reference={photo_reference}&key={GOOGLE_API_KEY}"
+    )
+
+
+def _choose_photo_reference(photos: list[dict]) -> str:
+    """
+    Pick the best available photo reference.
+    Prefer larger resolution photos when width/height metadata exists.
+    """
+    if not photos:
+        return ""
+
+    best_ref = ""
+    best_score = -1
+    for photo in photos:
+        ref = photo.get("photo_reference", "")
+        if not ref:
+            continue
+        width = int(photo.get("width") or 0)
+        height = int(photo.get("height") or 0)
+        score = width * max(height, 1)
+        if score > best_score:
+            best_score = score
+            best_ref = ref
+
+    if best_ref:
+        return best_ref
+
+    return photos[0].get("photo_reference", "") if photos else ""
+
+
+async def _fetch_place_photo_reference(client: httpx.AsyncClient, place_id: str) -> str:
+    """Fetch best photo_reference for a place via Place Details API."""
+    try:
+        params = {
+            "place_id": place_id,
+            "fields": "photos",
+            "key": GOOGLE_API_KEY,
+        }
+        resp = await client.get(GOOGLE_DETAILS_URL, params=params)
+        data = resp.json()
+        status = data.get("status")
+        result = data.get("result", {})
+        photos = result.get("photos", []) if isinstance(result, dict) else []
+        await _log_api_call("place_details:photos", {"place_id": place_id}, status, len(photos))
+
+        if status != "OK":
+            return ""
+        return _choose_photo_reference(photos)
+    except Exception as e:
+        print(f"Google Details photo lookup failed for {place_id}: {e}")
+        return ""
+
+
+def _needs_photo_enrichment(doc: dict) -> bool:
+    """
+    Identify Google-seeded docs that should get a better image.
+    - Missing image
+    - Non-Google fallback image
+    - Legacy low-res Google photo URL (maxwidth=400)
+    """
+    if not doc.get("place_id"):
+        return False
+    if doc.get("source") not in (None, "google_places"):
+        return False
+
+    image_url = (doc.get("image_url") or "").strip()
+    if not image_url:
+        return True
+    if "maps.googleapis.com/maps/api/place/photo" not in image_url:
+        return True
+    return "maxwidth=400" in image_url
+
+
+async def enrich_business_photo_urls(
+    business_docs: List[Dict],
+    max_to_enrich: int = 24,
+) -> Dict[str, str]:
+    """
+    Resolve better Google photo URLs for businesses that have missing/low-quality images.
+    Returns a mapping of place_id -> image_url for successful enrichments.
+    """
+    if not GOOGLE_API_KEY:
+        return {}
+
+    place_ids: list[str] = []
+    seen: set[str] = set()
+    for doc in business_docs:
+        place_id = (doc.get("place_id") or "").strip()
+        if not place_id or place_id in seen:
+            continue
+        if not _needs_photo_enrichment(doc):
+            continue
+        seen.add(place_id)
+        place_ids.append(place_id)
+
+    if not place_ids:
+        return {}
+
+    place_ids = place_ids[:max_to_enrich]
+    updates: Dict[str, str] = {}
+    semaphore = asyncio.Semaphore(PHOTO_ENRICHMENT_CONCURRENCY)
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        async def enrich_one(place_id: str):
+            async with semaphore:
+                photo_ref = await _fetch_place_photo_reference(client, place_id)
+                if photo_ref:
+                    updates[place_id] = _build_photo_url(photo_ref)
+
+        await asyncio.gather(*(enrich_one(pid) for pid in place_ids))
+
+    return updates
 
 
 async def _fetch_nearby_pages(client: httpx.AsyncClient, base_params: dict, label: str) -> list[dict]:
@@ -250,17 +375,9 @@ async def search_google_places(
             skipped_non_local += 1
             continue
 
-        photo_ref = ""
         photos = place.get("photos", [])
-        if photos:
-            photo_ref = photos[0].get("photo_reference", "")
-
-        image_url = ""
-        if photo_ref:
-            image_url = (
-                f"https://maps.googleapis.com/maps/api/place/photo"
-                f"?maxwidth=400&photo_reference={photo_ref}&key={GOOGLE_API_KEY}"
-            )
+        photo_ref = _choose_photo_reference(photos)
+        image_url = _build_photo_url(photo_ref) if photo_ref else ""
 
         doc = {
             "name": place.get("name", "Unknown"),
