@@ -434,5 +434,5 @@ async def _log_api_call(endpoint: str, params: dict, status: str, result_count: 
             "called_at": datetime.utcnow(),
         })
     except Exception as e:
-        print(f"⚠️  Failed to log API call: {e}")
+        print(f"Failed to log API call: {e}")
 

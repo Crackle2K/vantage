@@ -29,8 +29,8 @@ VIDEO SPECS (RECOMMENDED):
 CURRENT BEHAVIOR:
 -----------------
 Since videos don't exist yet, the page shows:
-✓ Mountain poster image as fallback
-✓ Mobile users always see posters (no video)
-✓ No errors in console
+- Mountain poster image as fallback
+- Mobile users always see posters (no video)
+- No errors in console
 
 Once you add the videos, they'll automatically load and cycle!

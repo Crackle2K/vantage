@@ -267,7 +267,7 @@ async def discover_businesses(
         to_insert = [p for p in new_places if p["place_id"] not in existing_ids]
         if to_insert:
             await businesses.insert_many(to_insert, ordered=False)
-            print(f"📍 Backfilled {len(to_insert)} businesses from Google Places")
+            print(f"Backfilled {len(to_insert)} businesses from Google Places")
 
     # Mark this cell as cached so we don't call Google again for 24 h
     await geo_cache.update_one(
@@ -549,7 +549,7 @@ async def purge_chain_businesses():
     if to_delete_ids:
         result = await businesses.delete_many({"_id": {"$in": to_delete_ids}})
         deleted = result.deleted_count
-        print(f"🧹 purge-chains: removed {deleted} chain/non-local businesses")
+        print(f"purge-chains: removed {deleted} chain/non-local businesses")
 
     return {
         "deleted": deleted,
