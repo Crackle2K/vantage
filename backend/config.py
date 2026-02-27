@@ -18,6 +18,13 @@ else:
     # Fallback for setups that keep a project-level .env file.
     load_dotenv(dotenv_path=_ROOT_ENV)
 
+
+def _parse_csv_env(value: str) -> list[str]:
+    """Parse a comma-separated env var into a clean list of strings."""
+    if not value:
+        return []
+    return [item.strip().rstrip("/") for item in value.split(",") if item.strip()]
+
 # ── MongoDB ─────────────────────────────────────────────────────────
 MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 DATABASE_NAME: str = os.getenv("DATABASE_NAME", "vantage")
@@ -36,3 +43,20 @@ GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
 
 # ── API ─────────────────────────────────────────────────────────────
 API_URL: str = os.getenv("API_URL", "http://localhost:8000")
+
+# ── CORS ────────────────────────────────────────────────────────────
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:5174",
+]
+CORS_ORIGINS: list[str] = _parse_csv_env(os.getenv("CORS_ORIGINS", "")) or _DEFAULT_CORS_ORIGINS
+CORS_ORIGIN_REGEX: str = os.getenv(
+    "CORS_ORIGIN_REGEX",
+    r"https?://(localhost|127\.0\.0\.1)(:\d+)?$|https://([a-zA-Z0-9-]+\.)*vercel\.app$",
+)
+
+# Demo auth fallback (for local demos when DB is unavailable)
+DEMO_AUTH_ENABLED: bool = os.getenv("DEMO_AUTH_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+DEMO_ADMIN_EMAIL: str = os.getenv("DEMO_ADMIN_EMAIL", "vantageadmin@gmail.com")
+DEMO_ADMIN_PASSWORD: str = os.getenv("DEMO_ADMIN_PASSWORD", "demo-admin-password")

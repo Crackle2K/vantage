@@ -13,7 +13,15 @@ from google.oauth2 import id_token
 from google.auth.transport import requests
 from pydantic import BaseModel
 
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, GOOGLE_CLIENT_ID
+from config import (
+    SECRET_KEY,
+    ALGORITHM,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    GOOGLE_CLIENT_ID,
+    DEMO_AUTH_ENABLED,
+    DEMO_ADMIN_EMAIL,
+    DEMO_ADMIN_PASSWORD,
+)
 from models.user import UserCreate, UserLogin, User, Token, TokenData
 from database.mongodb import get_users_collection
 
@@ -22,6 +30,8 @@ security = HTTPBearer()
 
 # Router
 router = APIRouter()
+
+DEMO_ADMIN_USER_ID = "demo-admin"
 
 
 # Request Models
@@ -75,10 +85,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         user_id: str = payload.get("user_id")
+        is_demo_admin: bool = bool(payload.get("is_demo_admin", False))
         
         if email is None or user_id is None:
             raise credentials_exception
-            
+
+        if DEMO_AUTH_ENABLED and is_demo_admin and email == DEMO_ADMIN_EMAIL and user_id == DEMO_ADMIN_USER_ID:
+            return User(
+                id=DEMO_ADMIN_USER_ID,
+                name="Vantage Admin",
+                email=DEMO_ADMIN_EMAIL,
+                role="admin",
+                favorites=[],
+                auth_provider="demo",
+            )
+
         token_data = TokenData(email=email, user_id=user_id)
     except JWTError:
         raise credentials_exception
@@ -155,6 +176,20 @@ async def login(user_credentials: UserLogin):
     - Validates email and password
     - Returns JWT access token
     """
+    if (
+        DEMO_AUTH_ENABLED
+        and user_credentials.email == DEMO_ADMIN_EMAIL
+        and user_credentials.password == DEMO_ADMIN_PASSWORD
+    ):
+        access_token = create_access_token(
+            data={
+                "sub": DEMO_ADMIN_EMAIL,
+                "user_id": DEMO_ADMIN_USER_ID,
+                "is_demo_admin": True,
+            }
+        )
+        return Token(access_token=access_token, token_type="bearer")
+
     try:
         users_collection = get_users_collection()
     except Exception as db_error:

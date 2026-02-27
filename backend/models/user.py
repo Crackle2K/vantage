@@ -12,6 +12,7 @@ class UserRole(str, Enum):
     """User role enumeration"""
     CUSTOMER = "customer"
     BUSINESS_OWNER = "business_owner"
+    ADMIN = "admin"
 
 
 class UserBase(BaseModel):
