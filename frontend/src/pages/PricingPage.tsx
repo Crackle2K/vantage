@@ -19,6 +19,15 @@ const tierGradients: Record<string, string> = {
   premium: 'from-brand-dark to-brand',
 }
 
+const tierLabels: Record<string, string> = {
+  free: 'Free',
+  starter: 'Basic',
+  pro: 'Standard',
+  premium: 'Premium',
+}
+
+const formatPrice = (value: number): string => (value === 0 ? '0' : value.toFixed(2))
+
 export default function PricingPage() {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
@@ -86,7 +95,7 @@ export default function PricingPage() {
         tier: tier as 'starter' | 'pro' | 'premium',
         billing_cycle: billingCycle,
       })
-      setSuccess(`Successfully subscribed to ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan!`)
+      setSuccess(`Successfully subscribed to ${tierLabels[tier] || tier} plan!`)
       loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to subscribe')
@@ -124,28 +133,35 @@ export default function PricingPage() {
           </p>
 
           {/* Billing Toggle */}
-          <div className="flex items-center justify-center gap-3 mt-8">
-            <span className={`text-ui font-medium ${billingCycle === 'monthly' ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
-              Monthly
-            </span>
-            <button
-              onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
-              className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${
-                billingCycle === 'yearly' ? 'bg-brand' : 'bg-[hsl(var(--secondary))]'
-              }`}
-            >
-              <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-surface shadow-md transition-transform duration-300 ${
-                billingCycle === 'yearly' ? 'translate-x-7.5' : 'translate-x-0.5'
-              }`} />
-            </button>
-            <span className={`text-ui font-medium ${billingCycle === 'yearly' ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
-              Yearly
-            </span>
-            {billingCycle === 'yearly' && (
-              <span className="text-caption font-semibold text-brand bg-brand/10 px-2.5 py-1 rounded-full">
+          <div className="mt-8 flex justify-center">
+            <div className="relative inline-flex items-center">
+              <div className="flex items-center gap-3">
+                <span className={`text-ui font-medium ${billingCycle === 'monthly' ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                  Monthly
+                </span>
+                <button
+                  onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
+                  className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${
+                    billingCycle === 'yearly' ? 'bg-brand' : 'bg-[hsl(var(--secondary))]'
+                  }`}
+                >
+                  <div className={`absolute left-0 top-0.5 w-6 h-6 rounded-full bg-surface shadow-md transition-transform duration-300 ${
+                    billingCycle === 'yearly' ? 'translate-x-7' : 'translate-x-0.5'
+                  }`} />
+                </button>
+                <span className={`text-ui font-medium ${billingCycle === 'yearly' ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>
+                  Yearly
+                </span>
+              </div>
+              <span
+                className={`absolute left-full ml-3 text-caption font-semibold text-brand bg-brand/10 px-2.5 py-1 rounded-full whitespace-nowrap transition-opacity duration-200 ${
+                  billingCycle === 'yearly' ? 'opacity-100' : 'opacity-0'
+                }`}
+                aria-hidden={billingCycle !== 'yearly'}
+              >
                 Save ~20%
               </span>
-            )}
+            </div>
           </div>
         </div>
 
@@ -188,6 +204,7 @@ export default function PricingPage() {
             const isHighlighted = tier.highlighted
             const isCurrent = currentTier === tier.tier
             const price = billingCycle === 'monthly' ? tier.monthly_price : tier.yearly_price
+            const monthlyEquivalent = billingCycle === 'yearly' ? price / 12 : price
 
             return (
               <div
@@ -225,14 +242,14 @@ export default function PricingPage() {
                 {/* Price */}
                 <div className="mb-6">
                   <span className="text-heading font-bold text-[hsl(var(--foreground))]">
-                    ${billingCycle === 'yearly' ? Math.round(price / 12) : price}
+                    ${formatPrice(monthlyEquivalent)}
                   </span>
                   {tier.monthly_price > 0 && (
                     <span className="text-ui text-[hsl(var(--muted-foreground))]">/mo</span>
                   )}
                   {billingCycle === 'yearly' && tier.yearly_price > 0 && (
                     <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1">
-                      ${price}/year billed annually
+                      ${formatPrice(price)}/year billed annually
                     </p>
                   )}
                 </div>

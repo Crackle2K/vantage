@@ -9,6 +9,13 @@ import {
   ArrowUpRight, Flame, ChevronRight, Shield
 } from 'lucide-react'
 
+const tierDisplayNames: Record<string, string> = {
+  free: 'Free',
+  starter: 'Basic',
+  pro: 'Standard',
+  premium: 'Premium',
+}
+
 export default function DashboardPage() {
   const { user, isAuthenticated } = useAuth()
   const [myBusinesses, setMyBusinesses] = useState<Business[]>([])
@@ -262,7 +269,7 @@ export default function DashboardPage() {
                       {subscription && subscription.tier !== 'free' && (
                         <span className="flex items-center gap-1 px-3 py-1 rounded-full text-caption font-bold gradient-primary text-brand-on-primary">
                           <Crown className="w-3 h-3" />
-                          {subscription.tier.toUpperCase()}
+                          {(tierDisplayNames[subscription.tier] || subscription.tier).toUpperCase()}
                         </span>
                       )}
                     </div>
@@ -352,7 +359,9 @@ export default function DashboardPage() {
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <Crown className="w-5 h-5 text-brand" />
-                        <span className="font-bold text-[hsl(var(--foreground))] capitalize">{subscription.tier}</span>
+                        <span className="font-bold text-[hsl(var(--foreground))]">
+                          {tierDisplayNames[subscription.tier] || subscription.tier}
+                        </span>
                         <span className={`px-2 py-0.5 rounded-full text-caption ${
                           subscription.status === 'active' ? 'bg-success dark:bg-success/20 text-success dark:text-success' : 'bg-error dark:bg-error/20 text-error dark:text-error'
                         }`}>

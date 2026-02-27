@@ -18,9 +18,9 @@ from enum import Enum
 class SubscriptionTier(str, Enum):
     """Subscription tiers for business owners"""
     FREE = "free"           # Claimed listing, basic profile
-    STARTER = "starter"     # $9/mo — analytics, deal posting
-    PRO = "pro"             # $29/mo — events, visibility boosts, priority support
-    PREMIUM = "premium"     # $59/mo — everything + featured placement, ad-free
+    STARTER = "starter"     # Basic: $9.99/mo — analytics, deal posting
+    PRO = "pro"             # Standard: $19.99/mo — events, visibility boosts, priority support
+    PREMIUM = "premium"     # Premium: $49.99/mo — everything + featured placement, ad-free
 
 
 class BillingCycle(str, Enum):
@@ -56,8 +56,8 @@ TIER_FEATURES = {
         "featured_placement": False,
         "priority_support": False,
         "activity_feed_badge": True,       # "Active Business" badge
-        "monthly_price": 9,
-        "yearly_price": 86,               # ~$7.17/mo
+        "monthly_price": 9.99,
+        "yearly_price": 95.90,            # ~$7.99/mo
     },
     SubscriptionTier.PRO: {
         "can_claim_business": True,
@@ -70,8 +70,8 @@ TIER_FEATURES = {
         "featured_placement": False,
         "priority_support": True,
         "activity_feed_badge": True,
-        "monthly_price": 29,
-        "yearly_price": 278,              # ~$23.17/mo
+        "monthly_price": 19.99,
+        "yearly_price": 191.90,           # ~$15.99/mo
     },
     SubscriptionTier.PREMIUM: {
         "can_claim_business": True,
@@ -84,8 +84,8 @@ TIER_FEATURES = {
         "featured_placement": True,        # Top of search results
         "priority_support": True,
         "activity_feed_badge": True,
-        "monthly_price": 59,
-        "yearly_price": 566,              # ~$47.17/mo
+        "monthly_price": 49.99,
+        "yearly_price": 479.90,           # ~$39.99/mo
     },
 }
 
@@ -150,10 +150,10 @@ TIER_DISPLAY = [
     ),
     TierInfo(
         tier=SubscriptionTier.STARTER,
-        name="Starter",
+        name="Basic",
         description="Understand your customers",
-        monthly_price=9,
-        yearly_price=86,
+        monthly_price=9.99,
+        yearly_price=95.90,
         features=[
             "Everything in Free",
             "Basic analytics dashboard",
@@ -164,12 +164,12 @@ TIER_DISPLAY = [
     ),
     TierInfo(
         tier=SubscriptionTier.PRO,
-        name="Pro",
+        name="Standard",
         description="Grow your local presence",
-        monthly_price=29,
-        yearly_price=278,
+        monthly_price=19.99,
+        yearly_price=191.90,
         features=[
-            "Everything in Starter",
+            "Everything in Basic",
             "Post community events",
             "Visibility boosts",
             "Full analytics & insights",
@@ -182,10 +182,10 @@ TIER_DISPLAY = [
         tier=SubscriptionTier.PREMIUM,
         name="Premium",
         description="Dominate your neighborhood",
-        monthly_price=59,
-        yearly_price=566,
+        monthly_price=49.99,
+        yearly_price=479.90,
         features=[
-            "Everything in Pro",
+            "Everything in Standard",
             "Featured placement in search",
             "Unlimited deals",
             "Advanced customer insights",
