@@ -62,12 +62,10 @@ function prioritizeImageCandidates(business: Business, proxyPhotoUrl?: string): 
 
 export function BusinessCard({
   business,
-  trustReasons,
   isFavorite,
   onToggleFavorite,
   onViewDetails,
   viewMode = 'grid',
-  matchSummary,
 }: BusinessCardProps) {
   const distance = distanceLabel(business.distance);
   const imageAspect = imageAspectClass(business);
