@@ -9,7 +9,7 @@
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "frontend/dist"
+        "distDir": "dist"
       }
     }
   ],
@@ -20,15 +20,15 @@
     },
     {
       "src": "/assets/(.*)",
-      "dest": "/frontend/dist/assets/$1"
+      "dest": "frontend/dist/assets/$1"
     },
     {
       "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot))",
-      "dest": "/frontend/dist/$1"
+      "dest": "frontend/dist/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/frontend/dist/index.html"
+      "dest": "frontend/dist/index.html"
     }
   ]
 }
