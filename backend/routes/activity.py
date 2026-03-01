@@ -248,7 +248,7 @@ async def get_activity_feed(
 ):
     activity_feed = get_activity_feed_collection()
 
-    query = {}
+    query: dict = {}
     if activity_type:
         query["activity_type"] = activity_type
 
