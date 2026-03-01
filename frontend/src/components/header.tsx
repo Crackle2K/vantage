@@ -156,13 +156,13 @@ export function Header() {
           ) : (
             <div className="hidden items-center gap-2 md:flex">
               <Link to="/login">
-                <Button variant="ghost" size="sm" className="gap-1.5">
+                <Button variant="ghost" size="sm" className="gap-1.5 min-w-[100px]">
                   <LogIn className="h-4 w-4" />
                   Sign In
                 </Button>
               </Link>
               <Link to="/signup">
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5 min-w-[100px]">
                   <UserPlus className="h-4 w-4" />
                   Sign Up
                 </Button>
