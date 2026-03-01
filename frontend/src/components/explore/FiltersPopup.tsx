@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, memo } from 'react';
 import { Navigation, SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -8,14 +8,11 @@ interface FiltersButtonProps {
   onToggle: () => void;
 }
 
-export function FiltersButton({ isOpen, onToggle }: FiltersButtonProps) {
+function FiltersButtonComponent({ isOpen, onToggle }: FiltersButtonProps) {
   return (
     <button
       type="button"
-      onClick={() => {
-        console.log('Filters button clicked, isOpen:', isOpen);
-        onToggle();
-      }}
+      onClick={onToggle}
       className={cn(
         'inline-flex h-16 shrink-0 items-center gap-2 px-6 py-2 text-ui font-medium transition-colors duration-200 whitespace-nowrap',
         isOpen
@@ -30,6 +27,8 @@ export function FiltersButton({ isOpen, onToggle }: FiltersButtonProps) {
     </button>
   );
 }
+
+export const FiltersButton = memo(FiltersButtonComponent);
 
 interface FiltersModalProps {
   isOpen: boolean;
@@ -77,8 +76,6 @@ export function FiltersModal({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
-
-  console.log('FiltersModal rendering, isOpen:', isOpen);
 
   return (
     <div 

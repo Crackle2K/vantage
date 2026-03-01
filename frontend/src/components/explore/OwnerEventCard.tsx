@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from 'react';
+import { memo } from 'react';
 import { CalendarDays, Clock3, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BusinessImage } from './BusinessImage';
@@ -27,7 +28,7 @@ function eventDateLabel(start: string, end: string): string {
   return `${startLabel} to ${endLabel}`;
 }
 
-export function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
+function OwnerEventCardComponent({ event, onViewBusiness }: OwnerEventCardProps) {
   const dateLabel = eventDateLabel(event.start_time, event.end_time);
   const businessName = event.business_name || 'Claimed business';
   const category = event.business_category || 'Owner event';
@@ -97,3 +98,7 @@ export function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
     </article>
   );
 }
+
+export const OwnerEventCard = memo(OwnerEventCardComponent, (prevProps, nextProps) => {
+  return prevProps.event.id === nextProps.event.id;
+});
