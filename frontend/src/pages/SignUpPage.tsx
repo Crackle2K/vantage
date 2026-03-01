@@ -93,16 +93,8 @@ export default function SignUpPage() {
       return;
     }
 
-    if (!recaptchaReady || widgetId === null) {
-      setError('Security check is still loading. Please wait a moment and try again.');
-      return;
-    }
-
-    const recaptchaToken = window.grecaptcha?.enterprise.getResponse(widgetId) || '';
-    if (!recaptchaToken) {
-      setError('Please complete the reCAPTCHA verification before creating your account.');
-      return;
-    }
+    // reCAPTCHA optional - pass empty string if not available
+    const recaptchaToken = window.grecaptcha?.enterprise?.getResponse?.(widgetId || 0) || '';
 
     setLoading(true);
     const { error: err } = await signUp(name, email, password, role, recaptchaToken, RECAPTCHA_SIGNUP_ACTION);

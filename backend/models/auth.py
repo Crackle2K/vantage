@@ -39,7 +39,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
     role: UserRole = UserRole.CUSTOMER
-    recaptcha_token: str = Field(..., min_length=10)
+    recaptcha_token: Optional[str] = None
     recaptcha_action: Optional[str] = None
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -131,51 +131,8 @@ def _request_recaptcha_assessment(token: str, expected_action: str) -> dict:
         return json.loads(body)
 
 async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -> None:
-    if not RECAPTCHA_ENTERPRISE_PROJECT_ID or not RECAPTCHA_ENTERPRISE_API_KEY or not RECAPTCHA_ENTERPRISE_SITE_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="reCAPTCHA verification is not configured",
-        )
-
-    expected_action = (requested_action or RECAPTCHA_SIGNUP_ACTION or "SIGNUP").upper()
-    try:
-        assessment = await asyncio.to_thread(_request_recaptcha_assessment, token, expected_action)
-    except urllib_error.HTTPError:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="reCAPTCHA verification request failed",
-        )
-    except urllib_error.URLError:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to reach reCAPTCHA verification service",
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unexpected reCAPTCHA verification error",
-        )
-
-    token_properties = assessment.get("tokenProperties", {})
-    if not token_properties.get("valid"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="reCAPTCHA token is invalid or expired. Please try again.",
-        )
-
-    token_action = (token_properties.get("action") or "").upper()
-    if token_action and token_action != expected_action:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="reCAPTCHA action mismatch. Please try again.",
-        )
-
-    score = float(assessment.get("riskAnalysis", {}).get("score", 0.0))
-    if score < RECAPTCHA_MIN_SCORE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Signup blocked by bot protection. Please try again.",
-        )
+    # reCAPTCHA verification disabled - allow all signups
+    return
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 async def register(user_data: RegisterRequest):
