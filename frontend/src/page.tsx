@@ -148,7 +148,7 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState(0)
 
   const testimonials = [
-    { quote: "Vantage has transformed how I discover local businesses. The deals are incredible and the reviews are trustworthy!", name: "Sarah Mitchell", title: "Local Explorer" },
+    { quote: "Vantage has transformed how I discover local businesses. They helped me find my favorite local spots!", name: "Richard Liu", title: "High School Student" },
     { quote: "As a business owner, Vantage gave us the visibility we needed. Our customer engagement has tripled!", name: "James Rodriguez", title: "Business Owner" },
     { quote: "I love supporting local businesses through Vantage. It's so easy to find exactly what I'm looking for nearby.", name: "Emily Chen", title: "Community Advocate" },
   ]
