@@ -10,10 +10,13 @@ database = None
 class DatabaseUnavailableError(RuntimeError):
     pass
 
+def _col(name: str):
+    return get_database()[name]
+
 async def connect_to_mongo():
     global client, database
     try:
-        temp_client = AsyncIOMotorClient(
+        next_client = AsyncIOMotorClient(
             MONGODB_URI,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=10000,
@@ -23,22 +26,22 @@ async def connect_to_mongo():
             maxIdleTimeMS=45000,
             retryWrites=True
         )
-        temp_database = temp_client[DATABASE_NAME]
-        await temp_client.admin.command("ping")
-        client = temp_client
-        database = temp_database
+        next_db = next_client[DATABASE_NAME]
+        await next_client.admin.command("ping")
+        client = next_client
+        database = next_db
         print(f"Connected to MongoDB: {DATABASE_NAME}")
         await _ensure_indexes()
         await _normalize_platform_review_metrics()
         if DEMO_MODE:
             from services.demo_seed import seed_demo_dataset
 
-            await seed_demo_dataset(temp_database, DEMO_LAT, DEMO_LNG)
+            await seed_demo_dataset(next_db, DEMO_LAT, DEMO_LNG)
             print(f"Demo Mode seeded around {DEMO_LAT:.4f}, {DEMO_LNG:.4f}")
-    except Exception as e:
+    except Exception as exc:
         client = None
         database = None
-        print(f"MongoDB connection warning: {e}")
+        print(f"MongoDB connection warning: {exc}")
         print("Server will start without database. Some features may not work.")
 
 async def _ensure_indexes():
@@ -74,8 +77,8 @@ async def _ensure_indexes():
         await saved.create_index("created_at")
 
         print("MongoDB indexes ensured")
-    except Exception as e:
-        print(f"Index creation warning: {e}")
+    except Exception as exc:
+        print(f"Index creation warning: {exc}")
 
 async def _normalize_platform_review_metrics():
     try:
@@ -99,12 +102,12 @@ async def _normalize_platform_review_metrics():
             ]
         ).to_list(length=None)
 
-        ops = []
+        updates = []
         for row in grouped:
             business_id = str(row.get("_id", ""))
             if not ObjectId.is_valid(business_id):
                 continue
-            ops.append(
+            updates.append(
                 UpdateOne(
                     {"_id": ObjectId(business_id)},
                     {
@@ -116,12 +119,12 @@ async def _normalize_platform_review_metrics():
                 )
             )
 
-        if ops:
-            await businesses.bulk_write(ops, ordered=False)
+        if updates:
+            await businesses.bulk_write(updates, ordered=False)
 
-        print(f"Review metrics normalized from platform reviews ({len(ops)} businesses)")
-    except Exception as e:
-        print(f"Review metric normalization warning: {e}")
+        print(f"Review metrics normalized from platform reviews ({len(updates)} businesses)")
+    except Exception as exc:
+        print(f"Review metric normalization warning: {exc}")
 
 async def close_mongo_connection():
     global client
@@ -138,43 +141,43 @@ def get_database():
     return database
 
 def get_users_collection():
-    return get_database()["users"]
+    return _col("users")
 
 def get_businesses_collection():
-    return get_database()["businesses"]
+    return _col("businesses")
 
 def get_reviews_collection():
-    return get_database()["reviews"]
+    return _col("reviews")
 
 def get_deals_collection():
-    return get_database()["deals"]
+    return _col("deals")
 
 def get_claims_collection():
-    return get_database()["claims"]
+    return _col("claims")
 
 def get_checkins_collection():
-    return get_database()["checkins"]
+    return _col("checkins")
 
 def get_activity_feed_collection():
-    return get_database()["activity_feed"]
+    return _col("activity_feed")
 
 def get_owner_posts_collection():
-    return get_database()["owner_posts"]
+    return _col("owner_posts")
 
 def get_credibility_collection():
-    return get_database()["credibility"]
+    return _col("credibility")
 
 def get_subscriptions_collection():
-    return get_database()["subscriptions"]
+    return _col("subscriptions")
 
 def get_visits_collection():
-    return get_database()["visits"]
+    return _col("visits")
 
 def get_geo_cache_collection():
-    return get_database()["geo_cache"]
+    return _col("geo_cache")
 
 def get_api_usage_log_collection():
-    return get_database()["api_usage_log"]
+    return _col("api_usage_log")
 
 def get_saved_collection():
-    return get_database()["saved"]
+    return _col("saved")

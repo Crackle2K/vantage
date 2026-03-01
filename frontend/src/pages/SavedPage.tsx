@@ -10,6 +10,15 @@ function getBusinessId(business: Business) {
   return business.id || business._id || business.name;
 }
 
+function imageCandidatesFor(business: Business) {
+  return [business.primary_image_url, business.image_url, ...(business.image_urls ?? []), business.image]
+    .filter((value): value is string => !!value && value.trim().length > 0);
+}
+
+function savedLabel(business: Business) {
+  return business.saved_at ? `Saved ${new Date(business.saved_at).toLocaleDateString()}` : 'Saved';
+}
+
 function reasonChipLabel(reasonCode: string): string {
   switch (reasonCode) {
     case 'VERIFIED_TODAY': return 'Verified today';
@@ -72,8 +81,7 @@ export default function SavedPage() {
           <div className="mt-8 space-y-5">
             {savedBusinesses.map((business) => {
               const businessId = getBusinessId(business);
-              const images = [business.primary_image_url, business.image_url, ...(business.image_urls ?? []), business.image]
-                .filter((value): value is string => !!value && value.trim().length > 0);
+              const images = imageCandidatesFor(business);
               return (
                 <article
                   key={businessId}
@@ -92,7 +100,7 @@ export default function SavedPage() {
                   <div className="flex min-w-0 flex-col justify-between gap-4">
                     <div>
                       <p className="text-caption font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">
-                        {business.saved_at ? `Saved ${new Date(business.saved_at).toLocaleDateString()}` : 'Saved'}
+                        {savedLabel(business)}
                       </p>
                       <h2 className="mt-1 text-subheading font-semibold text-[hsl(var(--foreground))]">{business.name}</h2>
                       <p className="mt-2 line-clamp-3 text-ui text-[hsl(var(--muted-foreground))]">

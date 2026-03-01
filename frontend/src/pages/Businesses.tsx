@@ -61,9 +61,7 @@ function getCached(key: string): CacheEntry | null {
 function setCache(key: string, businesses: Business[], lanes: ExploreLane[]) {
   try {
     sessionStorage.setItem(key, JSON.stringify({ businesses, lanes, ts: Date.now() }));
-  } catch {
-    
-  }
+  } catch {}
 }
 
 function getBusinessId(business: Business) {
@@ -186,6 +184,21 @@ function updateBusinessInLanes(currentLanes: ExploreLane[], updatedBusiness: Bus
   }));
 }
 
+function currentCoords(location: UserLocation | null) {
+  return {
+    lat: location?.latitude ?? DEFAULT_LAT,
+    lng: location?.longitude ?? DEFAULT_LNG,
+  };
+}
+
+function dedupeBusinesses(items: Business[]) {
+  const byId = new Map<string, Business>();
+  items.forEach((business) => {
+    byId.set(getBusinessId(business), business);
+  });
+  return Array.from(byId.values());
+}
+
 export default function Businesses() {
   const { user, setUser } = useAuth();
   const { savedIds, toggleSaved } = useSavedBusinesses();
@@ -248,37 +261,36 @@ export default function Businesses() {
     setLoading(true);
     setError(null);
     const sortLane = laneTitleForSort(requestedSortMode);
+    const storeResults = (items: Business[], nextLanes: ExploreLane[]) => {
+      setBusinesses(items);
+      setLanes(nextLanes);
+      setCache(key, items, nextLanes);
+    };
     try {
-      let nextBusinesses: Business[] = [];
+      let items: Business[] = [];
       let nextLanes: ExploreLane[] = [];
       if (requestedSortMode === 'canonical') {
-        nextBusinesses = await api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, 'canonical');
-        const canonicalLane = buildBrowseLane(nextBusinesses);
+        items = await api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, 'canonical');
+        const canonicalLane = buildBrowseLane(items);
         nextLanes = [canonicalLane];
 
         try {
           const laneResponse = await api.getExploreLanes(lat, lng, radiusValue, DISCOVERY_LIMIT);
           const personalizedLanes = (laneResponse.lanes ?? []).filter((lane) => lane.items.length > 0);
           nextLanes = [canonicalLane, ...personalizedLanes];
-        } catch {
-          
-        }
+        } catch {}
       } else {
-        nextBusinesses = await api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, requestedSortMode);
-        nextLanes = [{ id: requestedSortMode, title: sortLane.title, subtitle: sortLane.subtitle, items: nextBusinesses }];
+        items = await api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, requestedSortMode);
+        nextLanes = [{ id: requestedSortMode, title: sortLane.title, subtitle: sortLane.subtitle, items }];
       }
-      setBusinesses(nextBusinesses);
-      setLanes(nextLanes);
-      setCache(key, nextBusinesses, nextLanes);
+      storeResults(items, nextLanes);
     } catch {
       try {
         const fallback = await api.getNearbyBusinesses(lat, lng, radiusValue);
         const fallbackLanes = requestedSortMode === 'canonical'
           ? [buildBrowseLane(fallback)]
           : [{ id: requestedSortMode, title: sortLane.title, subtitle: sortLane.subtitle, items: fallback }];
-        setBusinesses(fallback);
-        setLanes(fallbackLanes);
-        setCache(key, fallback, fallbackLanes);
+        storeResults(fallback, fallbackLanes);
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : 'Failed to load nearby businesses');
         setBusinesses([]);
@@ -288,6 +300,16 @@ export default function Businesses() {
       setLoading(false);
     }
   }, [fetchOwnerEvents]);
+
+  const applyLocation = useCallback((nextLocation: UserLocation, nextRadius: number, nextSort: ExploreSortMode, forceRefresh: boolean) => {
+    setLocation(nextLocation);
+    fetchExploreData(nextLocation.latitude, nextLocation.longitude, nextRadius, forceRefresh, nextSort);
+  }, [fetchExploreData]);
+
+  const reloadCurrentArea = useCallback((nextRadius = radius, nextSortMode = sortMode, forceRefresh = true) => {
+    const { lat, lng } = currentCoords(location);
+    fetchExploreData(lat, lng, nextRadius, forceRefresh, nextSortMode);
+  }, [fetchExploreData, location, radius, sortMode]);
 
   useEffect(() => {
     fetchExploreData(DEFAULT_LAT, DEFAULT_LNG, DEFAULT_RADIUS, false, 'canonical');
@@ -305,16 +327,19 @@ export default function Businesses() {
     setLocationLoading(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const nextLocation = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-        setLocation(nextLocation);
-        fetchExploreData(nextLocation.latitude, nextLocation.longitude, radius, true, 'canonical');
+        applyLocation(
+          { latitude: position.coords.latitude, longitude: position.coords.longitude },
+          radius,
+          'canonical',
+          true
+        );
         setLocationLoading(false);
       },
       () => {
         setLocationLoading(false);
       }
     );
-  }, [fetchExploreData, radius]);
+  }, [applyLocation, radius]);
 
   const requestLocation = () => {
     setError(null);
@@ -325,9 +350,12 @@ export default function Businesses() {
     setLocationLoading(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const nextLocation = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-        setLocation(nextLocation);
-        fetchExploreData(nextLocation.latitude, nextLocation.longitude, radius, true, sortMode);
+        applyLocation(
+          { latitude: position.coords.latitude, longitude: position.coords.longitude },
+          radius,
+          sortMode,
+          true
+        );
         setLocationLoading(false);
       },
       () => {
@@ -341,7 +369,7 @@ export default function Businesses() {
     setRadius(nextRadius);
     if (radiusDebounceRef.current) window.clearTimeout(radiusDebounceRef.current);
     radiusDebounceRef.current = window.setTimeout(() => {
-      fetchExploreData(location?.latitude ?? DEFAULT_LAT, location?.longitude ?? DEFAULT_LNG, nextRadius, true, sortMode);
+      reloadCurrentArea(nextRadius);
     }, 220);
   };
 
@@ -420,33 +448,29 @@ export default function Businesses() {
   }, [lanes, searchQuery, selectedCategory, selectedTagFilters, viewMode, sortMode, selectedLaneId]);
 
   const topActiveBusinesses = useMemo(() => {
-    const allBusinesses = filteredLanes.flatMap(lane => lane.items);
-    const activeBusinesses = allBusinesses.filter(business => isActiveToday(business));
+    const allBusinesses = filteredLanes.flatMap((lane) => lane.items);
+    const activeBusinesses = dedupeBusinesses(allBusinesses.filter((business) => isActiveToday(business)));
 
-    const uniqueActive = Array.from(
-      new Map(activeBusinesses.map(b => [getBusinessId(b), b])).values()
-    );
-
-    const sorted = uniqueActive.sort((a, b) => {
+    const sorted = activeBusinesses.sort((a, b) => {
       const aCheckins = a.checkins_today ?? 0;
       const bCheckins = b.checkins_today ?? 0;
       if (bCheckins !== aCheckins) return bCheckins - aCheckins;
-      
+
       const aTime = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
       const bTime = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
       return bTime - aTime;
     });
-    
+
     return sorted.slice(0, 3);
   }, [filteredLanes]);
 
   const filteredLanesWithoutTopActive = useMemo(() => {
-    const topActiveIds = new Set(topActiveBusinesses.map(b => getBusinessId(b)));
-    
-    return filteredLanes.map(lane => ({
+    const topActiveIds = new Set(topActiveBusinesses.map((business) => getBusinessId(business)));
+
+    return filteredLanes.map((lane) => ({
       ...lane,
-      items: lane.items.filter(b => !topActiveIds.has(getBusinessId(b)))
-    })).filter(lane => lane.items.length > 0);
+      items: lane.items.filter((business) => !topActiveIds.has(getBusinessId(business))),
+    })).filter((lane) => lane.items.length > 0);
   }, [filteredLanes, topActiveBusinesses]);
 
   const closeLane = () => {
@@ -480,15 +504,13 @@ export default function Businesses() {
     try {
       const fetched = await api.getBusiness(event.business_id);
       openBusiness(fetched);
-    } catch {
-      
-    }
+    } catch {}
   };
 
   const handlePreferencesSaved = (updatedUser: User) => {
     setUser(updatedUser);
     setShowPreferenceOnboarding(false);
-    fetchExploreData(location?.latitude ?? DEFAULT_LAT, location?.longitude ?? DEFAULT_LNG, radius, true, sortMode);
+    reloadCurrentArea();
   };
 
   const renderBusinessList = (items: Business[]) => {

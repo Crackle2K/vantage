@@ -42,10 +42,13 @@ _CATEGORY_COLORS: dict[str, tuple[str, str]] = {
 _memory_cache: "OrderedDict[str, tuple[float, str, bytes]]" = OrderedDict()
 _memory_lock = Lock()
 
+def _clamp_width(maxwidth: int) -> int:
+    return max(120, min(int(maxwidth or 1200), 1600))
+
 def build_photo_proxy_url(place_id: str, maxwidth: int = 1200) -> str:
     if not place_id:
         return ""
-    return f"/api/photos?place_id={quote_plus(place_id)}&maxwidth={maxwidth}"
+    return f"/api/photos?place_id={quote_plus(place_id)}&maxwidth={_clamp_width(maxwidth)}"
 
 def _cache_key(place_id: str, maxwidth: int) -> str:
     return f"{place_id}:{maxwidth}"
@@ -163,9 +166,9 @@ def build_category_placeholder_bytes(category: str = "", label: str = "V") -> tu
   </linearGradient>
   <filter id="blur"><feGaussianBlur stdDeviation="32" /></filter>
 </defs>
-<rect width="1200" height="900" fill="url(
-<circle cx="220" cy="170" r="140" fill="rgba(255,255,255,0.16)" filter="url(
-<circle cx="980" cy="760" r="180" fill="rgba(255,255,255,0.12)" filter="url(
+<rect width="1200" height="900" fill="url(#g)" />
+<circle cx="220" cy="170" r="140" fill="rgba(255,255,255,0.16)" filter="url(#blur)" />
+<circle cx="980" cy="760" r="180" fill="rgba(255,255,255,0.12)" filter="url(#blur)" />
 <text x="80" y="760" fill="rgba(255,255,255,0.92)" font-family="Arial, sans-serif" font-size="300" font-weight="700">{monogram}</text>
 <text x="86" y="840" fill="rgba(255,255,255,0.88)" font-family="Arial, sans-serif" font-size="54">{safe_category}</text>
 </svg>"""
@@ -184,7 +187,7 @@ async def _fetch_google_photo_bytes(photo_reference: str, maxwidth: int) -> tupl
 
     url = (
         f"{GOOGLE_PHOTO_URL}"
-        f"?maxwidth={max(120, min(maxwidth, 1600))}"
+        f"?maxwidth={_clamp_width(maxwidth)}"
         f"&photo_reference={quote_plus(photo_reference)}"
         f"&key={GOOGLE_API_KEY}"
     )
@@ -251,29 +254,29 @@ async def resolve_business_photo_payload(
     place_id: str,
     maxwidth: int,
 ) -> tuple[str, bytes]:
-    photo_references = [
+    refs = [
         str(ref).strip()
         for ref in (business.get("photo_references") or [])
         if str(ref).strip()
     ]
     primary_ref = str(business.get("photo_reference") or "").strip()
-    if primary_ref and primary_ref not in photo_references:
-        photo_references.insert(0, primary_ref)
+    if primary_ref and primary_ref not in refs:
+        refs.insert(0, primary_ref)
 
-    if not photo_references:
-        photo_references = await _resolve_google_photo_references(place_id)
+    if not refs:
+        refs = await _resolve_google_photo_references(place_id)
 
-    for photo_reference in photo_references:
+    for photo_reference in refs:
         try:
             return await _fetch_google_photo_bytes(photo_reference, maxwidth)
         except Exception:
             continue
 
     website = str(business.get("website") or "").strip()
-    og_image_url = await _resolve_og_image_url(website) if website else ""
-    if og_image_url:
+    og_url = await _resolve_og_image_url(website) if website else ""
+    if og_url:
         try:
-            return await _fetch_cached_url(og_image_url)
+            return await _fetch_cached_url(og_url)
         except Exception:
             pass
 
@@ -287,6 +290,9 @@ async def get_photo_payload(
     place_id: str,
     maxwidth: int,
 ) -> tuple[str, bytes]:
+    if not place_id:
+        return build_category_placeholder_bytes(label="V")
+
     cache_key = _cache_key(place_id, maxwidth)
     cached = _memory_get(cache_key)
     if cached:

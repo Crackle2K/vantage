@@ -33,6 +33,18 @@ PULSE_VERIFIED_STATUSES = {
     CheckInStatus.COMMUNITY_CONFIRMED.value,
 }
 
+def _oid(raw_id: str, label: str) -> ObjectId:
+    if not ObjectId.is_valid(raw_id):
+        raise HTTPException(status_code=400, detail=f"Invalid {label}")
+    return ObjectId(raw_id)
+
+async def _business_or_404(business_id: str, projection: Optional[dict] = None) -> dict:
+    businesses = get_businesses_collection()
+    business = await businesses.find_one({"_id": _oid(business_id, "business ID")}, projection)
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+    return business
+
 def _parse_datetime(value) -> datetime:
     if isinstance(value, datetime):
         return value
@@ -66,24 +78,19 @@ class ActivityComment(BaseModel):
 
 def checkin_helper(doc) -> dict:
     if doc:
-        doc["id"] = str(doc["_id"])
-        del doc["_id"]
+        doc["id"] = str(doc.pop("_id"))
     return doc
 
 def activity_helper(doc) -> dict:
     if doc:
-        doc["id"] = str(doc["_id"])
-        del doc["_id"]
-        if "comments_list" in doc:
-            del doc["comments_list"]
-        if "liked_by" in doc:
-            del doc["liked_by"]
+        doc["id"] = str(doc.pop("_id"))
+        doc.pop("comments_list", None)
+        doc.pop("liked_by", None)
     return doc
 
 def owner_event_helper(doc, business: Optional[dict] = None) -> dict:
     if doc:
-        doc["id"] = str(doc["_id"])
-        del doc["_id"]
+        doc["id"] = str(doc.pop("_id"))
         if business:
             doc["business_name"] = business.get("name", "Local business")
             doc["business_category"] = business.get("category", "Other")
@@ -111,12 +118,8 @@ async def create_checkin(
     checkins = get_checkins_collection()
     businesses = get_businesses_collection()
     activity_feed = get_activity_feed_collection()
-    credibility = get_credibility_collection()
-
-    if not ObjectId.is_valid(data.business_id):
-        raise HTTPException(status_code=400, detail="Invalid business ID")
-
-    business = await businesses.find_one({"_id": ObjectId(data.business_id)})
+    business_key = _oid(data.business_id, "business ID")
+    business = await businesses.find_one({"_id": business_key})
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
 
@@ -169,7 +172,7 @@ async def create_checkin(
     )
 
     await businesses.update_one(
-        {"_id": ObjectId(data.business_id)},
+        {"_id": business_key},
         {
             "$set": {
                 "is_active_today": True,
@@ -206,11 +209,8 @@ async def confirm_checkin(
     current_user: User = Depends(get_current_user),
 ):
     checkins = get_checkins_collection()
-
-    if not ObjectId.is_valid(checkin_id):
-        raise HTTPException(status_code=400, detail="Invalid checkin ID")
-
-    checkin = await checkins.find_one({"_id": ObjectId(checkin_id)})
+    checkin_key = _oid(checkin_id, "checkin ID")
+    checkin = await checkins.find_one({"_id": checkin_key})
     if not checkin:
         raise HTTPException(status_code=404, detail="Check-in not found")
 
@@ -221,7 +221,7 @@ async def confirm_checkin(
         raise HTTPException(status_code=400, detail="Already confirmed")
 
     await checkins.update_one(
-        {"_id": ObjectId(checkin_id)},
+        {"_id": checkin_key},
         {
             "$inc": {"confirmations": 1},
             "$push": {"confirmed_by": current_user.id},
@@ -230,7 +230,7 @@ async def confirm_checkin(
 
     if checkin.get("confirmations", 0) + 1 >= 3:
         await checkins.update_one(
-            {"_id": ObjectId(checkin_id)},
+            {"_id": checkin_key},
             {"$set": {"status": CheckInStatus.COMMUNITY_CONFIRMED}},
         )
 
@@ -399,15 +399,8 @@ async def create_owner_event(
     current_user: User = Depends(get_current_user),
 ):
     owner_posts = get_owner_posts_collection()
-    businesses = get_businesses_collection()
     activity_feed = get_activity_feed_collection()
-
-    if not ObjectId.is_valid(event_data.business_id):
-        raise HTTPException(status_code=400, detail="Invalid business ID")
-
-    business = await businesses.find_one({"_id": ObjectId(event_data.business_id)})
-    if not business:
-        raise HTTPException(status_code=404, detail="Business not found")
+    business = await _business_or_404(event_data.business_id)
 
     if not business.get("is_claimed") or str(business.get("owner_id")) != current_user.id:
         raise HTTPException(status_code=403, detail="Only the claimed business owner can post events")
@@ -460,11 +453,9 @@ async def get_owner_events(
 
     query: dict = {}
     if business_id:
-        if not ObjectId.is_valid(business_id):
-            raise HTTPException(status_code=400, detail="Invalid business ID")
         query["business_id"] = business_id
         business_docs = await businesses.find(
-            {"_id": ObjectId(business_id)},
+            {"_id": _oid(business_id, "business ID")},
             {"name": 1, "category": 1, "image_url": 1, "image": 1},
         ).to_list(length=1)
     else:
@@ -501,11 +492,7 @@ async def toggle_activity_like(
     current_user: User = Depends(get_current_user),
 ):
     activity_feed = get_activity_feed_collection()
-
-    if not ObjectId.is_valid(activity_id):
-        raise HTTPException(status_code=400, detail="Invalid activity ID")
-
-    target_id = ObjectId(activity_id)
+    target_id = _oid(activity_id, "activity ID")
 
     unlike_result = await activity_feed.update_one(
         {"_id": target_id, "liked_by": current_user.id},
@@ -546,11 +533,8 @@ async def toggle_activity_like(
 async def get_activity_comments(activity_id: str):
     activity_feed = get_activity_feed_collection()
 
-    if not ObjectId.is_valid(activity_id):
-        raise HTTPException(status_code=400, detail="Invalid activity ID")
-
     item = await activity_feed.find_one(
-        {"_id": ObjectId(activity_id)},
+        {"_id": _oid(activity_id, "activity ID")},
         {"comments_list": 1},
     )
     if not item:
@@ -577,11 +561,7 @@ async def add_activity_comment(
     current_user: User = Depends(get_current_user),
 ):
     activity_feed = get_activity_feed_collection()
-
-    if not ObjectId.is_valid(activity_id):
-        raise HTTPException(status_code=400, detail="Invalid activity ID")
-
-    target_id = ObjectId(activity_id)
+    target_id = _oid(activity_id, "activity ID")
     comment_doc = {
         "id": str(ObjectId()),
         "user_id": current_user.id,
@@ -613,14 +593,7 @@ async def add_activity_comment(
 @router.get("/businesses/{business_id}/activity")
 async def get_business_activity(business_id: str):
     checkins = get_checkins_collection()
-    businesses = get_businesses_collection()
-
-    if not ObjectId.is_valid(business_id):
-        raise HTTPException(status_code=400, detail="Invalid business ID")
-
-    business = await businesses.find_one({"_id": ObjectId(business_id)})
-    if not business:
-        raise HTTPException(status_code=404, detail="Business not found")
+    await _business_or_404(business_id, {"_id": 1})
 
     now = datetime.utcnow()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)

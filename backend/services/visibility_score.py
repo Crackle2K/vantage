@@ -4,8 +4,8 @@ from typing import Optional
 def reviewer_credibility_weight(credibility_score: Optional[float]) -> float:
     if credibility_score is None:
         return 0.85
-    bounded = max(0.0, min(float(credibility_score), 100.0))
-    return round(0.6 + (bounded / 100.0) * 0.8, 3)
+    score = max(0.0, min(float(credibility_score), 100.0))
+    return round(0.6 + (score / 100.0) * 0.8, 3)
 
 def calculate_live_visibility_score(
     verified_visit_count: int = 0,
@@ -15,15 +15,14 @@ def calculate_live_visibility_score(
     engagement_actions: int = 0,
     total_potential_engagements: int = 1,
 ) -> float:
-
-    visit_score = min(verified_visit_count / 50, 1.0)
+    visit_score = min(max(verified_visit_count, 0) / 50, 1.0)
 
     weighted_reviews = (
         float(credibility_weighted_review_count)
         if credibility_weighted_review_count is not None
         else float(review_count)
     )
-    review_score = min(weighted_reviews / 30, 1.0)
+    review_score = min(max(weighted_reviews, 0.0) / 30, 1.0)
 
     if last_activity_at is None:
         recency = 0.0
@@ -36,7 +35,7 @@ def calculate_live_visibility_score(
         else:
             recency = 1.0 - (days_ago - 7) / (90 - 7)
 
-    engagement = min(engagement_actions / max(total_potential_engagements, 1), 1.0)
+    engagement = min(max(engagement_actions, 0) / max(total_potential_engagements, 1), 1.0)
 
     raw = (
         0.35 * visit_score

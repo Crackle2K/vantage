@@ -102,6 +102,60 @@ def _set_lanes_cache(cache_key: str, payload: dict) -> None:
         oldest_key = min(_lanes_cache.items(), key=lambda item: item[1][0])[0]
         _lanes_cache.pop(oldest_key, None)
 
+def _normalize_sort_mode(sort_mode: str) -> str:
+    mode = (sort_mode or "canonical").strip().lower()
+    if mode not in ALLOWED_SORT_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid sort_mode. Expected one of: {', '.join(sorted(ALLOWED_SORT_MODES))}",
+        )
+    return mode
+
+def _as_object_id(raw_id: str, label: str) -> ObjectId:
+    if not ObjectId.is_valid(raw_id):
+        raise HTTPException(status_code=400, detail=f"Invalid {label}")
+    return ObjectId(raw_id)
+
+async def _load_discovery_candidates(businesses_collection, geo_filter: dict, limit: int) -> list[dict]:
+    cursor = businesses_collection.find(geo_filter).limit(limit)
+    return await cursor.to_list(length=limit)
+
+async def _finalize_discovery_payload(
+    businesses_collection,
+    results: list[dict],
+    sort_mode: str,
+    limit: int,
+    lat: float,
+    lng: float,
+) -> list[dict]:
+    await _enrich_missing_result_images(businesses_collection, results)
+    return _finalize_discovery_results(results, sort_mode, limit, lat, lng)
+
+def _last_activity(business: dict) -> Optional[datetime]:
+    return _coerce_datetime(business.get("last_verified_at") or business.get("last_activity_at"))
+
+def _is_recently_active(business: dict, window_seconds: int = 86400) -> bool:
+    if _safe_int(business.get("checkins_today")) > 0:
+        return True
+    activity_at = _last_activity(business)
+    if activity_at is None:
+        return False
+    return (datetime.utcnow() - activity_at).total_seconds() <= window_seconds
+
+def _with_primary_image(item: dict) -> dict:
+    item["primary_image_url"] = (
+        item.get("primary_image_url")
+        or item.get("image_url")
+        or (item.get("image_urls") or [None])[0]
+        or item.get("image")
+        or ""
+    )
+    return item
+
+def _latest_created_at(*docs: Optional[dict]) -> Optional[datetime]:
+    timestamps = [doc["created_at"] for doc in docs if doc and doc.get("created_at")]
+    return max(timestamps) if timestamps else None
+
 def _legacy_strategic_rank_score(business: dict) -> float:
     lvs = float(business.get("live_visibility_score", 0.0))
     local_conf = max(0.0, min(float(business.get("local_confidence", 0.0)), 1.0))
@@ -757,14 +811,12 @@ def _finalize_discovery_results(
 ) -> list[dict]:
     _apply_ranking_metadata(results, lat, lng)
     _sort_businesses(results, sort_mode)
-    unique_results = _dedupe_discovery_results(results, limit)
-    return [business_helper(b) for b in unique_results]
+    return [business_helper(item) for item in _dedupe_discovery_results(results, limit)]
 
 def business_helper(doc: dict) -> dict:
     if doc is None:
         return doc
-    doc["id"] = str(doc["_id"])
-    del doc["_id"]
+    doc["id"] = str(doc.pop("_id"))
     if "rating_average" in doc:
         doc.setdefault("rating", doc.pop("rating_average", 0.0))
     doc.setdefault("rating", 0.0)
@@ -772,11 +824,8 @@ def business_helper(doc: dict) -> dict:
         doc.setdefault("review_count", doc.pop("total_reviews", 0))
     doc.setdefault("review_count", 0)
     doc.setdefault("has_deals", False)
-    doc.setdefault("image_url", doc.pop("image", "") if "image" in doc else "")
-    doc.setdefault(
-        "primary_image_url",
-        doc.get("image_url") or ((doc.get("image_urls") or [""])[0] if doc.get("image_urls") else ""),
-    )
+    doc.setdefault("image_url", doc.pop("image", ""))
+    _with_primary_image(doc)
     normalize_business_metadata(doc)
     if "owner_id" in doc and doc["owner_id"]:
         doc["owner_id"] = str(doc["owner_id"])
@@ -861,15 +910,7 @@ async def decide_for_me(
         reverse=True,
     )
 
-    items = candidate_pool[:limit]
-    for item in items:
-        item["primary_image_url"] = (
-            item.get("primary_image_url")
-            or item.get("image_url")
-            or (item.get("image_urls") or [None])[0]
-            or item.get("image")
-            or ""
-        )
+    items = [_with_primary_image(item) for item in candidate_pool[:limit]]
 
     return {
         "items": items,
@@ -893,13 +934,7 @@ async def discover_businesses(
     geo_cache = get_geo_cache_collection()
     radius_meters = radius * 1000
     candidate_limit = min(max(limit * 2, limit), 300)
-    normalized_sort_mode = (sort_mode or "canonical").strip().lower()
-
-    if normalized_sort_mode not in ALLOWED_SORT_MODES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid sort_mode. Expected one of: {', '.join(sorted(ALLOWED_SORT_MODES))}",
-        )
+    normalized_sort_mode = _normalize_sort_mode(sort_mode)
 
     geo_filter = {
         "location": {
@@ -912,12 +947,10 @@ async def discover_businesses(
     if category:
         geo_filter["category"] = category
 
-    cursor = businesses.find(geo_filter).limit(candidate_limit)
-    results = await cursor.to_list(length=candidate_limit)
+    results = await _load_discovery_candidates(businesses, geo_filter, candidate_limit)
 
     if len(results) >= MIN_RESULTS:
-        await _enrich_missing_result_images(businesses, results)
-        return _finalize_discovery_results(results, normalized_sort_mode, limit, lat, lng)
+        return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
 
     cell = geo_cell_key(lat, lng, int(radius_meters))
     cache_cutoff = datetime.utcnow() - timedelta(hours=CACHE_TTL_HOURS)
@@ -928,8 +961,7 @@ async def discover_businesses(
     })
 
     if cached and not refresh:
-        await _enrich_missing_result_images(businesses, results)
-        return _finalize_discovery_results(results, normalized_sort_mode, limit, lat, lng)
+        return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
 
     new_places = await search_google_places(
         lat,
@@ -957,10 +989,8 @@ async def discover_businesses(
         upsert=True,
     )
 
-    cursor = businesses.find(geo_filter).limit(candidate_limit)
-    results = await cursor.to_list(length=candidate_limit)
-    await _enrich_missing_result_images(businesses, results)
-    return _finalize_discovery_results(results, normalized_sort_mode, limit, lat, lng)
+    results = await _load_discovery_candidates(businesses, geo_filter, candidate_limit)
+    return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
 
 @router.get("/explore/lanes")
 async def get_explore_lanes(
@@ -1020,14 +1050,7 @@ async def get_explore_lanes(
     for_you_pool = scored_for_you[: max(LANE_ITEM_LIMIT * 2, 18)] if scored_for_you else base_items[:LANE_ITEM_LIMIT]
     for_you_items = sorted(for_you_pool, key=_canonical_score, reverse=True)[:LANE_ITEM_LIMIT]
 
-    active_items = [
-        item for item in base_items
-        if _safe_int(item.get("checkins_today")) > 0
-        or (
-            _coerce_datetime(item.get("last_verified_at") or item.get("last_activity_at")) is not None
-            and (datetime.utcnow() - _coerce_datetime(item.get("last_verified_at") or item.get("last_activity_at"))).total_seconds() <= 86400
-        )
-    ][:LANE_ITEM_LIMIT]
+    active_items = [item for item in base_items if _is_recently_active(item)][:LANE_ITEM_LIMIT]
 
     hidden_gems_items = [
         item for item in base_items
@@ -1156,10 +1179,8 @@ async def submit_visit(
     businesses = get_businesses_collection()
     visits = get_visits_collection()
 
-    if not ObjectId.is_valid(business_id):
-        raise HTTPException(status_code=400, detail="Invalid business ID")
-
-    business = await businesses.find_one({"_id": ObjectId(business_id)})
+    business_key = _as_object_id(business_id, "business ID")
+    business = await businesses.find_one({"_id": business_key})
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
 
@@ -1207,13 +1228,14 @@ async def _recalculate_visibility(business_id: str):
     reviews = get_reviews_collection()
     checkins = get_checkins_collection()
     credibility = get_credibility_collection()
+    business_key = _as_object_id(business_id, "business ID")
 
     verified_visit_count = await visits.count_documents({"business_id": business_id, "verified": True})
     review_docs = await reviews.find({"business_id": business_id}, {"user_id": 1, "created_at": 1}).to_list(length=None)
     review_count = len(review_docs)
 
     reviewer_ids = sorted({doc.get("user_id") for doc in review_docs if doc.get("user_id")})
-    credibility_by_user = {}
+    credibility_by_user: dict[str, float] = {}
     if reviewer_ids:
         credibility_cursor = credibility.find(
             {"user_id": {"$in": reviewer_ids}},
@@ -1225,20 +1247,14 @@ async def _recalculate_visibility(business_id: str):
             for doc in credibility_docs
         }
 
-    weighted_review_count = 0.0
-    for review in review_docs:
-        reviewer_score = credibility_by_user.get(review.get("user_id"))
-        weighted_review_count += reviewer_credibility_weight(reviewer_score)
+    weighted_review_count = sum(
+        reviewer_credibility_weight(credibility_by_user.get(review.get("user_id")))
+        for review in review_docs
+    )
 
     last_visit = await visits.find_one({"business_id": business_id}, sort=[("created_at", -1)])
     last_review = await reviews.find_one({"business_id": business_id}, sort=[("created_at", -1)])
-
-    timestamps = []
-    if last_visit:
-        timestamps.append(last_visit["created_at"])
-    if last_review:
-        timestamps.append(last_review["created_at"])
-    last_activity_at = max(timestamps) if timestamps else None
+    last_activity_at = _latest_created_at(last_visit, last_review)
 
     pipeline = [
         {"$match": {"business_id": business_id}},
@@ -1258,7 +1274,7 @@ async def _recalculate_visibility(business_id: str):
     )
 
     await businesses.update_one(
-        {"_id": ObjectId(business_id)},
+        {"_id": business_key},
         {
             "$set": {
                 "live_visibility_score": score,

@@ -1,10 +1,8 @@
-from typing import List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, status, Depends
 from bson import ObjectId
 
 from models.subscription import (
-    Subscription,
     SubscriptionCreate,
     SubscriptionUpdate,
     SubscriptionTier,
@@ -21,11 +19,27 @@ from database.mongodb import (
 
 router = APIRouter()
 
-def sub_helper(doc) -> dict:
+def _oid(raw_id: str, label: str) -> ObjectId:
+    if not ObjectId.is_valid(raw_id):
+        raise HTTPException(status_code=400, detail=f"Invalid {label}")
+    return ObjectId(raw_id)
+
+def _sub(doc: dict | None) -> dict | None:
     if doc:
-        doc["id"] = str(doc["_id"])
-        del doc["_id"]
+        doc["id"] = str(doc.pop("_id"))
     return doc
+
+def _period_end(now: datetime, cycle: BillingCycle) -> datetime:
+    return now + (timedelta(days=365) if cycle == BillingCycle.YEARLY else timedelta(days=30))
+
+async def _owned_business_or_404(business_id: str, current_user: User) -> dict:
+    businesses = get_businesses_collection()
+    business = await businesses.find_one({"_id": _oid(business_id, "business ID")})
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+    if str(business.get("owner_id")) != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only subscribe for businesses you own")
+    return business
 
 @router.get("/subscriptions/tiers")
 async def get_tier_info():
@@ -44,23 +58,11 @@ async def create_subscription(
     current_user: User = Depends(get_current_user),
 ):
     subs = get_subscriptions_collection()
-    businesses = get_businesses_collection()
 
     if current_user.role != "business_owner":
         raise HTTPException(status_code=403, detail="Only business owners can subscribe")
 
-    if not ObjectId.is_valid(data.business_id):
-        raise HTTPException(status_code=400, detail="Invalid business ID")
-
-    business = await businesses.find_one({"_id": ObjectId(data.business_id)})
-    if not business:
-        raise HTTPException(status_code=404, detail="Business not found")
-
-    if str(business.get("owner_id")) != current_user.id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only subscribe for businesses you own",
-        )
+    business = await _owned_business_or_404(data.business_id, current_user)
 
     if not business.get("is_claimed"):
         raise HTTPException(
@@ -69,11 +71,6 @@ async def create_subscription(
         )
 
     now = datetime.utcnow()
-    if data.billing_cycle == BillingCycle.YEARLY:
-        period_end = now + timedelta(days=365)
-    else:
-        period_end = now + timedelta(days=30)
-
     sub_doc = {
         "user_id": current_user.id,
         "business_id": data.business_id,
@@ -81,7 +78,7 @@ async def create_subscription(
         "billing_cycle": data.billing_cycle,
         "status": "active",
         "current_period_start": now,
-        "current_period_end": period_end,
+        "current_period_end": _period_end(now, data.billing_cycle),
         "cancel_at_period_end": False,
         "created_at": now,
         "updated_at": now,
@@ -91,14 +88,14 @@ async def create_subscription(
 
     result = await subs.insert_one(sub_doc)
     created = await subs.find_one({"_id": result.inserted_id})
-    return sub_helper(created)
+    return _sub(created)
 
 @router.get("/subscriptions/my")
 async def get_my_subscriptions(current_user: User = Depends(get_current_user)):
     subs = get_subscriptions_collection()
     cursor = subs.find({"user_id": current_user.id}).sort("created_at", -1)
     results = await cursor.to_list(length=50)
-    return [sub_helper(s) for s in results]
+    return [_sub(item) for item in results]
 
 @router.get("/subscriptions/business/{business_id}")
 async def get_business_subscription(
@@ -123,7 +120,7 @@ async def get_business_subscription(
         }
 
     features = TIER_FEATURES.get(sub["tier"], TIER_FEATURES[SubscriptionTier.FREE])
-    result = sub_helper(sub)
+    result = _sub(sub)
     result["features"] = features
     return result
 
@@ -134,11 +131,8 @@ async def update_subscription(
     current_user: User = Depends(get_current_user),
 ):
     subs = get_subscriptions_collection()
-
-    if not ObjectId.is_valid(sub_id):
-        raise HTTPException(status_code=400, detail="Invalid subscription ID")
-
-    sub = await subs.find_one({"_id": ObjectId(sub_id)})
+    sub_key = _oid(sub_id, "subscription ID")
+    sub = await subs.find_one({"_id": sub_key})
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
@@ -151,10 +145,10 @@ async def update_subscription(
 
     update["updated_at"] = datetime.utcnow()
 
-    await subs.update_one({"_id": ObjectId(sub_id)}, {"$set": update})
+    await subs.update_one({"_id": sub_key}, {"$set": update})
 
-    updated = await subs.find_one({"_id": ObjectId(sub_id)})
-    return sub_helper(updated)
+    updated = await subs.find_one({"_id": sub_key})
+    return _sub(updated)
 
 @router.post("/subscriptions/{sub_id}/cancel")
 async def cancel_subscription(
@@ -162,11 +156,8 @@ async def cancel_subscription(
     current_user: User = Depends(get_current_user),
 ):
     subs = get_subscriptions_collection()
-
-    if not ObjectId.is_valid(sub_id):
-        raise HTTPException(status_code=400, detail="Invalid subscription ID")
-
-    sub = await subs.find_one({"_id": ObjectId(sub_id)})
+    sub_key = _oid(sub_id, "subscription ID")
+    sub = await subs.find_one({"_id": sub_key})
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
@@ -174,7 +165,7 @@ async def cancel_subscription(
         raise HTTPException(status_code=403, detail="Not your subscription")
 
     await subs.update_one(
-        {"_id": ObjectId(sub_id)},
+        {"_id": sub_key},
         {
             "$set": {
                 "cancel_at_period_end": True,

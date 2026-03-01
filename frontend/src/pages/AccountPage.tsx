@@ -6,6 +6,14 @@ import { api } from '../api'
 import { PreferenceOnboardingModal } from '@/components/preferences/PreferenceOnboardingModal'
 import type { UserUpdate } from '@/types'
 
+function buildProfileUpdates(user: ReturnType<typeof useAuth>['user'], name: string, profilePicture: string, aboutMe: string): UserUpdate {
+  const updates: UserUpdate = {}
+  if (name !== user?.name) updates.name = name
+  if (profilePicture !== user?.profile_picture) updates.profile_picture = profilePicture
+  if (aboutMe !== user?.about_me) updates.about_me = aboutMe
+  return updates
+}
+
 export default function AccountPage() {
   const { user, isAuthenticated, signOut, setUser } = useAuth()
   const navigate = useNavigate()
@@ -45,20 +53,17 @@ export default function AccountPage() {
   const handleSaveProfile = async () => {
     setError('')
     setIsSaving(true)
-    
+
     try {
-      const updates: UserUpdate = {}
-      if (name !== user?.name) updates.name = name
-      if (profilePicture !== user?.profile_picture) updates.profile_picture = profilePicture
-      if (aboutMe !== user?.about_me) updates.about_me = aboutMe
-      
+      const updates = buildProfileUpdates(user, name, profilePicture, aboutMe)
+
       if (Object.keys(updates).length === 0) {
         setIsEditing(false)
         return
       }
-      
+
       const updatedUser = await api.updateMyProfile(updates)
-      setUser(updatedUser) 
+      setUser(updatedUser)
       setIsEditing(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update profile')
@@ -82,21 +87,25 @@ export default function AccountPage() {
     ...(user.preferred_categories || []).slice(0, 3),
     ...(user.preferred_vibes || []).slice(0, 2),
   ].slice(0, 5)
+  const resetProfileForm = () => {
+    setIsEditing(false)
+    setError('')
+    setName(user?.name || '')
+    setProfilePicture(user?.profile_picture || '')
+    setAboutMe(user?.about_me || '')
+  }
 
   return (
     <div className="min-h-[60vh] py-10 px-4">
       <div className="max-w-2xl mx-auto">
-        {}
         <Link to="/businesses" className="inline-flex items-center gap-1 text-ui text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" />
           Back to Explore
         </Link>
 
         <div className="animate-fade-in-up">
-          {}
           <div className="glass-card rounded-2xl p-8 mb-6">
             <div className="flex items-start gap-5">
-              {}
               <div className="w-20 h-20 rounded-2xl flex-shrink-0 overflow-hidden shadow-lg shadow-brand/20">
                 {user.profile_picture ? (
                   <img 
@@ -140,7 +149,6 @@ export default function AccountPage() {
             </div>
           </div>
 
-          {}
           {isEditing && (
             <div className="glass-card rounded-2xl p-6 mb-6 animate-fade-in">
               <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Edit Profile</h3>
@@ -205,14 +213,8 @@ export default function AccountPage() {
                   <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1.5">{aboutMe.length}/500 characters</p>
                 </div>
                 <div className="flex gap-2 justify-end pt-2">
-                  <button 
-                    onClick={() => {
-                      setIsEditing(false)
-                      setError('')
-                      setName(user?.name || '')
-                      setProfilePicture(user?.profile_picture || '')
-                      setAboutMe(user?.about_me || '')
-                    }} 
+                  <button
+                    onClick={resetProfileForm}
                     className="px-4 py-2.5 rounded-xl text-ui font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] transition-colors"
                     disabled={isSaving}
                   >
@@ -231,7 +233,6 @@ export default function AccountPage() {
             </div>
           )}
 
-          {}
           <div className="glass-card rounded-2xl p-6 mb-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -284,7 +285,6 @@ export default function AccountPage() {
             </div>
           </div>
 
-          {}
           <div className="glass-card rounded-2xl p-6">
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Session</h3>
             <button

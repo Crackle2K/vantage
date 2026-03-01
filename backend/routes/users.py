@@ -1,13 +1,33 @@
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends
+from bson import ObjectId
+from bson.errors import InvalidId
 from models.user import User, UserUpdate, UserPreferencesUpdate
 from models.auth import get_current_user
 from database.mongodb import get_users_collection
 
 router = APIRouter()
 
+def _users():
+    try:
+        return get_users_collection()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database unavailable: {exc}"
+        ) from exc
+
+def _user_oid(user_id: str) -> ObjectId:
+    try:
+        return ObjectId(user_id)
+    except InvalidId as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format"
+        ) from exc
+
 def _serialize_user(user: dict) -> User:
-    user["id"] = str(user["_id"])
+    user["id"] = str(user.pop("_id"))
     if "created_at" in user and user["created_at"]:
         user["created_at"] = user["created_at"].isoformat()
     return User(**user)
@@ -30,22 +50,8 @@ def _normalize_text_list(values: list[str], limit: int) -> list[str]:
 
 @router.get("/{user_id}", response_model=User)
 async def get_user_profile(user_id: str):
-    try:
-        users_collection = get_users_collection()
-    except Exception as db_error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {str(db_error)}"
-        )
-    from bson import ObjectId
-    from bson.errors import InvalidId
-    try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    except InvalidId:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid user ID format"
-        )
+    users_collection = _users()
+    user = await users_collection.find_one({"_id": _user_oid(user_id)})
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -58,13 +64,8 @@ async def update_user_profile(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user)
 ):
-    try:
-        users_collection = get_users_collection()
-    except Exception as db_error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {str(db_error)}"
-        )
+    users_collection = _users()
+    user_key = _user_oid(current_user.id)
     update_data = {}
     if user_update.name is not None:
         update_data["name"] = user_update.name
@@ -78,19 +79,18 @@ async def update_user_profile(
             detail="No fields to update"
         )
     update_data["updated_at"] = datetime.utcnow()
-    from bson import ObjectId
     result = await users_collection.update_one(
-        {"_id": ObjectId(current_user.id)},
+        {"_id": user_key},
         {"$set": update_data}
     )
     if result.modified_count == 0:
-        user = await users_collection.find_one({"_id": ObjectId(current_user.id)})
+        user = await users_collection.find_one({"_id": user_key})
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
-    updated_user = await users_collection.find_one({"_id": ObjectId(current_user.id)})
+    updated_user = await users_collection.find_one({"_id": user_key})
     return _serialize_user(updated_user)
 
 @router.put("/preferences", response_model=User)
@@ -98,15 +98,8 @@ async def update_user_preferences(
     preferences_update: UserPreferencesUpdate,
     current_user: User = Depends(get_current_user)
 ):
-    try:
-        users_collection = get_users_collection()
-    except Exception as db_error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {str(db_error)}"
-        )
-
-    from bson import ObjectId
+    users_collection = _users()
+    user_key = _user_oid(current_user.id)
 
     update_data = {
         "preferred_categories": _normalize_text_list(preferences_update.preferred_categories, 8),
@@ -119,11 +112,11 @@ async def update_user_preferences(
     }
 
     await users_collection.update_one(
-        {"_id": ObjectId(current_user.id)},
+        {"_id": user_key},
         {"$set": update_data}
     )
 
-    updated_user = await users_collection.find_one({"_id": ObjectId(current_user.id)})
+    updated_user = await users_collection.find_one({"_id": user_key})
     if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

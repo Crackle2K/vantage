@@ -25,16 +25,33 @@ from routes.discovery import discover_businesses
 
 router = APIRouter()
 
+def _oid(raw_id: str) -> ObjectId:
+    if not ObjectId.is_valid(raw_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid business ID format"
+        )
+    return ObjectId(raw_id)
+
+async def _business_or_404(business_id: str) -> dict:
+    businesses_collection = get_businesses_collection()
+    business = await businesses_collection.find_one({"_id": _oid(business_id)})
+    if not business:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Business not found"
+        )
+    return business
+
 def business_helper(business) -> dict:
     if business:
-        business.setdefault("image_url", business.pop("image", "") if "image" in business else "")
+        business.setdefault("image_url", business.pop("image", ""))
         business.setdefault(
             "primary_image_url",
             business.get("image_url") or ((business.get("image_urls") or [""])[0] if business.get("image_urls") else ""),
         )
         normalize_business_metadata(business)
-        business["id"] = str(business["_id"])
-        del business["_id"]
+        business["id"] = str(business.pop("_id"))
         if "rating_average" in business:
             business["rating"] = business.pop("rating_average")
         if "total_reviews" in business:
@@ -150,19 +167,7 @@ async def get_nearby_businesses(
 
 @router.get("/businesses/{business_id}", response_model=Business)
 async def get_business(business_id: str):
-    businesses_collection = get_businesses_collection()
-    if not ObjectId.is_valid(business_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid business ID format"
-        )
-    business = await businesses_collection.find_one({"_id": ObjectId(business_id)})
-    if not business:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business not found"
-        )
-    return business_helper(business)
+    return business_helper(await _business_or_404(business_id))
 
 @router.post("/businesses", response_model=Business, status_code=status.HTTP_201_CREATED)
 async def create_business(
@@ -213,17 +218,10 @@ async def update_business(
     current_user: User = Depends(get_current_user)
 ):
     businesses_collection = get_businesses_collection()
-    if not ObjectId.is_valid(business_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid business ID format"
-        )
-    business = await businesses_collection.find_one({"_id": ObjectId(business_id)})
+    business_key = _oid(business_id)
+    business = await businesses_collection.find_one({"_id": business_key})
     if not business:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Business not found")
     if str(business["owner_id"]) != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -258,10 +256,10 @@ async def update_business(
             ),
         )
     await businesses_collection.update_one(
-        {"_id": ObjectId(business_id)},
+        {"_id": business_key},
         {"$set": update_data}
     )
-    updated_business = await businesses_collection.find_one({"_id": ObjectId(business_id)})
+    updated_business = await businesses_collection.find_one({"_id": business_key})
     return business_helper(updated_business)
 
 @router.put("/businesses/{business_id}/profile", response_model=Business)
@@ -271,19 +269,10 @@ async def update_business_profile(
     current_user: User = Depends(get_current_user)
 ):
     businesses_collection = get_businesses_collection()
-
-    if not ObjectId.is_valid(business_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid business ID format"
-        )
-
-    business = await businesses_collection.find_one({"_id": ObjectId(business_id)})
+    business_key = _oid(business_id)
+    business = await businesses_collection.find_one({"_id": business_key})
     if not business:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Business not found")
 
     if not business.get("is_claimed") or str(business.get("owner_id") or "") != current_user.id:
         raise HTTPException(
@@ -318,11 +307,11 @@ async def update_business_profile(
     update_data["updated_at"] = datetime.utcnow()
 
     await businesses_collection.update_one(
-        {"_id": ObjectId(business_id)},
+        {"_id": business_key},
         {"$set": update_data}
     )
 
-    updated_business = await businesses_collection.find_one({"_id": ObjectId(business_id)})
+    updated_business = await businesses_collection.find_one({"_id": business_key})
     return business_helper(updated_business)
 
 @router.delete("/businesses/{business_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -331,21 +320,14 @@ async def delete_business(
     current_user: User = Depends(get_current_user)
 ):
     businesses_collection = get_businesses_collection()
-    if not ObjectId.is_valid(business_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid business ID format"
-        )
-    business = await businesses_collection.find_one({"_id": ObjectId(business_id)})
+    business_key = _oid(business_id)
+    business = await businesses_collection.find_one({"_id": business_key})
     if not business:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Business not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Business not found")
     if str(business["owner_id"]) != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to delete this business"
         )
-    await businesses_collection.delete_one({"_id": ObjectId(business_id)})
+    await businesses_collection.delete_one({"_id": business_key})
     return None
