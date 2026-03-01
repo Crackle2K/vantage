@@ -131,7 +131,6 @@ def _request_recaptcha_assessment(token: str, expected_action: str) -> dict:
         return json.loads(body)
 
 async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -> None:
-    # reCAPTCHA verification disabled - allow all signups
     return
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
