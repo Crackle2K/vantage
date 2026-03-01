@@ -783,7 +783,7 @@ export default function Businesses() {
                 <div>
                   <p className="text-caption font-semibold uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Lane detail</p>
                   <h2 className="text-heading font-semibold text-[hsl(var(--foreground))]">{selectedLane.title}</h2>
-                  <p className="text-ui text-[hsl(var(--muted-foreground))]">{selectedLane.subtitle} • {selectedLane.items.length} businesses</p>
+                  <p className="text-ui text-[hsl(var(--muted-foreground))]">{selectedLane.subtitle} - {selectedLane.items.length} businesses</p>
                 </div>
                 <Button type="button" variant="outline" onClick={closeLane} className="rounded-full px-4">
                   <X className="h-4 w-4" />

@@ -223,7 +223,7 @@ export default function DecidePage() {
           <p className="text-caption font-semibold uppercase tracking-[0.16em] text-[hsl(var(--muted-foreground))]">Goal-based picks</p>
           <h1 className="mt-2 font-heading text-[40px] font-bold leading-tight text-[hsl(var(--foreground))] sm:text-[52px]">Decide for me</h1>
           <p className="mt-3 max-w-3xl text-body text-[hsl(var(--muted-foreground))]">
-            Tell us what you want — we&apos;ll pick the best right now using Live Visibility.
+            Tell us what you want - we&apos;ll pick the best right now using Live Visibility.
           </p>
 
           <div className="mt-8 rounded-[30px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))]/0.92 p-5 sm:p-6">
@@ -432,7 +432,7 @@ export default function DecidePage() {
               </div>
               <h2 className="mt-4 text-subheading font-semibold text-[hsl(var(--foreground))]">No picks yet</h2>
               <p className="mt-2 text-ui text-[hsl(var(--muted-foreground))]">
-                Pick a primary intent, then tap “Pick for me” to get three trust-ranked options.
+                Pick a primary intent, then tap "Pick for me" to get three trust-ranked options.
               </p>
             </div>
           )}

@@ -419,7 +419,7 @@ export default function ActivityFeedPage() {
                                     submitComment(item.id)
                                   }
                                 }}
-                                placeholder={isAuthenticated ? 'Write a comment…' : 'Sign in to comment'}
+                                placeholder={isAuthenticated ? 'Write a comment...' : 'Sign in to comment'}
                                 disabled={!isAuthenticated || isCommentPending}
                                 maxLength={500}
                                 className="flex-1 h-9 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] disabled:opacity-60"
