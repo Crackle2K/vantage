@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { 
-  MapPin, Info, DollarSign, Star, 
+  Info, DollarSign, Star, 
   ChevronLeft, ChevronRight, ArrowRight, Mail
 } from "lucide-react"
 
@@ -158,6 +158,7 @@ function VideoPlaylist({ videoSources, posterSrc }: { videoSources: string[], po
 }
 
 // Lazy video component - reused across sections
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function LazyVideoComponent({ videoSrc, posterSrc }: { videoSrc: string, posterSrc: string }) {
   const { videoRef, shouldLoad } = useVideoLazyLoad()
   const [hasError, setHasError] = useState(false)
@@ -210,6 +211,7 @@ export default function HomePage() {
   )
   
   // State for carousel and testimonials
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [carouselIndex, setCarouselIndex] = useState(0)
   const [testimonialIndex, setTestimonialIndex] = useState(0)
   const [email, setEmail] = useState("")
@@ -279,7 +281,9 @@ export default function HomePage() {
      ═══════════════════════════════════════════ */
 
   // Carousel navigation
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const nextBusiness = () => setCarouselIndex((prev) => (prev + 1) % businesses.length)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const prevBusiness = () => setCarouselIndex((prev) => (prev - 1 + businesses.length) % businesses.length)
 
   // Testimonial navigation

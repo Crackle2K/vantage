@@ -11,7 +11,6 @@ interface BusinessCardProps {
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onViewDetails?: () => void;
-  viewMode?: 'grid' | 'feed';
   matchSummary?: string | null;
 }
 
@@ -66,13 +65,12 @@ export function BusinessCard({
   isFavorite,
   onToggleFavorite,
   onViewDetails,
-  viewMode = 'grid',
   matchSummary,
 }: BusinessCardProps) {
   const distance = distanceLabel(business.distance);
   const imageAspect = imageAspectClass(business);
   const proxyPhotoUrl = business.place_id
-    ? buildApiUrl(`/api/photos?place_id=${encodeURIComponent(business.place_id)}&maxwidth=${viewMode === 'grid' ? 1200 : 900}`)
+    ? buildApiUrl(`/api/photos?place_id=${encodeURIComponent(business.place_id)}&maxwidth=1200`)
     : undefined;
   const imageCandidates = prioritizeImageCandidates(business, proxyPhotoUrl);
   const canOpenDetails = typeof onViewDetails === 'function';
@@ -96,17 +94,13 @@ export function BusinessCard({
       className={cn(
         'group overflow-hidden transition-all duration-300 motion-reduce:transition-none',
         canOpenDetails && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]',
-        viewMode === 'grid'
-          ? 'break-inside-avoid rounded-[22px] bg-transparent hover:-translate-y-1 hover:scale-[1.01] motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100'
-          : 'flex flex-col rounded-[26px] border border-[hsl(var(--border))/0.85] bg-[hsl(var(--card))] shadow-[0_14px_34px_-24px_hsl(var(--shadow-soft)/0.65)] hover:-translate-y-0.5 hover:shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.68)] motion-reduce:hover:translate-y-0'
+        'break-inside-avoid rounded-[22px] bg-transparent hover:-translate-y-1 hover:scale-[1.01] motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100'
       )}
     >
       <div
         className={cn(
           'relative overflow-hidden bg-[hsl(var(--secondary))]',
-          viewMode === 'grid'
-            ? `${imageAspect} min-h-[320px] rounded-[22px] shadow-[0_22px_48px_-28px_hsl(var(--shadow-soft)/0.82)]`
-            : 'aspect-[16/9] sm:min-h-full sm:w-[320px] sm:flex-shrink-0 sm:aspect-auto'
+          `${imageAspect} min-h-[320px] rounded-[22px] shadow-[0_22px_48px_-28px_hsl(var(--shadow-soft)/0.82)]`
         )}
       >
         <div className="absolute inset-0">
@@ -119,7 +113,7 @@ export function BusinessCard({
             className="h-full w-full object-cover"
           />
         </div>
-        <div className={cn('absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/80 via-black/25 to-transparent', viewMode === 'grid' && 'h-20 from-black/62 via-black/18')} />
+        <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/62 via-black/18 to-transparent" />
 
         <div className="absolute right-3 top-3">
           <button
@@ -130,7 +124,7 @@ export function BusinessCard({
             }}
             className={cn(
               'flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-sm transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/20',
-              viewMode === 'grid' && 'opacity-100 sm:translate-y-1 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100',
+              'opacity-100 sm:translate-y-1 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100',
               isFavorite && 'border-[hsl(var(--primary))/0.35] bg-[hsl(var(--primary))/0.28] text-white'
             )}
             aria-label={isFavorite ? 'Remove favorite' : 'Save favorite'}
@@ -149,8 +143,8 @@ export function BusinessCard({
         )}
       </div>
 
-      <div className={cn('space-y-1', viewMode === 'grid' ? 'px-1 pb-1 pt-3' : 'p-4 sm:p-5')}>
-        <h3 className={cn('font-sub font-semibold leading-tight text-[hsl(var(--foreground))]', viewMode === 'grid' ? 'line-clamp-2 text-[1.1rem]' : 'line-clamp-2 text-xl')}>
+      <div className="space-y-1 px-1 pb-1 pt-3">
+        <h3 className="font-sub font-semibold leading-tight text-[hsl(var(--foreground))] line-clamp-2 text-[1.1rem]">
           {business.name}
         </h3>
         <p className="line-clamp-1 text-caption text-[hsl(var(--muted-foreground))]">

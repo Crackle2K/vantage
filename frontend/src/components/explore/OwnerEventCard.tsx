@@ -6,7 +6,6 @@ import type { OwnerEvent } from '@/types';
 
 interface OwnerEventCardProps {
   event: OwnerEvent;
-  viewMode?: 'grid' | 'feed';
   onViewBusiness: () => void;
 }
 
@@ -28,7 +27,7 @@ function eventDateLabel(start: string, end: string): string {
   return `${startLabel} to ${endLabel}`;
 }
 
-export function OwnerEventCard({ event, viewMode = 'grid', onViewBusiness }: OwnerEventCardProps) {
+export function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
   const dateLabel = eventDateLabel(event.start_time, event.end_time);
   const businessName = event.business_name || 'Claimed business';
   const category = event.business_category || 'Owner event';
@@ -46,11 +45,9 @@ export function OwnerEventCard({ event, viewMode = 'grid', onViewBusiness }: Own
       role="button"
       tabIndex={0}
       aria-label={`View ${businessName}`}
-      className={`overflow-hidden rounded-[26px] border border-[hsl(var(--border))/0.85] bg-[hsl(var(--card))] shadow-[0_14px_34px_-24px_hsl(var(--shadow-soft)/0.65)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.68)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))] motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${
-        viewMode === 'feed' ? 'sm:flex sm:gap-4' : ''
-      }`}
+      className="overflow-hidden rounded-[26px] border border-[hsl(var(--border))/0.85] bg-[hsl(var(--card))] shadow-[0_14px_34px_-24px_hsl(var(--shadow-soft)/0.65)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.68)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
-      <div className={`relative overflow-hidden bg-[hsl(var(--secondary))] ${viewMode === 'grid' ? 'aspect-[4/5]' : 'aspect-[16/9] sm:min-h-full sm:w-[320px] sm:flex-shrink-0 sm:aspect-auto'}`}>
+      <div className="relative aspect-[4/5] overflow-hidden bg-[hsl(var(--secondary))]">
         <BusinessImage
           primaryImage={event.image_url || event.business_image_url}
           category={category}
