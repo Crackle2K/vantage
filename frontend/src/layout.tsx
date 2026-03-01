@@ -1,7 +1,6 @@
 import type React from "react"
 import { Header } from "@/components/header"
 import { Link } from "react-router-dom"
-import { Heart } from "lucide-react"
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
