@@ -212,7 +212,6 @@ export default function Businesses() {
   const businessModalScrollRef = useRef(0);
   const laneOverlayScrollRef = useRef(0);
   const didAutoLocateRef = useRef(false);
-  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setShowPreferenceOnboarding(!!user && !user.preferences_completed);
@@ -450,25 +449,20 @@ export default function Businesses() {
     })).filter(lane => lane.items.length > 0);
   }, [filteredLanes, topActiveBusinesses]);
 
-  const openLane = (laneId: string) => {
-    laneOverlayScrollRef.current = window.scrollY;
-    setSelectedLaneId(laneId);
-  };
-
-  const closeLane = useCallback(() => {
+  const closeLane = () => {
     setSelectedLaneId(null);
     window.requestAnimationFrame(() => window.scrollTo({ top: laneOverlayScrollRef.current, behavior: 'auto' }));
-  }, []);
+  };
 
-  const openBusiness = useCallback((business: Business) => {
+  const openBusiness = (business: Business) => {
     businessModalScrollRef.current = window.scrollY;
     setSelectedBusiness(business);
-  }, []);
+  };
 
-  const closeBusiness = useCallback(() => {
+  const closeBusiness = () => {
     setSelectedBusiness(null);
     window.requestAnimationFrame(() => window.scrollTo({ top: businessModalScrollRef.current, behavior: 'auto' }));
-  }, []);
+  };
 
   const handleBusinessUpdated = (updatedBusiness: Business) => {
     const updatedId = getBusinessId(updatedBusiness);
@@ -477,7 +471,7 @@ export default function Businesses() {
     setSelectedBusiness(updatedBusiness);
   };
 
-  const handleEventView = useCallback(async (event: OwnerEvent) => {
+  const handleEventView = async (event: OwnerEvent) => {
     const existing = businesses.find((business) => getBusinessId(business) === event.business_id);
     if (existing) {
       openBusiness(existing);
@@ -489,7 +483,7 @@ export default function Businesses() {
     } catch {
       
     }
-  }, [businesses, openBusiness]);
+  };
 
   const handlePreferencesSaved = (updatedUser: User) => {
     setUser(updatedUser);
@@ -497,8 +491,7 @@ export default function Businesses() {
     fetchExploreData(location?.latitude ?? DEFAULT_LAT, location?.longitude ?? DEFAULT_LNG, radius, true, sortMode);
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const renderBusinessList = (items: Business[], laneId?: string) => {
+  const renderBusinessList = (items: Business[]) => {
     const laneBusinessIds = new Set(items.map((business) => getBusinessId(business)));
     const laneEvents = ownerEvents
       .filter((event) => laneBusinessIds.has(event.business_id))
@@ -517,11 +510,9 @@ export default function Businesses() {
       content.splice(Math.min(2, content.length), 0, { type: 'event', event: laneEvents[0] });
     }
 
-    const visibleContent = maxItems ? content.slice(0, maxItems) : content;
-
     return (
       <div className="columns-1 gap-6 sm:columns-2 xl:columns-3 2xl:columns-4">
-        {visibleContent.map((entry) => {
+        {content.map((entry) => {
           if (entry.type === 'event') {
             return (
               <div key={`event-${entry.event.id}`} className="mb-4 break-inside-avoid">
@@ -533,13 +524,13 @@ export default function Businesses() {
           const businessId = getBusinessId(entry.business);
           return (
             <div key={businessId} className="mb-4 break-inside-avoid">
-              <BusinessCard business={entry.business} isFavorite={savedIds.includes(businessId)} onToggleFavorite={() => void toggleSaved(entry.business)} onViewDetails={() => openBusiness(entry.business)} trustReasons={[]} />
+              <BusinessCard business={entry.business} isFavorite={savedIds.includes(businessId)} onToggleFavorite={() => void toggleSaved(entry.business)} onViewDetails={() => openBusiness(entry.business)} />
             </div>
           );
         })}
       </div>
     );
-  }, [ownerEvents, savedIds, toggleSaved, openBusiness, handleEventView]);
+  };
 
   const renderLoadingState = () => {
     if (sortMode === 'canonical') {
@@ -630,31 +621,13 @@ export default function Businesses() {
   const canonicalBrowseHasMore = sortMode === 'canonical' && !!browseAllLane && visibleCount < browseAllLane.items.length;
   const singleLaneHasMore = sortMode !== 'canonical' && filteredLanesWithoutTopActive.length > 0 && visibleCount < filteredLanesWithoutTopActive[0].items.length;
   const hasMoreInSelectedLane = !!selectedLane && visibleCount < selectedLane.items.length;
-
-  useEffect(() => {
-    const trigger = loadMoreTriggerRef.current;
-    if (!trigger || !canonicalBrowseHasMore) return;
-    
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          setVisibleCount((current) => current + LOAD_MORE_COUNT);
-        }
-      },
-      { rootMargin: '400px' }
-    );
-    
-    observer.observe(trigger);
-    return () => observer.disconnect();
-  }, [canonicalBrowseHasMore]);
-
-  const toggleTagFilter = useCallback((tag: string) => {
+  const toggleTagFilter = (tag: string) => {
     setSelectedTagFilters((current) => (
       current.includes(tag)
         ? current.filter((value) => value !== tag)
         : [...current, tag]
     ));
-  }, []);
+  };
 
   return (
     <div className="explore-page min-h-screen bg-[hsl(var(--background))]">
@@ -738,9 +711,10 @@ export default function Businesses() {
                         ? Math.min(visibleCount, lane.items.length)
                         : Math.min(LANE_PREVIEW_COUNT, lane.items.length)
                       : Math.min(visibleCount, lane.items.length);
+                    const visibleItems = lane.items.slice(0, laneLimit);
                     return (
                       <section key={lane.id} className="space-y-5 animate-fade-in-up">
-                        {renderBusinessList(visibleItems, lane.id)}
+                        {renderBusinessList(visibleItems)}
                       </section>
                     );
                   })}
@@ -752,10 +726,6 @@ export default function Businesses() {
                         Load more
                       </Button>
                     </div>
-                  )}
-
-                  {canonicalBrowseHasMore && (
-                    <div ref={loadMoreTriggerRef} className="h-px w-full" aria-hidden="true" />
                   )}
 
                   {singleLaneHasMore && (
@@ -799,7 +769,7 @@ export default function Businesses() {
                 </Button>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-6">
-                {renderBusinessList(selectedLane.items.slice(0, Math.min(visibleCount, selectedLane.items.length)), selectedLane.id)}
+                {renderBusinessList(selectedLane.items.slice(0, Math.min(visibleCount, selectedLane.items.length)))}
                 {hasMoreInSelectedLane && (
                   <div className="mt-6 flex justify-center">
                     <Button type="button" variant="outline" onClick={() => setVisibleCount((current) => current + LOAD_MORE_COUNT)} className="rounded-full px-5">

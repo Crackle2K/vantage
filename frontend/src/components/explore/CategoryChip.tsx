@@ -1,4 +1,3 @@
-import { memo } from 'react';
 import { cn } from '@/lib/utils';
 
 interface CategoryChipProps {
@@ -8,7 +7,7 @@ interface CategoryChipProps {
   onClick?: () => void;
 }
 
-function CategoryChipComponent({ label, count, selected = false, onClick }: CategoryChipProps) {
+export function CategoryChip({ label, count, selected = false, onClick }: CategoryChipProps) {
   return (
     <button
       type="button"
@@ -25,5 +24,3 @@ function CategoryChipComponent({ label, count, selected = false, onClick }: Cate
     </button>
   );
 }
-
-export const CategoryChip = memo(CategoryChipComponent);

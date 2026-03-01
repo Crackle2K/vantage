@@ -1,5 +1,4 @@
 import type { KeyboardEvent } from 'react';
-import { memo } from 'react';
 import { Heart, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BusinessImage } from '@/components/explore/BusinessImage';
@@ -58,9 +57,8 @@ function prioritizeImageCandidates(business: Business, proxyPhotoUrl?: string): 
   return [...directPhotos, ...proxyPhotos, ...placeholders];
 }
 
-function BusinessCardComponent({
+export function BusinessCard({
   business,
-  trustReasons,
   isFavorite,
   onToggleFavorite,
   onViewDetails,
@@ -152,13 +150,3 @@ function BusinessCardComponent({
     </article>
   );
 }
-
-export const BusinessCard = memo(BusinessCardComponent, (prevProps, nextProps) => {
-  return (
-    prevProps.business.id === nextProps.business.id &&
-    prevProps.business._id === nextProps.business._id &&
-    prevProps.isFavorite === nextProps.isFavorite &&
-    prevProps.business.checkins_today === nextProps.business.checkins_today &&
-    prevProps.business.last_activity_at === nextProps.business.last_activity_at
-  );
-});
