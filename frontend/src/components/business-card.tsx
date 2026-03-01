@@ -14,47 +14,47 @@ interface BusinessCardProps {
 
 const IMAGE_ASPECTS = ['aspect-[4/5]', 'aspect-[1/1]', 'aspect-[6/5]', 'aspect-[5/6]', 'aspect-[4/4.5]'] as const;
 
-function distanceLabel(distance?: number): string | null {
+function formatDistance(distance?: number): string | null {
   if (typeof distance !== 'number') {
     return null;
   }
   return `${distance.toFixed(1)} km away`;
 }
 
-function imageAspectClass(business: Business): string {
+function pickImageAspect(business: Business): string {
   const seed = `${business.id || business._id || business.name}:${business.category || ''}`;
   const hash = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return IMAGE_ASPECTS[hash % IMAGE_ASPECTS.length];
 }
 
-function prioritizeImageCandidates(business: Business, proxyPhotoUrl?: string): string[] {
-  const rawCandidates = [business.primary_image_url, business.image_url, ...(business.image_urls ?? []), business.image, proxyPhotoUrl]
+function collectImages(business: Business, proxyUrl?: string): string[] {
+  const raw = [business.primary_image_url, business.image_url, ...(business.image_urls ?? []), business.image, proxyUrl]
     .filter((value): value is string => !!value && value.trim().length > 0);
   const seen = new Set<string>();
-  const directPhotos: string[] = [];
-  const proxyPhotos: string[] = [];
+  const direct: string[] = [];
+  const proxied: string[] = [];
   const placeholders: string[] = [];
 
-  rawCandidates.forEach((candidate) => {
-    if (seen.has(candidate)) {
+  raw.forEach((url) => {
+    if (seen.has(url)) {
       return;
     }
-    seen.add(candidate);
+    seen.add(url);
 
-    if (candidate.startsWith('data:image')) {
-      placeholders.push(candidate);
-      return;
-    }
-
-    if (candidate.includes('/api/photos?')) {
-      proxyPhotos.push(candidate);
+    if (url.startsWith('data:image')) {
+      placeholders.push(url);
       return;
     }
 
-    directPhotos.push(candidate);
+    if (url.includes('/api/photos?')) {
+      proxied.push(url);
+      return;
+    }
+
+    direct.push(url);
   });
 
-  return [...directPhotos, ...proxyPhotos, ...placeholders];
+  return [...direct, ...proxied, ...placeholders];
 }
 
 export function BusinessCard({
@@ -63,19 +63,19 @@ export function BusinessCard({
   onToggleFavorite,
   onViewDetails,
 }: BusinessCardProps) {
-  const distance = distanceLabel(business.distance);
-  const imageAspect = imageAspectClass(business);
-  const proxyPhotoUrl = business.place_id
+  const distance = formatDistance(business.distance);
+  const aspect = pickImageAspect(business);
+  const proxyUrl = business.place_id
     ? buildApiUrl(`/api/photos?place_id=${encodeURIComponent(business.place_id)}&maxwidth=1200`)
     : undefined;
-  const imageCandidates = prioritizeImageCandidates(business, proxyPhotoUrl);
-  const canOpenDetails = typeof onViewDetails === 'function';
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (!canOpenDetails) {
+  const images = collectImages(business, proxyUrl);
+  const isClickable = typeof onViewDetails === 'function';
+  const handleKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (!isClickable) {
       return;
     }
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
       onViewDetails();
     }
   };
@@ -84,26 +84,26 @@ export function BusinessCard({
     <article
       onClick={onViewDetails}
       onKeyDown={handleKeyDown}
-      role={canOpenDetails ? 'button' : undefined}
-      tabIndex={canOpenDetails ? 0 : undefined}
-      aria-label={canOpenDetails ? `View ${business.name}` : undefined}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      aria-label={isClickable ? `View ${business.name}` : undefined}
       className={cn(
         'group overflow-hidden transition-all duration-300 motion-reduce:transition-none',
-        canOpenDetails && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]',
+        isClickable && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]',
         'break-inside-avoid rounded-[22px] bg-transparent hover:-translate-y-1 hover:scale-[1.01] motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100'
       )}
     >
       <div
         className={cn(
           'relative overflow-hidden bg-[hsl(var(--secondary))]',
-          `${imageAspect} min-h-[320px] rounded-[22px] shadow-[0_22px_48px_-28px_hsl(var(--shadow-soft)/0.82)]`
+          `${aspect} min-h-[320px] rounded-[22px] shadow-[0_22px_48px_-28px_hsl(var(--shadow-soft)/0.82)]`
         )}
       >
         <div className="absolute inset-0">
           <BusinessImage
-            key={imageCandidates.join('|') || business.name}
-            primaryImage={imageCandidates[0]}
-            imageCandidates={imageCandidates}
+            key={images.join('|') || business.name}
+            primaryImage={images[0]}
+            imageCandidates={images}
             category={business.category}
             alt={business.name}
             className="h-full w-full object-cover"
@@ -114,8 +114,8 @@ export function BusinessCard({
         <div className="absolute right-3 top-3">
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
+            onClick={(e) => {
+              e.stopPropagation();
               onToggleFavorite();
             }}
             className={cn(

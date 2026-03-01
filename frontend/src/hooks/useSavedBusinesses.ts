@@ -10,31 +10,35 @@ function getBusinessId(business: Business) {
   return business.id || business._id || business.name;
 }
 
-function readLocalIds(): string[] {
+function readLocal<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(LOCAL_IDS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
   } catch {
-    return [];
+    return fallback;
   }
+}
+
+function readLocalIds(): string[] {
+  const value = readLocal<unknown>(LOCAL_IDS_KEY, []);
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 function readLocalItems(): Business[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_ITEMS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const value = readLocal<unknown>(LOCAL_ITEMS_KEY, []);
+  return Array.isArray(value) ? (value as Business[]) : [];
 }
 
-function writeLocal(savedIds: string[], savedBusinesses: Business[]) {
-  localStorage.setItem(LOCAL_IDS_KEY, JSON.stringify(savedIds));
-  localStorage.setItem(LOCAL_ITEMS_KEY, JSON.stringify(savedBusinesses));
+function saveLocal(ids: string[], items: Business[]) {
+  localStorage.setItem(LOCAL_IDS_KEY, JSON.stringify(ids));
+  localStorage.setItem(LOCAL_ITEMS_KEY, JSON.stringify(items));
+}
+
+function applyLocalState(setSavedIds: (ids: string[]) => void, setSavedBusinesses: (items: Business[]) => void) {
+  const ids = readLocalIds();
+  setSavedIds(ids);
+  setSavedBusinesses(readLocalItems());
 }
 
 export function useSavedBusinesses() {
@@ -47,10 +51,9 @@ export function useSavedBusinesses() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     if (!isAuthenticated) {
-      const nextIds = readLocalIds();
-      setSavedIds(nextIds);
-      setSavedBusinesses(readLocalItems());
+      applyLocalState(setSavedIds, setSavedBusinesses);
       setLoading(false);
       return;
     }
@@ -74,34 +77,36 @@ export function useSavedBusinesses() {
   }, [refresh]);
 
   const toggleSaved = useCallback(async (business: Business) => {
-    const businessId = getBusinessId(business);
-    const wasSaved = savedIds.includes(businessId);
+    const id = getBusinessId(business);
+    const wasSaved = savedIds.includes(id);
 
+    const prevIds = savedIds;
+    const prevItems = savedBusinesses;
     const nextIds = wasSaved
-      ? savedIds.filter((id) => id !== businessId)
-      : [businessId, ...savedIds];
-    const nextBusinesses = wasSaved
-      ? savedBusinesses.filter((item) => getBusinessId(item) !== businessId)
-      : [business, ...savedBusinesses.filter((item) => getBusinessId(item) !== businessId)];
+      ? prevIds.filter((savedId) => savedId !== id)
+      : [id, ...prevIds];
+    const nextItems = wasSaved
+      ? prevItems.filter((item) => getBusinessId(item) !== id)
+      : [business, ...prevItems.filter((item) => getBusinessId(item) !== id)];
 
     setSavedIds(nextIds);
-    setSavedBusinesses(nextBusinesses);
+    setSavedBusinesses(nextItems);
     setError(null);
 
     if (!isAuthenticated) {
-      writeLocal(nextIds, nextBusinesses);
+      saveLocal(nextIds, nextItems);
       return;
     }
 
     try {
       if (wasSaved) {
-        await api.unsaveBusiness(businessId);
+        await api.unsaveBusiness(id);
       } else {
-        await api.saveBusiness(businessId);
+        await api.saveBusiness(id);
       }
     } catch (err) {
-      setSavedIds(savedIds);
-      setSavedBusinesses(savedBusinesses);
+      setSavedIds(prevIds);
+      setSavedBusinesses(prevItems);
       setError(err instanceof Error ? err.message : 'Failed to update saved businesses');
     }
   }, [isAuthenticated, savedBusinesses, savedIds]);

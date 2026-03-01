@@ -25,9 +25,7 @@ function resolveApiUrl(): string {
     if (!frontendIsLocal && configuredIsLocal) {
       return '/api';
     }
-  } catch {
-    
-  }
+  } catch {}
 
   return apiBase;
 }
@@ -52,9 +50,7 @@ async function throwApiError(response: Response, fallback: string): Promise<neve
     if (data?.detail && typeof data.detail === 'string') {
       message = data.detail;
     }
-  } catch {
-    
-  }
+  } catch {}
   throw new Error(message);
 }
 
@@ -70,19 +66,25 @@ function getAuthHeaders(includeJson: boolean = false): HeadersInit {
   return headers;
 }
 
+async function request<T>(path: string, init: RequestInit | undefined, fallback: string): Promise<T> {
+  const response = await fetch(buildApiUrl(path), init);
+  if (!response.ok) await throwApiError(response, fallback);
+  return response.json() as Promise<T>;
+}
+
+async function requestOrNull<T>(path: string, init?: RequestInit): Promise<T | null> {
+  const response = await fetch(buildApiUrl(path), init);
+  if (!response.ok) return null;
+  return response.json() as Promise<T>;
+}
+
 export const api = {
-  
   async login(email: string, password: string): Promise<AuthTokens> {
-    const response = await fetch(`${API_URL}/auth/login`, {
+    return request<AuthTokens>('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Login failed');
-    }
-    return response.json();
+    }, 'Login failed');
   },
 
   async register(
@@ -93,7 +95,7 @@ export const api = {
     recaptchaToken: string,
     recaptchaAction: string
   ): Promise<AuthTokens> {
-    const response = await fetch(`${API_URL}/auth/register`, {
+    return request<AuthTokens>('/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -104,55 +106,33 @@ export const api = {
         recaptcha_token: recaptchaToken,
         recaptcha_action: recaptchaAction,
       }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Registration failed');
-    }
-    return response.json();
+    }, 'Registration failed');
   },
 
   async getMe(): Promise<User> {
-    const response = await fetch(`${API_URL}/auth/me`, {
+    return request<User>('/auth/me', {
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error('Not authenticated');
-    return response.json();
+    }, 'Not authenticated');
   },
 
   async googleAuth(credential: string): Promise<AuthTokens> {
-    const response = await fetch(`${API_URL}/auth/google`, {
+    return request<AuthTokens>('/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Google authentication failed');
-    }
-    return response.json();
+    }, 'Google authentication failed');
   },
 
   async getUserProfile(userId: string): Promise<User> {
-    const response = await fetch(`${API_URL}/users/${userId}`);
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to fetch user profile');
-    }
-    return response.json();
+    return request<User>(`/users/${userId}`, undefined, 'Failed to fetch user profile');
   },
 
   async updateMyProfile(updates: UserUpdate): Promise<User> {
-    const response = await fetch(`${API_URL}/users/me`, {
+    return request<User>('/users/me', {
       method: 'PUT',
       headers: getAuthHeaders(true),
       body: JSON.stringify(updates),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to update profile');
-    }
-    return response.json();
+    }, 'Failed to update profile');
   },
 
   async getBusinesses(category?: string, sortBy?: string, search?: string): Promise<Business[]> {
@@ -160,166 +140,120 @@ export const api = {
     if (category) params.append('category', category);
     if (sortBy) params.append('sort_by', sortBy);
     if (search) params.append('search', search);
-    const response = await fetch(`${API_URL}/businesses?${params}`);
-    if (!response.ok) await throwApiError(response, 'Failed to fetch businesses');
-    return response.json();
+    return request<Business[]>(`/businesses?${params}`, undefined, 'Failed to fetch businesses');
   },
 
   async getNearbyBusinesses(lat: number, lng: number, radius: number): Promise<Business[]> {
-    const response = await fetch(
-      `${API_URL}/businesses/nearby?lat=${lat}&lng=${lng}&radius=${radius}`
+    return request<Business[]>(
+      `/businesses/nearby?lat=${lat}&lng=${lng}&radius=${radius}`,
+      undefined,
+      'Failed to fetch nearby businesses'
     );
-    if (!response.ok) await throwApiError(response, 'Failed to fetch nearby businesses');
-    return response.json();
   },
 
   async getBusiness(id: string): Promise<Business> {
-    const response = await fetch(`${API_URL}/businesses/${id}`);
-    if (!response.ok) await throwApiError(response, 'Failed to fetch business');
-    return response.json();
+    return request<Business>(`/businesses/${id}`, undefined, 'Failed to fetch business');
   },
 
   async updateMyPreferences(preferences: UserPreferencesUpdate): Promise<User> {
-    const response = await fetch(`${API_URL}/users/preferences`, {
+    return request<User>('/users/preferences', {
       method: 'PUT',
       headers: getAuthHeaders(true),
       body: JSON.stringify(preferences),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to update preferences');
-    }
-    return response.json();
+    }, 'Failed to update preferences');
   },
 
   async updateBusinessProfile(
     businessId: string,
     updates: { short_description?: string; known_for?: string[] }
   ): Promise<Business> {
-    const response = await fetch(`${API_URL}/businesses/${businessId}/profile`, {
+    return request<Business>(`/businesses/${businessId}/profile`, {
       method: 'PUT',
       headers: getAuthHeaders(true),
       body: JSON.stringify(updates),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to update business profile');
-    }
-    return response.json();
+    }, 'Failed to update business profile');
   },
 
   async getBusinessReviews(businessId: string): Promise<Review[]> {
-    const response = await fetch(`${API_URL}/reviews/business/${businessId}`);
-    if (!response.ok) throw new Error('Failed to fetch reviews');
-    return response.json();
+    return request<Review[]>(`/reviews/business/${businessId}`, undefined, 'Failed to fetch reviews');
   },
 
   async createReview(review: ReviewCreate): Promise<Review> {
-    const response = await fetch(`${API_URL}/reviews`, {
+    return request<Review>('/reviews', {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify(review),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to create review');
-    }
-    return response.json();
+    }, 'Failed to create review');
   },
 
   async getDeals(): Promise<Deal[]> {
-    const response = await fetch(`${API_URL}/deals`);
-    if (!response.ok) throw new Error('Failed to fetch deals');
-    return response.json();
+    return request<Deal[]>('/deals', undefined, 'Failed to fetch deals');
   },
 
   async getBusinessDeals(businessId: string): Promise<Deal[]> {
-    const response = await fetch(`${API_URL}/deals/business/${businessId}`);
-    if (!response.ok) throw new Error('Failed to fetch deals');
-    return response.json();
+    return request<Deal[]>(`/deals/business/${businessId}`, undefined, 'Failed to fetch deals');
   },
 
   async submitClaim(claim: ClaimCreate): Promise<BusinessClaim> {
-    const response = await fetch(`${API_URL}/claims`, {
+    return request<BusinessClaim>('/claims', {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify(claim),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to submit claim');
-    }
-    return response.json();
+    }, 'Failed to submit claim');
   },
 
   async getMyClaims(): Promise<BusinessClaim[]> {
-    const response = await fetch(`${API_URL}/claims/my`, {
+    return request<BusinessClaim[]>('/claims/my', {
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error('Failed to fetch claims');
-    return response.json();
+    }, 'Failed to fetch claims');
   },
 
   async getSubscriptionTiers(): Promise<TierInfo[]> {
-    const response = await fetch(`${API_URL}/subscriptions/tiers`);
-    if (!response.ok) throw new Error('Failed to fetch tiers');
-    return response.json();
+    return request<TierInfo[]>('/subscriptions/tiers', undefined, 'Failed to fetch tiers');
   },
 
   async createSubscription(sub: SubscriptionCreate): Promise<Subscription> {
-    const response = await fetch(`${API_URL}/subscriptions`, {
+    return request<Subscription>('/subscriptions', {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify(sub),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to create subscription');
-    }
-    return response.json();
+    }, 'Failed to create subscription');
   },
 
   async getMySubscriptions(): Promise<Subscription[]> {
-    const response = await fetch(`${API_URL}/subscriptions/my`, {
+    return request<Subscription[]>('/subscriptions/my', {
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error('Failed to fetch subscriptions');
-    return response.json();
+    }, 'Failed to fetch subscriptions');
   },
 
   async getBusinessSubscription(businessId: string): Promise<Subscription | null> {
-    const response = await fetch(`${API_URL}/subscriptions/business/${businessId}`, {
+    return requestOrNull<Subscription>(`/subscriptions/business/${businessId}`, {
       headers: getAuthHeaders(),
     });
-    if (!response.ok) return null;
-    return response.json();
   },
 
   async checkIn(data: CheckInCreate): Promise<CheckIn> {
-    const response = await fetch(`${API_URL}/checkins`, {
+    return request<CheckIn>('/checkins', {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.detail || 'Failed to check in');
-    }
-    return response.json();
+    }, 'Failed to check in');
   },
 
   async getActivityFeed(page: number = 1, pageSize: number = 20): Promise<{ items: ActivityFeedItem[]; has_more: boolean }> {
     const params = new URLSearchParams();
     params.append('page', page.toString());
     params.append('page_size', pageSize.toString());
-    const response = await fetch(`${API_URL}/feed?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch activity feed');
-    const data = await response.json();
-    
-    if (data && Array.isArray(data.items)) {
+    const data = await request<{ items?: ActivityFeedItem[]; has_more?: boolean } | ActivityFeedItem[]>(
+      `/feed?${params}`,
+      undefined,
+      'Failed to fetch activity feed'
+    );
+
+    if (!Array.isArray(data) && Array.isArray(data.items)) {
       return { items: data.items, has_more: !!data.has_more };
     }
-    
+
     if (Array.isArray(data)) {
       return { items: data, has_more: data.length >= pageSize };
     }
@@ -337,9 +271,11 @@ export const api = {
     params.append('lng', lng.toString());
     params.append('radius', radius.toString());
     params.append('limit', limit.toString());
-    const response = await fetch(`${API_URL}/activity/pulse?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch pulse');
-    const data = await response.json();
+    const data = await request<{ items?: ActivityPulseItem[] }>(
+      `/activity/pulse?${params}`,
+      undefined,
+      'Failed to fetch pulse'
+    );
     return Array.isArray(data?.items) ? data.items : [];
   },
 
@@ -361,70 +297,52 @@ export const api = {
     }
     if (options.includePast) params.append('include_past', 'true');
     if (typeof options.limit === 'number') params.append('limit', options.limit.toString());
-    const response = await fetch(`${API_URL}/events?${params}`);
-    if (!response.ok) throw new Error('Failed to fetch events');
-    return response.json();
+    return request<OwnerEvent[]>(`/events?${params}`, undefined, 'Failed to fetch events');
   },
 
   async createOwnerEvent(payload: OwnerEventCreate): Promise<OwnerEvent> {
-    const response = await fetch(`${API_URL}/events`, {
+    return request<OwnerEvent>('/events', {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to create event');
-    }
-    return response.json();
+    }, 'Failed to create event');
   },
 
   async getBusinessActivity(businessId: string): Promise<BusinessActivityStatus> {
-    const response = await fetch(`${API_URL}/businesses/${businessId}/activity`);
-    if (!response.ok) throw new Error('Failed to fetch business activity');
-    return response.json();
+    return request<BusinessActivityStatus>(
+      `/businesses/${businessId}/activity`,
+      undefined,
+      'Failed to fetch business activity'
+    );
   },
 
   async getMyCredibility(): Promise<UserCredibility> {
-    const response = await fetch(`${API_URL}/credibility/me`, {
+    return request<UserCredibility>('/credibility/me', {
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error('Failed to fetch credibility');
-    return response.json();
+    }, 'Failed to fetch credibility');
   },
 
   async toggleActivityLike(activityId: string): Promise<ActivityLikeResult> {
-    const response = await fetch(`${API_URL}/feed/${activityId}/like`, {
+    return request<ActivityLikeResult>(`/feed/${activityId}/like`, {
       method: 'POST',
       headers: getAuthHeaders(true),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to like activity');
-    }
-    return response.json();
+    }, 'Failed to like activity');
   },
 
   async getActivityComments(activityId: string): Promise<ActivityComment[]> {
-    const response = await fetch(`${API_URL}/feed/${activityId}/comments`);
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to fetch comments');
-    }
-    return response.json();
+    return request<ActivityComment[]>(
+      `/feed/${activityId}/comments`,
+      undefined,
+      'Failed to fetch comments'
+    );
   },
 
   async addActivityComment(activityId: string, content: string): Promise<{ comment: ActivityComment; comments: number }> {
-    const response = await fetch(`${API_URL}/feed/${activityId}/comments`, {
+    return request<{ comment: ActivityComment; comments: number }>(`/feed/${activityId}/comments`, {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify({ content }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.detail || 'Failed to add comment');
-    }
-    return response.json();
+    }, 'Failed to add comment');
   },
 
   async discoverBusinesses(
@@ -444,9 +362,7 @@ export const api = {
     if (refresh) params.append('refresh', 'true');
     params.append('sort_mode', sortMode);
     if (category) params.append('category', category);
-    const response = await fetch(`${API_URL}/discover?${params}`);
-    if (!response.ok) await throwApiError(response, 'Failed to discover businesses');
-    return response.json();
+    return request<Business[]>(`/discover?${params}`, undefined, 'Failed to discover businesses');
   },
 
   async getExploreLanes(
@@ -462,12 +378,11 @@ export const api = {
     params.append('limit', limit.toString());
     let response: Response;
     try {
-      response = await fetch(`${API_URL}/explore/lanes?${params}`, {
+      response = await fetch(buildApiUrl(`/explore/lanes?${params}`), {
         headers: getAuthHeaders(),
       });
     } catch {
-
-      response = await fetch(`${API_URL}/explore/lanes?${params}`);
+      response = await fetch(buildApiUrl(`/explore/lanes?${params}`));
       if (!response.ok) await throwApiError(response, 'Failed to fetch explore lanes');
       return response.json();
     }
@@ -494,44 +409,34 @@ export const api = {
     params.append('limit', String(options?.limit ?? 3));
     if (options?.category) params.append('category', options.category);
     if (options?.constraints?.length) params.append('constraints', options.constraints.join(','));
-    const response = await fetch(`${API_URL}/decide?${params}`);
-    if (!response.ok) await throwApiError(response, 'Failed to get decide picks');
-    return response.json();
+    return request<DecideResponse>(`/decide?${params}`, undefined, 'Failed to get decide picks');
   },
 
   async getSavedBusinesses(): Promise<SavedBusinessesResponse> {
-    const response = await fetch(`${API_URL}/saved`, {
+    return request<SavedBusinessesResponse>('/saved', {
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) await throwApiError(response, 'Failed to fetch saved businesses');
-    return response.json();
+    }, 'Failed to fetch saved businesses');
   },
 
   async saveBusiness(businessId: string): Promise<{ business_id: string; saved: boolean }> {
-    const response = await fetch(`${API_URL}/saved/${businessId}`, {
+    return request<{ business_id: string; saved: boolean }>(`/saved/${businessId}`, {
       method: 'POST',
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) await throwApiError(response, 'Failed to save business');
-    return response.json();
+    }, 'Failed to save business');
   },
 
   async unsaveBusiness(businessId: string): Promise<{ business_id: string; saved: boolean }> {
-    const response = await fetch(`${API_URL}/saved/${businessId}`, {
+    return request<{ business_id: string; saved: boolean }>(`/saved/${businessId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) await throwApiError(response, 'Failed to remove saved business');
-    return response.json();
+    }, 'Failed to remove saved business');
   },
 
   async purgeChains(): Promise<{ deleted: number; confidence_updated: number; total_scanned: number }> {
-    const response = await fetch(`${API_URL}/purge-chains`, {
+    return request<{ deleted: number; confidence_updated: number; total_scanned: number }>('/purge-chains', {
       method: 'DELETE',
       headers: getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error('Failed to purge chain businesses');
-    return response.json();
+    }, 'Failed to purge chain businesses');
   },
 
 };

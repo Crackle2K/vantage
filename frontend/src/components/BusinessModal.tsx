@@ -21,6 +21,17 @@ const categoryGradients: Record<string, string> = {
   health: 'from-brand-light to-brand-dark',
 }
 
+function getBusinessId(business: Business) {
+  return business.id || business._id || ''
+}
+
+function parseKnownFor(value: string) {
+  return value
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+}
+
 export function BusinessModal({ business, onClose, onBusinessUpdated }: BusinessModalProps) {
   const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
@@ -45,7 +56,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   const [knownFor, setKnownFor] = useState<string[]>(business.known_for || [])
   const [knownForInput, setKnownForInput] = useState((business.known_for || []).join(', '))
 
-  const businessId = business.id || business._id || ''
+  const businessId = getBusinessId(business)
   const isClaimedOwner = !!(isAuthenticated && business.is_claimed && user?.id === business.owner_id)
   const gradient = categoryGradients[business.category] || 'from-brand-light to-brand'
   const displayShortDescription = shortDescription || business.short_description || business.description || ''
@@ -85,6 +96,16 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   }, [loadData])
 
   useEffect(() => {
+    setShortDescription(business.short_description || business.description || '')
+    setKnownFor(business.known_for || [])
+    setKnownForInput((business.known_for || []).join(', '))
+    setEditingProfile(false)
+    setProfileError('')
+    setCheckedIn(false)
+    setSubmitError('')
+  }, [business])
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -122,10 +143,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
     setProfileError('')
     setProfileSaving(true)
     try {
-      const parsedTags = knownForInput
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean)
+      const parsedTags = parseKnownFor(knownForInput)
 
       const updated = await api.updateBusinessProfile(businessId, {
         short_description: shortDescription,
@@ -144,6 +162,38 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
     }
   }
 
+  const handleCheckIn = async () => {
+    if (checkedIn || checkingIn) return
+
+    setCheckingIn(true)
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+      }).catch(() => null)
+
+      await api.checkIn({
+        business_id: businessId,
+        latitude: pos?.coords.latitude,
+        longitude: pos?.coords.longitude,
+      })
+      setCheckedIn(true)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Check-in failed')
+    } finally {
+      setCheckingIn(false)
+    }
+  }
+
+  const handleClaimBusiness = () => {
+    onClose()
+    navigate(`/claim?business=${businessId}`)
+  }
+
+  const closeReviewForm = () => {
+    setShowReviewForm(false)
+    setSubmitError('')
+  }
+
   const tabs = [
     { id: 'info' as const, label: 'Details' },
     { id: 'reviews' as const, label: `Reviews (${reviews.length})` },
@@ -152,15 +202,12 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-      {}
       <div className="absolute inset-0 bg-scrim-dark/60 backdrop-blur-sm" />
 
-      {}
       <div
         className="relative w-full max-w-3xl max-h-[88vh] rounded-[28px] bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-2xl overflow-hidden flex flex-col animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
-        {}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-scrim-dark/40 backdrop-blur-sm text-on-primary flex items-center justify-center hover:bg-scrim-dark/60 transition-colors"
@@ -168,7 +215,6 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
           <X className="w-5 h-5" />
         </button>
 
-        {}
         <div className="relative h-56 overflow-hidden flex-shrink-0">
           {modalImageCandidates.length > 0 ? (
             <BusinessImage
@@ -185,7 +231,6 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-          {}
           <div className="absolute bottom-0 left-0 right-0 p-6">
             <h2 className="text-subheading font-bold text-on-primary mb-1 font-heading tracking-tight">{business.name}</h2>
             <div className="flex items-center gap-3 text-on-primary/80 text-ui">
@@ -208,7 +253,6 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
           </div>
         </div>
 
-        {}
         <div className="flex border-b border-[hsl(var(--border))] flex-shrink-0">
           {tabs.map(tab => (
             <button
@@ -229,12 +273,9 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
           ))}
         </div>
 
-        {}
         <div className="flex-1 overflow-y-auto p-6">
-          {}
           {activeTab === 'info' && (
             <div className="space-y-5 animate-fade-in">
-              {}
               {activityStatus && activityStatus.is_active_today && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-success dark:bg-success/20 border border-success dark:border-success">
                   <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
@@ -245,7 +286,6 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 </div>
               )}
 
-              {}
               {business.is_claimed ? (
                 <div className="flex items-center gap-2 text-ui text-success dark:text-success">
                   <CheckCircle2 className="w-4 h-4" />
@@ -253,7 +293,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 </div>
               ) : business.is_seed !== false && isAuthenticated && user?.role === 'business_owner' ? (
                 <button
-                  onClick={() => { onClose(); navigate(`/claim?business=${businessId}`) }}
+                  onClick={handleClaimBusiness}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-brand/30 text-brand hover:bg-brand/5 transition-colors text-ui font-medium"
                 >
                   <Award className="w-4 h-4" />
@@ -261,28 +301,9 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 </button>
               ) : null}
 
-              {}
               {isAuthenticated && (
                 <button
-                  onClick={async () => {
-                    if (checkedIn || checkingIn) return
-                    setCheckingIn(true)
-                    try {
-                      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-                      }).catch(() => null)
-                      await api.checkIn({
-                        business_id: businessId,
-                        latitude: pos?.coords.latitude,
-                        longitude: pos?.coords.longitude,
-                      })
-                      setCheckedIn(true)
-                    } catch (err) {
-                      setSubmitError(err instanceof Error ? err.message : 'Check-in failed')
-                    } finally {
-                      setCheckingIn(false)
-                    }
-                  }}
+                  onClick={handleCheckIn}
                   disabled={checkingIn || checkedIn}
                   className={cn(
                     'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-ui font-medium transition-all',
@@ -435,10 +456,8 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
             </div>
           )}
 
-          {}
           {activeTab === 'reviews' && (
             <div className="space-y-5 animate-fade-in">
-              {}
               {isAuthenticated && !showReviewForm && (
                 <button
                   onClick={() => setShowReviewForm(true)}
@@ -493,7 +512,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                     <p className="text-ui text-error">{submitError}</p>
                   )}
                   <div className="flex gap-2 justify-end">
-                    <button type="button" onClick={() => setShowReviewForm(false)} className="px-4 py-2 rounded-xl text-ui font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] transition-colors">
+                    <button type="button" onClick={closeReviewForm} className="px-4 py-2 rounded-xl text-ui font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] transition-colors">
                       Cancel
                     </button>
                     <button type="submit" disabled={submitting || reviewComment.length < 5} className="px-5 py-2 rounded-xl text-ui font-medium gradient-primary text-on-primary disabled:opacity-50 flex items-center gap-2">
@@ -504,7 +523,6 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 </form>
               )}
 
-              {}
               {loading ? (
                 <div className="space-y-4">
                   {[1,2,3].map(i => <div key={i} className="h-24 rounded-xl skeleton" />)}
@@ -547,7 +565,6 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
             </div>
           )}
 
-          {}
           {activeTab === 'deals' && (
             <div className="space-y-4 animate-fade-in">
               {loading ? (

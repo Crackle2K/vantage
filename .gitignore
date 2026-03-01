@@ -17,12 +17,6 @@ __pycache__/
 dist/
 build/
 
-# Temp/generated files
-fix_jsx.py
-requirements-filtered.txt
-requirements-filtered2.txt
-global-packages.txt
-
 # OS files
 .DS_Store
 Thumbs.db

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Loader2, MapPin, Navigation, Sparkles } from 'lucide-react';
 import { api } from '@/api';
 import { BusinessModal } from '@/components/BusinessModal';
@@ -60,6 +60,11 @@ function buildDescription(business: Business): string {
   return business.short_description || business.description || `A strong local pick in ${business.category}.`;
 }
 
+function imageCandidatesFor(business: Business) {
+  return [business.primary_image_url, business.image_url, ...(business.image_urls ?? []), business.image]
+    .filter((value): value is string => !!value && value.trim().length > 0);
+}
+
 function DecideSkeletonCard() {
   return (
     <div className="overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))]">
@@ -97,7 +102,7 @@ export default function DecidePage() {
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const modalScrollRef = useRef(0);
 
-  useEffect(() => {
+  const fetchLocation = useCallback((onSuccess?: () => void) => {
     if (!navigator.geolocation) {
       return;
     }
@@ -110,6 +115,7 @@ export default function DecidePage() {
         });
         setUsingDefaultArea(false);
         setLocationLoading(false);
+        onSuccess?.();
       },
       () => {
         setLocationLoading(false);
@@ -117,6 +123,10 @@ export default function DecidePage() {
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }, []);
+
+  useEffect(() => {
+    fetchLocation();
+  }, [fetchLocation]);
 
   const toggleRankingSummary = useMemo(() => {
     if (!primaryIntent) {
@@ -163,24 +173,7 @@ export default function DecidePage() {
   };
 
   const requestLocation = () => {
-    if (!navigator.geolocation) {
-      return;
-    }
-    setLocationLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        setUsingDefaultArea(false);
-        setLocationLoading(false);
-      },
-      () => {
-        setLocationLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
+    fetchLocation();
   };
 
   const handlePick = async () => {
@@ -372,8 +365,7 @@ export default function DecidePage() {
                 {results.map((business) => {
                   const businessId = getBusinessId(business);
                   const isSaved = savedIds.includes(businessId);
-                  const images = [business.primary_image_url, business.image_url, ...(business.image_urls ?? []), business.image]
-                    .filter((value): value is string => !!value && value.trim().length > 0);
+                  const images = imageCandidatesFor(business);
                   return (
                     <article key={businessId} className="overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.6)]">
                       <div className="relative aspect-[16/10] overflow-hidden bg-[hsl(var(--secondary))]">
