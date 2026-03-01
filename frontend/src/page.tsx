@@ -160,7 +160,7 @@ export default function HomePage() {
       icon: DollarSign,
       title: "Claim & Conversion",
       description: "Owners claim listings, launch deals, and turn discovery into real foot traffic.",
-      image: "/Images/feature-claim-conversion.svg"
+      image: "/Images/Pricing.png"
     },
     {
       id: 1,
@@ -168,7 +168,7 @@ export default function HomePage() {
       icon: Star,
       title: "Verified Trust System",
       description: "We rank businesses using verified check-ins, credibility-weighted reviews, and live activity signals. This eliminates fake or inactive listings and makes results genuinely trustworthy.",
-      image: "/Images/feature-verified-trust.svg"
+      image: "/Images/Explore.png"
     },
     {
       id: 2,
@@ -176,7 +176,7 @@ export default function HomePage() {
       icon: Info,
       title: "Community Engagement Feed ",
       description: "Users engage with real local activity (verified check-ins, likes, comments, active-today signals), turning Vantage from a one-time search into a habit-forming local community platform.",
-      image: "/Images/feature-community-feed.svg"
+      image: "/Images/Activity.png"
     }
   ]
 
@@ -414,7 +414,7 @@ export default function HomePage() {
             </div>
 
             {}
-            <div className="rounded-2xl overflow-hidden shadow-2xl min-h-[500px]">
+            <div className="rounded-2xl overflow-hidden shadow-2xl aspect-[16/9] w-full">
               <img
                 src={tabFeatures[activeTab].image}
                 alt={tabFeatures[activeTab].title}
