@@ -9,7 +9,7 @@ dnspython==2.8.0
 ecdsa==0.19.1
 email_validator==2.2.0
 fastapi==0.128.0
-h11==0.14.0
+h11==0.16.0
 httptools==0.7.1
 idna==3.11
 motor==3.7.1
