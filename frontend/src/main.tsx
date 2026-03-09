@@ -17,7 +17,7 @@ import DashboardPage from './pages/DashboardPage'
 import ClaimBusinessPage from './pages/ClaimBusinessPage'
 import DecidePage from './pages/DecidePage'
 import SavedPage from './pages/SavedPage'
-import './index.scss'
+import './index.css'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 

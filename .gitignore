@@ -8,6 +8,7 @@ message.txt
 
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -16,6 +17,11 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
 
 # OS files
 .DS_Store
