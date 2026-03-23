@@ -262,7 +262,7 @@ export default function SignUpPage() {
           </div>
 
           {}
-          <div className="flex justify-center">
+          <div className="flex justify-center google-btn-override">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
               onError={handleGoogleError}

@@ -113,6 +113,10 @@ body {
   line-height: 1.6;
 }
 
+.google-btn-override * {
+  font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif !important;
+}
+
 .font-heading {
   font-family: "Space Grotesk", system-ui, sans-serif;
   letter-spacing: -0.03em;
