@@ -39,7 +39,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
     role: UserRole = UserRole.CUSTOMER
-    recaptcha_token: Optional[str] = None
+    recaptcha_token: str = Field(..., min_length=1)
     recaptcha_action: Optional[str] = None
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -131,7 +131,37 @@ def _request_recaptcha_assessment(token: str, expected_action: str) -> dict:
         return json.loads(body)
 
 async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -> None:
-    return
+    if (
+        not RECAPTCHA_ENTERPRISE_PROJECT_ID
+        or not RECAPTCHA_ENTERPRISE_API_KEY
+        or not RECAPTCHA_ENTERPRISE_SITE_KEY
+    ):
+        return  # reCAPTCHA not configured; skip server-side verification
+
+    action = requested_action or RECAPTCHA_SIGNUP_ACTION
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, _request_recaptcha_assessment, token, action
+        )
+    except (urllib_error.URLError, OSError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CAPTCHA verification service unavailable"
+        )
+
+    token_properties = result.get("tokenProperties", {})
+    if not token_properties.get("valid", False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CAPTCHA verification failed: invalid token"
+        )
+
+    score = result.get("riskAnalysis", {}).get("score", 0.0)
+    if score < RECAPTCHA_MIN_SCORE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CAPTCHA verification failed: suspicious activity detected"
+        )
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 async def register(user_data: RegisterRequest):

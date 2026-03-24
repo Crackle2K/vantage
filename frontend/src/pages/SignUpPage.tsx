@@ -13,7 +13,12 @@ const RECAPTCHA_SIGNUP_ACTION = 'SIGNUP';
 
 type RecaptchaEnterprise = {
   ready: (cb: () => void) => void;
-  render: (container: string | HTMLElement, params: { sitekey: string; action?: string }) => number;
+  render: (container: string | HTMLElement, params: {
+    sitekey: string;
+    action?: string;
+    callback?: (token: string) => void;
+    'expired-callback'?: () => void;
+  }) => number;
   getResponse: (widgetId?: number) => string;
   reset: (widgetId?: number) => void;
 };
@@ -38,6 +43,7 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [widgetId, setWidgetId] = useState<number | null>(null);
+  const [recaptchaToken, setRecaptchaToken] = useState('');
   const recaptchaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -53,6 +59,8 @@ export default function SignUpPage() {
         const id = recaptcha.render(recaptchaRef.current, {
           sitekey: RECAPTCHA_SITE_KEY,
           action: RECAPTCHA_SIGNUP_ACTION,
+          callback: (token: string) => setRecaptchaToken(token),
+          'expired-callback': () => setRecaptchaToken(''),
         });
         setWidgetId(id);
       });
@@ -91,8 +99,10 @@ export default function SignUpPage() {
       return;
     }
 
-    // reCAPTCHA optional - pass empty string if not available
-    const recaptchaToken = widgetId !== null ? (window.grecaptcha?.enterprise?.getResponse?.(widgetId) || '') : '';
+    if (!recaptchaToken) {
+      setError('Please complete the CAPTCHA verification');
+      return;
+    }
 
     setLoading(true);
     const { error: err } = await signUp(name, email, password, role, recaptchaToken, RECAPTCHA_SIGNUP_ACTION);
@@ -102,6 +112,7 @@ export default function SignUpPage() {
       setLoading(false);
       if (widgetId !== null) {
         window.grecaptcha?.enterprise.reset(widgetId);
+        setRecaptchaToken('');
       }
     } else {
       navigate('/businesses');
@@ -243,7 +254,7 @@ export default function SignUpPage() {
 
             <Button
               type="submit"
-              disabled={loading || !name || !email || !password || !confirmPassword}
+              disabled={loading || !name || !email || !password || !confirmPassword || !recaptchaToken}
               className="w-full h-11 gradient-primary text-on-primary border-0 rounded-xl shadow-md shadow-brand/20 hover:shadow-lg transition-all font-medium"
             >
               {loading ? (
