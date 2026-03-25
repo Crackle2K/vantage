@@ -68,6 +68,10 @@ def _pulse_business_snapshot(business: dict) -> dict:
 class ActivityCommentCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=500)
 
+class UserPostCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=500)
+    business_id: Optional[str] = None
+
 class ActivityComment(BaseModel):
     id: str
     user_id: str
@@ -85,7 +89,7 @@ def activity_helper(doc) -> dict:
     if doc:
         doc["id"] = str(doc.pop("_id"))
         doc.pop("comments_list", None)
-        doc.pop("liked_by", None)
+        # Keep liked_by so the frontend can determine if the current user liked this item
     return doc
 
 def owner_event_helper(doc, business: Optional[dict] = None) -> dict:
@@ -238,6 +242,49 @@ async def confirm_checkin(
     await _update_user_credibility(current_user.id)
 
     return {"status": "confirmed"}
+
+@router.post("/feed/posts", status_code=status.HTTP_201_CREATED)
+async def create_user_post(
+    data: UserPostCreate,
+    current_user: User = Depends(get_current_user),
+):
+    activity_feed = get_activity_feed_collection()
+    businesses = get_businesses_collection()
+
+    business_id = "community"
+    business_name = "Community"
+    business_category = None
+
+    if data.business_id:
+        try:
+            business = await businesses.find_one({"_id": _oid(data.business_id, "business ID")})
+            if business:
+                business_id = data.business_id
+                business_name = business.get("name", "Local Business")
+                business_category = business.get("category")
+        except HTTPException:
+            pass
+
+    post_doc = {
+        "activity_type": ActivityType.USER_POST,
+        "user_id": current_user.id,
+        "user_name": current_user.name,
+        "business_id": business_id,
+        "business_name": business_name,
+        "business_category": business_category,
+        "title": f"{current_user.name} shared a post",
+        "description": data.content.strip(),
+        "likes": 0,
+        "liked_by": [],
+        "comments": 0,
+        "comments_list": [],
+        "created_at": datetime.utcnow(),
+    }
+
+    result = await activity_feed.insert_one(post_doc)
+    created = await activity_feed.find_one({"_id": result.inserted_id})
+    return activity_helper(created)
+
 
 @router.get("/feed")
 async def get_activity_feed(

@@ -345,6 +345,14 @@ export const api = {
     }, 'Failed to add comment');
   },
 
+  async createPost(content: string, businessId?: string): Promise<ActivityFeedItem> {
+    return request<ActivityFeedItem>('/feed/posts', {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ content, business_id: businessId }),
+    }, 'Failed to create post');
+  },
+
   async discoverBusinesses(
     lat: number,
     lng: number,

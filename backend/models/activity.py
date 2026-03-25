@@ -89,6 +89,7 @@ class ActivityType(str, Enum):
     EVENT_CREATED = "event_created"
     BUSINESS_CLAIMED = "business_claimed"
     MILESTONE = "milestone"
+    USER_POST = "user_post"
 
 class ActivityFeedItem(BaseModel):
     id: str
