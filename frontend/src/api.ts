@@ -432,6 +432,14 @@ export const api = {
     }, 'Failed to remove saved business');
   },
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    return request<{ message: string }>('/users/me/password', {
+      method: 'PUT',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }, 'Failed to change password');
+  },
+
   async purgeChains(): Promise<{ deleted: number; confidence_updated: number; total_scanned: number }> {
     return request<{ deleted: number; confidence_updated: number; total_scanned: number }>('/purge-chains', {
       method: 'DELETE',

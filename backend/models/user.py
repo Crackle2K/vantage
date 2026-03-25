@@ -70,6 +70,10 @@ class UserPreferencesUpdate(BaseModel):
     discovery_mode: DiscoveryMode = DiscoveryMode.TRUSTED
     preferences_completed: bool = True
 
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str

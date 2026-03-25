@@ -2,7 +2,8 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends
 from bson import ObjectId
 from bson.errors import InvalidId
-from models.user import User, UserUpdate, UserPreferencesUpdate
+from models.user import User, UserUpdate, UserPreferencesUpdate, PasswordChange
+from models.auth import verify_password, get_password_hash
 from models.auth import get_current_user
 from database.mongodb import get_users_collection
 
@@ -92,6 +93,37 @@ async def update_user_profile(
             )
     updated_user = await users_collection.find_one({"_id": user_key})
     return _serialize_user(updated_user)
+
+@router.put("/me/password", status_code=200)
+async def change_password(
+    password_change: PasswordChange,
+    current_user: User = Depends(get_current_user)
+):
+    users_collection = _users()
+    user_key = _user_oid(current_user.id)
+
+    user_in_db = await users_collection.find_one({"_id": user_key})
+    if not user_in_db:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if not user_in_db.get("hashed_password"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password change is not available for accounts signed in with Google"
+        )
+
+    if not verify_password(password_change.current_password, user_in_db["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+
+    hashed = get_password_hash(password_change.new_password)
+    await users_collection.update_one(
+        {"_id": user_key},
+        {"$set": {"hashed_password": hashed, "updated_at": datetime.utcnow()}}
+    )
+    return {"message": "Password updated successfully"}
 
 @router.put("/preferences", response_model=User)
 async def update_user_preferences(

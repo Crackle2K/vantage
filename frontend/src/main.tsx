@@ -10,6 +10,7 @@ import Businesses from './pages/Businesses'
 import LoginPage from './pages/LoginPage'
 import SignUpPage from './pages/SignUpPage'
 import AccountPage from './pages/AccountPage'
+import SettingsPage from './pages/SettingsPage'
 import UserProfilePage from './pages/UserProfilePage'
 import PricingPage from './pages/PricingPage'
 import ActivityFeedPage from './pages/ActivityFeedPage'
@@ -40,6 +41,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignUpPage />} />
                 <Route path="/account" element={<AccountPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/user/:userId" element={<UserProfilePage />} />
               </Routes>
             </RootLayout>

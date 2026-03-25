@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Award, LayoutDashboard, LogIn, LogOut, Menu, Moon, Sun, User, UserPlus, X } from 'lucide-react';
+import { Award, LayoutDashboard, LogIn, LogOut, Menu, Moon, Settings, Sun, User, UserPlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -133,6 +133,16 @@ export function Header() {
                       )}
                       <button
                         onClick={() => {
+                          navigate('/settings');
+                          setUserMenuOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-ui text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
+                      >
+                        <Settings className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
+                        Settings
+                      </button>
+                      <button
+                        onClick={() => {
                           navigate('/account');
                           setUserMenuOpen(false);
                         }}
@@ -218,6 +228,13 @@ export function Header() {
                   Claim Business
                 </Link>
               )}
+              <Link
+                to="/settings"
+                className="flex items-center gap-2.5 rounded-lg px-4 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]"
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link>
               <Link
                 to="/account"
                 className="flex items-center gap-2.5 rounded-lg px-4 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]"

@@ -161,6 +161,8 @@ export interface User {
   created_at?: string;
   profile_picture?: string;
   about_me?: string;
+  auth_provider?: string;
+  google_id?: string;
   preferred_categories?: string[];
   preferred_vibes?: string[];
   prefer_independent?: number;
