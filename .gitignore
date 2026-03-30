@@ -4,6 +4,7 @@
 *.env
 backend/.env
 message.txt
+PRD.md
 
 # Python
 venv/
