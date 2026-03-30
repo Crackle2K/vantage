@@ -211,7 +211,7 @@ async def _fetch_place_photo_reference(client: httpx.AsyncClient, place_id: str)
             return ""
         return _choose_photo_reference(photos)
     except Exception as e:
-        print(f"Google Details photo lookup failed for {place_id}: {e}")
+        print(f"Google Details photo lookup failed for {place_id}: {type(e).__name__}")
         return ""
 
 async def _fetch_place_photo_references(client: httpx.AsyncClient, place_id: str) -> list[str]:
@@ -232,7 +232,7 @@ async def _fetch_place_photo_references(client: httpx.AsyncClient, place_id: str
             return []
         return _extract_photo_references(photos)
     except Exception as e:
-        print(f"Google Details photo list lookup failed for {place_id}: {e}")
+        print(f"Google Details photo list lookup failed for {place_id}: {type(e).__name__}")
         return []
 
 async def _fetch_place_editorial_summary(client: httpx.AsyncClient, place_id: str) -> str:
@@ -259,7 +259,7 @@ async def _fetch_place_editorial_summary(client: httpx.AsyncClient, place_id: st
             return ""
         return summary
     except Exception as e:
-        print(f"Google Details summary lookup failed for {place_id}: {e}")
+        print(f"Google Details summary lookup failed for {place_id}: {type(e).__name__}")
         return ""
 
 def _needs_photo_enrichment(doc: dict) -> bool:
@@ -535,4 +535,4 @@ async def _log_api_call(endpoint: str, params: dict, status: str, result_count: 
             "called_at": datetime.utcnow(),
         })
     except Exception as e:
-        print(f"Failed to log API call: {e}")
+        print(f"Failed to log API call: {type(e).__name__}")
