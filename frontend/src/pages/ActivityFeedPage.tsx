@@ -5,7 +5,7 @@ import type { ActivityFeedItem, UserCredibility, CredibilityTier, ActivityCommen
 import {
   MapPin, Star, Tag, Calendar, Award, TrendingUp,
   ThumbsUp, MessageCircle, Clock, Shield, CheckCircle2,
-  Users, Flame, ChevronUp, Send
+  Users, Flame, ChevronUp, Send, PenLine
 } from 'lucide-react'
 
 const activityIcons: Record<string, typeof MapPin> = {
@@ -15,6 +15,7 @@ const activityIcons: Record<string, typeof MapPin> = {
   event_created: Calendar,
   business_claimed: Award,
   milestone: TrendingUp,
+  user_post: PenLine,
 }
 
 const activityColors: Record<string, string> = {
@@ -24,6 +25,7 @@ const activityColors: Record<string, string> = {
   event_created: 'bg-brand-tertiary',
   business_claimed: 'bg-success',
   milestone: 'bg-warning',
+  user_post: 'bg-brand',
 }
 
 const credibilityBadges: Record<CredibilityTier, { label: string; color: string; icon: typeof Shield }> = {
@@ -74,6 +76,8 @@ export default function ActivityFeedPage() {
   const [pendingLikes, setPendingLikes] = useState<Set<string>>(new Set())
   const [pendingComments, setPendingComments] = useState<Set<string>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
+  const [postDraft, setPostDraft] = useState('')
+  const [postPending, setPostPending] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const loadFeed = useCallback(async (pageNum: number, append: boolean = false) => {
@@ -209,6 +213,25 @@ export default function ActivityFeedPage() {
     }
   }, [commentDrafts, isAuthenticated, pendingComments])
 
+  const submitPost = useCallback(async () => {
+    const content = postDraft.trim()
+    if (!content || !isAuthenticated || postPending) return
+    setPostPending(true)
+    setActionError(null)
+    try {
+      const newItem = await api.createPost(content)
+      setFeedItems(prev => [newItem, ...prev])
+      if (user?.id && newItem.liked_by?.includes(user.id)) {
+        setLikedItems(prev => new Set(prev).add(newItem.id))
+      }
+      setPostDraft('')
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not create post.')
+    } finally {
+      setPostPending(false)
+    }
+  }, [postDraft, isAuthenticated, postPending, user?.id])
+
   useEffect(() => {
     if (isAuthenticated) {
       api.getMyCredibility().then(setMyCredibility).catch(() => {})
@@ -253,6 +276,46 @@ export default function ActivityFeedPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {}
           <div className="lg:col-span-2 space-y-4">
+            {isAuthenticated && (
+              <div className="glass-card rounded-2xl p-4 animate-fade-in-up">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center flex-shrink-0">
+                    <PenLine className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <textarea
+                      value={postDraft}
+                      onChange={(e) => setPostDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault()
+                          submitPost()
+                        }
+                      }}
+                      placeholder="Share something with your community..."
+                      disabled={postPending}
+                      maxLength={500}
+                      rows={2}
+                      className="w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2 text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] resize-none disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    />
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                        {postDraft.length}/500 · Ctrl+Enter to post
+                      </span>
+                      <button
+                        onClick={submitPost}
+                        disabled={postPending || !postDraft.trim()}
+                        className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg gradient-primary text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        {postPending ? 'Posting…' : 'Post'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {actionError && (
               <div className="glass-card rounded-2xl p-3 border border-red-300/40 bg-red-500/5">
                 <p className="text-caption text-red-600 dark:text-red-400">{actionError}</p>
@@ -361,9 +424,10 @@ export default function ActivityFeedPage() {
                           <button
                             onClick={() => toggleLike(item.id)}
                             disabled={isLikePending}
-                            className={`flex items-center gap-1.5 text-caption transition-colors ${isLiked ? 'text-brand' : 'text-[hsl(var(--muted-foreground))] hover:text-brand'} ${isLikePending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`flex items-center gap-1.5 text-caption transition-colors ${isLiked ? 'text-brand font-medium' : 'text-[hsl(var(--muted-foreground))] hover:text-brand'} ${isLikePending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title={isLiked ? 'Unlike' : 'Like'}
                           >
-                            <ThumbsUp className="w-3.5 h-3.5" />
+                            <ThumbsUp className={`w-3.5 h-3.5 ${isLiked ? 'fill-current' : ''}`} />
                             <span>{item.likes > 0 ? item.likes : (isLiked ? 1 : 'Like')}</span>
                           </button>
                           <button

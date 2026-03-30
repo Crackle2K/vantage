@@ -250,7 +250,7 @@ export interface TierInfo {
 
 export type CheckInStatus = 'self_reported' | 'geo_verified' | 'receipt_verified' | 'community_confirmed';
 export type CredibilityTier = 'new' | 'regular' | 'trusted' | 'local_guide' | 'ambassador';
-export type ActivityType = 'checkin' | 'review' | 'deal_posted' | 'event_created' | 'business_claimed' | 'milestone';
+export type ActivityType = 'checkin' | 'review' | 'deal_posted' | 'event_created' | 'business_claimed' | 'milestone' | 'user_post';
 
 export interface CheckIn {
   id: string;
