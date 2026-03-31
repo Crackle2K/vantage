@@ -5,7 +5,7 @@ import type { ActivityFeedItem, UserCredibility, CredibilityTier, ActivityCommen
 import {
   MapPin, Star, Tag, Calendar, Award, TrendingUp,
   ThumbsUp, MessageCircle, Clock, Shield, CheckCircle2,
-  Users, Flame, ChevronUp, Send, PenLine
+  ChevronUp, Send, PenLine, Zap, Compass, Crown
 } from 'lucide-react'
 
 const activityIcons: Record<string, typeof MapPin> = {
