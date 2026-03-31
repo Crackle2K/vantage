@@ -596,23 +596,16 @@ export default function ActivityFeedPage() {
                   const isCurrentTier = myCredibility?.tier === tier
                   return (
                     <div key={tier} className="relative">
-                      {/* Connector line between tiers */}
-                      {index < arr.length - 1 && (
-                        <div className="absolute left-[18px] top-[44px] w-0.5 h-3.5 bg-[hsl(var(--border))]/60" />
-                      )}
                       <div className={`flex items-center gap-3 px-2 py-2 rounded-xl transition-all duration-200 ${
                         isCurrentTier
                           ? 'bg-[hsl(var(--secondary))]/70 ring-1 ring-brand/25'
                           : 'hover:bg-[hsl(var(--secondary))]/30'
                       }`}>
-                        {/* Emoji icon */}
-                        <div className={`relative w-9 h-9 rounded-xl ${badge.bg} flex items-center justify-center flex-shrink-0`}>
-                          <span className="text-lg leading-none">{badge.emoji}</span>
-                          {/* Current-tier dot */}
-                          {isCurrentTier && (
-                            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[hsl(var(--background))]" />
-                          )}
-                        </div>
+                        {/* Current-tier dot */}
+                        {isCurrentTier && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                        )}
+                        {!isCurrentTier && <span className="w-2 h-2 flex-shrink-0" />}
 
                         <span className={`flex-1 text-caption font-semibold ${
                           isCurrentTier ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'
