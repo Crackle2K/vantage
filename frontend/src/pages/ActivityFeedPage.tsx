@@ -592,7 +592,7 @@ export default function ActivityFeedPage() {
                 Community Trust Tiers
               </h3>
               <div className="space-y-1">
-                {(Object.entries(credibilityBadges) as [CredibilityTier, typeof credibilityBadges[CredibilityTier]][]).map(([tier, badge], index, arr) => {
+                {(Object.entries(credibilityBadges) as [CredibilityTier, typeof credibilityBadges[CredibilityTier]][]).map(([tier, badge]) => {
                   const isCurrentTier = myCredibility?.tier === tier
                   return (
                     <div key={tier} className="relative">
