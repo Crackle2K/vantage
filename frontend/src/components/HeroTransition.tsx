@@ -260,7 +260,8 @@ export function HeroTransition() {
   // ── Desktop render ────────────────────────────────────────────────────────
   return (
     // Outer: 250vh provides the scroll distance for the pinned animation
-    <div ref={outerRef} style={{ height: "250vh", position: "relative" }}>
+    // Negative margin removes the layout's pt-20 padding so hero starts at viewport top
+    <div ref={outerRef} style={{ height: "250vh", position: "relative", marginTop: "-80px" }}>
 
       {/* Sticky viewport — stays fixed in place for all 250vh of scroll */}
       <div style={{ position: "sticky", top: 0, height: "100vh", overflow: "hidden" }}>
