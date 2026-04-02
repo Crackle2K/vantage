@@ -6,7 +6,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen flex flex-col bg-[hsl(var(--background))]">
       <Header />
-      <main className="flex-1 pt-20">{children}</main>
+      <main className="flex-1 pt-24">{children}</main>
       <footer className="border-t border-border/50 bg-[hsl(var(--card))]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
