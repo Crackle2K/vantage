@@ -9,7 +9,7 @@ from bson import ObjectId
 from pymongo import UpdateOne
 
 from models.user import User
-from models.auth import get_current_user, get_current_user_optional
+from models.auth import get_current_user, get_current_user_optional, get_current_admin_user
 from database.mongodb import (
     get_businesses_collection,
     get_visits_collection,
@@ -1093,6 +1093,7 @@ async def get_explore_lanes(
 
 @router.post("/discover/enrich-photos")
 async def enrich_google_place_photos(
+    current_user: User = Depends(get_current_admin_user),
     limit: int = Query(1200, ge=1, le=5000, description="Max businesses to scan"),
     batch_size: int = Query(120, ge=10, le=300, description="Batch size per enrichment pass"),
 ):
@@ -1289,7 +1290,7 @@ async def _recalculate_visibility(business_id: str):
     )
 
 @router.delete("/purge-chains")
-async def purge_chain_businesses():
+async def purge_chain_businesses(current_user: User = Depends(get_current_admin_user)):
     businesses = get_businesses_collection()
 
     cursor = businesses.find({"source": "google_places", "is_claimed": {"$ne": True}})

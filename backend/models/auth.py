@@ -3,13 +3,15 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from pydantic import BaseModel, EmailStr, Field
 from urllib import request as urllib_request, error as urllib_error
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from config import (
     SECRET_KEY,
@@ -30,6 +32,7 @@ security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 class GoogleAuthRequest(BaseModel):
     credential: str
@@ -106,6 +109,15 @@ async def get_current_user_optional(
     except HTTPException:
         return None
 
+async def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that ensures the current user has admin role."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
+
 def _build_recaptcha_assessment_url() -> str:
     return (
         "https://recaptchaenterprise.googleapis.com/v1/projects/"
@@ -164,7 +176,8 @@ async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -
         )
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-async def register(user_data: RegisterRequest):
+@limiter.limit("5/minute")
+async def register(request: Request, user_data: RegisterRequest):
     try:
         users_collection = get_users_collection()
     except Exception as db_error:
@@ -198,7 +211,8 @@ async def register(user_data: RegisterRequest):
     return Token(access_token=access_token, token_type="bearer")
 
 @router.post("/login", response_model=Token)
-async def login(user_credentials: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, user_credentials: UserLogin):
     try:
         users_collection = get_users_collection()
     except Exception as db_error:

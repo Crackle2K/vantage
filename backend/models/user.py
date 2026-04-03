@@ -5,6 +5,7 @@ from enum import Enum
 class UserRole(str, Enum):
     CUSTOMER = "customer"
     BUSINESS_OWNER = "business_owner"
+    ADMIN = "admin"
 
 class PricePreference(str, Enum):
     BUDGET = "$"

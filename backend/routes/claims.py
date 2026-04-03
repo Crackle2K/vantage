@@ -5,7 +5,7 @@ from bson import ObjectId
 
 from models.claim import BusinessClaim, ClaimCreate, ClaimReview, ClaimStatus
 from models.user import User
-from models.auth import get_current_user
+from models.auth import get_current_user, get_current_admin_user
 from database.mongodb import (
     get_claims_collection,
     get_businesses_collection,
@@ -112,7 +112,7 @@ async def get_business_claim_status(business_id: str):
 async def review_claim(
     claim_id: str,
     review_data: ClaimReview,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_admin_user),
 ):
     claims_collection = get_claims_collection()
     businesses_collection = get_businesses_collection()

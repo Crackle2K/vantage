@@ -1,11 +1,18 @@
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.responses import JSONResponse
 from bson import ObjectId
 from bson.errors import InvalidId
 from models.user import User, UserUpdate, UserPreferencesUpdate, PasswordChange
 from models.auth import verify_password, get_password_hash
 from models.auth import get_current_user
-from database.mongodb import get_users_collection
+from database.mongodb import (
+    get_users_collection,
+    get_reviews_collection,
+    get_checkins_collection,
+    get_saved_collection,
+    get_activity_feed_collection,
+)
 
 router = APIRouter()
 
@@ -156,3 +163,92 @@ async def update_user_preferences(
         )
 
     return _serialize_user(updated_user)
+
+@router.get("/me/export")
+async def export_user_data(current_user: User = Depends(get_current_user)):
+    """Export all user data for GDPR compliance (right to portability)."""
+    users_collection = _users()
+    reviews_collection = get_reviews_collection()
+    checkins_collection = get_checkins_collection()
+    saved_collection = get_saved_collection()
+    activity_collection = get_activity_feed_collection()
+
+    user_key = _user_oid(current_user.id)
+
+    # Get user profile
+    user = await users_collection.find_one({"_id": user_key})
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Remove sensitive data
+    user.pop("hashed_password", None)
+    user["id"] = str(user.pop("_id"))
+    if "created_at" in user and user["created_at"]:
+        user["created_at"] = user["created_at"].isoformat()
+
+    # Get user's reviews
+    reviews = await reviews_collection.find({"user_id": current_user.id}).to_list(length=None)
+    for review in reviews:
+        review["_id"] = str(review["_id"])
+        if "created_at" in review and review["created_at"]:
+            review["created_at"] = review["created_at"].isoformat()
+
+    # Get user's check-ins
+    checkins = await checkins_collection.find({"user_id": current_user.id}).to_list(length=None)
+    for checkin in checkins:
+        checkin["_id"] = str(checkin["_id"])
+        if "created_at" in checkin and checkin["created_at"]:
+            checkin["created_at"] = checkin["created_at"].isoformat()
+
+    # Get user's saved businesses
+    saved = await saved_collection.find({"user_id": current_user.id}).to_list(length=None)
+    for item in saved:
+        item["_id"] = str(item["_id"])
+        if "created_at" in item and item["created_at"]:
+            item["created_at"] = item["created_at"].isoformat()
+
+    # Get user's activity feed
+    activity = await activity_collection.find({"user_id": current_user.id}).to_list(length=None)
+    for item in activity:
+        item["_id"] = str(item["_id"])
+        if "created_at" in item and item["created_at"]:
+            item["created_at"] = item["created_at"].isoformat()
+
+    return JSONResponse(
+        content={
+            "user": user,
+            "reviews": reviews,
+            "checkins": checkins,
+            "saved_businesses": saved,
+            "activity": activity,
+            "exported_at": datetime.utcnow().isoformat(),
+        }
+    )
+
+@router.delete("/me", status_code=status.HTTP_200_OK)
+async def delete_account(current_user: User = Depends(get_current_user)):
+    """Delete user account for GDPR compliance (right to erasure)."""
+    users_collection = _users()
+    reviews_collection = get_reviews_collection()
+    checkins_collection = get_checkins_collection()
+    saved_collection = get_saved_collection()
+    activity_collection = get_activity_feed_collection()
+
+    user_key = _user_oid(current_user.id)
+
+    # Delete user data from all collections
+    await reviews_collection.delete_many({"user_id": current_user.id})
+    await checkins_collection.delete_many({"user_id": current_user.id})
+    await saved_collection.delete_many({"user_id": current_user.id})
+    await activity_collection.delete_many({"user_id": current_user.id})
+
+    # Finally delete the user
+    result = await users_collection.delete_one({"_id": user_key})
+
+    if result.deleted_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    return {"message": "Account deleted successfully"}

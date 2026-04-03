@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from pymongo.errors import PyMongoError
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from config import DEMO_MODE
 from database.mongodb import connect_to_mongo, close_mongo_connection
@@ -31,6 +35,21 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Rate limiting setup
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Too many requests. Please try again later.",
+            "error": "rate_limit_exceeded",
+        },
+    )
+
 import os
 allowed_origins = [
     "http://localhost:5173",
@@ -42,13 +61,17 @@ frontend_url = os.getenv("FRONTEND_URL")
 if frontend_url:
     allowed_origins.append(frontend_url)
 
+# Add production domain if specified
+production_url = os.getenv("PRODUCTION_URL")
+if production_url:
+    allowed_origins.append(production_url)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$|https://.*\.vercel\.app$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
