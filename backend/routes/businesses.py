@@ -20,7 +20,7 @@ from services.business_metadata import (
     normalize_business_metadata,
     normalize_image_urls,
 )
-from services.photo_proxy import build_stream, get_photo_payload
+from services.photo_proxy import build_category_placeholder_bytes, build_stream, get_photo_payload
 from routes.discovery import discover_businesses
 
 router = APIRouter()
@@ -68,8 +68,11 @@ async def get_business_photo(
     place_id: str = Query(..., min_length=3),
     maxwidth: int = Query(800, ge=120, le=1600),
 ):
-    businesses_collection = get_businesses_collection()
-    content_type, payload = await get_photo_payload(businesses_collection, place_id.strip(), maxwidth)
+    try:
+        businesses_collection = get_businesses_collection()
+        content_type, payload = await get_photo_payload(businesses_collection, place_id.strip(), maxwidth)
+    except Exception:
+        content_type, payload = build_category_placeholder_bytes(label="V")
     stream, headers = build_stream(content_type, payload)
     return StreamingResponse(stream, media_type=content_type, headers=headers)
 

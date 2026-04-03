@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
@@ -174,7 +175,7 @@ def build_category_placeholder_bytes(category: str = "", label: str = "V") -> tu
 </svg>"""
     return "image/svg+xml", svg.encode("utf-8")
 
-async def _fetch_bytes(url: str, timeout_seconds: float = 6.0) -> tuple[str, bytes]:
+async def _fetch_bytes(url: str, timeout_seconds: float = 4.0) -> tuple[str, bytes]:
     async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
         response = await client.get(url)
         response.raise_for_status()
@@ -191,14 +192,14 @@ async def _fetch_google_photo_bytes(photo_reference: str, maxwidth: int) -> tupl
         f"&photo_reference={quote_plus(photo_reference)}"
         f"&key={GOOGLE_API_KEY}"
     )
-    return await _fetch_bytes(url, timeout_seconds=8.0)
+    return await _fetch_bytes(url, timeout_seconds=4.0)
 
 async def _resolve_google_photo_references(place_id: str) -> list[str]:
     if not GOOGLE_API_KEY:
         return []
 
     try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             response = await client.get(
                 GOOGLE_DETAILS_URL,
                 params={
@@ -232,7 +233,7 @@ async def _resolve_og_image_url(website_url: str) -> str:
         return ""
 
     try:
-        async with httpx.AsyncClient(timeout=4.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=2.0, follow_redirects=True) as client:
             response = await client.get(website_url)
             response.raise_for_status()
             html = response.text[:40000]
@@ -337,7 +338,16 @@ async def get_photo_payload(
             except Exception:
                 pass
 
-    content_type, payload = await resolve_business_photo_payload(business, place_id, maxwidth)
+    try:
+        content_type, payload = await asyncio.wait_for(
+            resolve_business_photo_payload(business, place_id, maxwidth),
+            timeout=7.0,
+        )
+    except (asyncio.TimeoutError, Exception):
+        content_type, payload = build_category_placeholder_bytes(
+            category=str(business.get("category") or ""),
+            label=str(business.get("name") or "V"),
+        )
     _memory_set(cache_key, content_type, payload)
     _disk_set(cache_key, content_type, payload)
     return content_type, payload
