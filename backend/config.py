@@ -18,12 +18,10 @@ else:
 MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 DATABASE_NAME: str = os.getenv("DATABASE_NAME", "vantage")
 
-# Security: Fail fast if SECRET_KEY is not set in production
+# Security: Fail fast if SECRET_KEY is not set
 _ENV_SECRET_KEY = os.getenv("SECRET_KEY")
 if not _ENV_SECRET_KEY:
-    import sys
-    print("ERROR: SECRET_KEY environment variable must be set")
-    sys.exit(1)
+    raise RuntimeError("SECRET_KEY environment variable must be set")
 
 SECRET_KEY: str = _ENV_SECRET_KEY
 ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
