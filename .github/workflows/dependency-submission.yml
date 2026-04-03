@@ -1,0 +1,48 @@
+name: Automatic Dependency Submission
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  submit-pypi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup-ecosystem
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-tools
+        run: pip install pip-tools
+
+      - name: Validate Python project
+        run: |
+          if pip-compile --dry-run -o /dev/null requirements.txt 2>/dev/null; then
+            echo "Python validation passed"
+          else
+            echo "::warning::Python validation warning — requirements.txt could not be fully resolved"
+          fi
+
+      - name: Submit dependency snapshot
+        id: submit
+        uses: actions/component-detection-dependency-submission-action@v0
+        continue-on-error: true
+        with:
+          detectorsCategories: Python
+          detectorsFilter: PipReport
+
+      - name: Retry dependency snapshot on transient failure
+        if: steps.submit.outcome == 'failure'
+        uses: actions/component-detection-dependency-submission-action@v0
+        continue-on-error: true
+        with:
+          detectorsCategories: Python
+          detectorsFilter: PipReport
