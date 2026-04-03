@@ -5,7 +5,7 @@ import type { ActivityFeedItem, UserCredibility, CredibilityTier, ActivityCommen
 import {
   MapPin, Star, Tag, Calendar, Award, TrendingUp,
   ThumbsUp, MessageCircle, Clock, Shield, CheckCircle2,
-  Users, Flame, ChevronUp, Send, PenLine
+  ChevronUp, Send, PenLine
 } from 'lucide-react'
 
 const activityIcons: Record<string, typeof MapPin> = {
@@ -28,12 +28,14 @@ const activityColors: Record<string, string> = {
   user_post: 'bg-brand',
 }
 
-const credibilityBadges: Record<CredibilityTier, { label: string; color: string; icon: typeof Shield }> = {
-  new: { label: 'Newcomer', color: 'bg-surface-elevated dark:bg-surface-elevated text-muted dark:text-muted', icon: Users },
-  regular: { label: 'Regular', color: 'bg-info dark:bg-info/30 text-info dark:text-info', icon: CheckCircle2 },
-  trusted: { label: 'Trusted', color: 'bg-success dark:bg-success/30 text-success dark:text-success', icon: Shield },
-  local_guide: { label: 'Local Guide', color: 'bg-brand-tertiary dark:bg-brand-tertiary/30 text-brand-tertiary dark:text-brand-tertiary', icon: Award },
-  ambassador: { label: 'Ambassador', color: 'bg-warning dark:bg-warning/30 text-warning dark:text-warning', icon: Flame },
+const credibilityBadges: Record<CredibilityTier, {
+  label: string; color: string; emoji: string; bg: string; ringColor: string;
+}> = {
+  new:         { label: 'Newcomer',    color: 'bg-surface-elevated dark:bg-surface-elevated text-muted dark:text-muted',                    emoji: '⚡', bg: 'bg-slate-500/20',   ringColor: '#94a3b8' },
+  regular:     { label: 'Regular',     color: 'bg-info dark:bg-info/30 text-info dark:text-info',                                           emoji: '✅', bg: 'bg-blue-500/20',    ringColor: '#22d3ee' },
+  trusted:     { label: 'Trusted',     color: 'bg-success dark:bg-success/30 text-success dark:text-success',                              emoji: '🛡️', bg: 'bg-emerald-500/20', ringColor: '#34d399' },
+  local_guide: { label: 'Local Guide', color: 'bg-brand-tertiary dark:bg-brand-tertiary/30 text-brand-tertiary dark:text-brand-tertiary',   emoji: '🧭', bg: 'bg-violet-500/20',  ringColor: '#a78bfa' },
+  ambassador:  { label: 'Ambassador',  color: 'bg-warning dark:bg-warning/30 text-warning dark:text-warning',                              emoji: '👑', bg: 'bg-amber-500/20',   ringColor: '#fbbf24' },
 }
 
 function timeAgo(dateStr: string): string {
@@ -51,10 +53,9 @@ function timeAgo(dateStr: string): string {
 function CredibilityBadge({ tier }: { tier: CredibilityTier }) {
   const badge = credibilityBadges[tier]
   if (!badge) return null
-  const Icon = badge.icon
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-caption font-medium ${badge.color}`}>
-      <Icon className="w-3 h-3" />
+      <span className="text-[11px] leading-none">{badge.emoji}</span>
       {badge.label}
     </span>
   )
@@ -259,7 +260,7 @@ export default function ActivityFeedPage() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
             <h1 className="text-heading font-bold text-[hsl(var(--foreground))] font-heading">
-              Local <span className="gradient-text font-serif">Activity</span>
+              Local <span className="gradient-text">Activity</span>
             </h1>
             <p className="text-[hsl(var(--muted-foreground))] mt-1">
               Real-time activity from your local community
@@ -518,74 +519,106 @@ export default function ActivityFeedPage() {
           {}
           <div className="space-y-6">
             {}
-            {isAuthenticated && myCredibility && (
-              <div className="glass-card rounded-2xl p-5 animate-fade-in-up">
-                <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-4 font-sub flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-brand" />
-                  Your Credibility
-                </h3>
+            {isAuthenticated && myCredibility && (() => {
+              const currentBadge = credibilityBadges[myCredibility.tier]
+              const score = Math.round(myCredibility.credibility_score)
+              // r=44, circumference ≈ 276.46
+              const filled = (score / 100) * 276.46
+              const gap = 276.46 - filled
+              return (
+                <div className="glass-card rounded-2xl overflow-hidden animate-fade-in-up">
+                  <div className="relative p-5 pb-4">
+                    <h3 className="relative text-ui font-semibold text-[hsl(var(--foreground))] mb-5 font-sub flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-brand" />
+                      Your Credibility
+                    </h3>
 
-                {}
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="relative w-16 h-16">
-                    <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                      <circle cx="18" cy="18" r="16" fill="none" className="stroke-[hsl(var(--secondary))]" strokeWidth="3" />
-                      <circle
-                        cx="18" cy="18" r="16" fill="none"
-                        className="stroke-brand"
-                        strokeWidth="3"
-                        strokeDasharray={`${myCredibility.credibility_score} ${100 - myCredibility.credibility_score}`}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-ui font-bold text-[hsl(var(--foreground))]">
-                        {Math.round(myCredibility.credibility_score)}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <CredibilityBadge tier={myCredibility.tier} />
-                    <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1">
-                      Keep engaging to level up!
-                    </p>
-                  </div>
-                </div>
+                    {/* Score ring – centered */}
+                    <div className="flex flex-col items-center mb-5">
+                      <div className="relative w-32 h-32">
+                        <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                          {/* Track */}
+                          <circle cx="50" cy="50" r="44" fill="none"
+                            stroke="hsl(var(--secondary))" strokeWidth="7" />
+                          {/* Score arc */}
+                          <circle cx="50" cy="50" r="44" fill="none"
+                            stroke={currentBadge.ringColor}
+                            strokeWidth="7"
+                            strokeLinecap="round"
+                            strokeDasharray={`${filled} ${gap}`}
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-3xl font-bold text-[hsl(var(--foreground))] leading-none">{score}</span>
+                          <span className="text-[10px] font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-widest mt-0.5">pts</span>
+                        </div>
+                      </div>
 
-                {}
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: 'Check-ins', value: myCredibility.total_checkins, icon: MapPin },
-                    { label: 'Reviews', value: myCredibility.total_reviews, icon: Star },
-                    { label: 'Verified', value: myCredibility.verified_checkins, icon: CheckCircle2 },
-                    { label: 'Confirmations', value: myCredibility.confirmations_received, icon: ChevronUp },
-                  ].map(stat => (
-                    <div key={stat.label} className="flex items-center gap-2 p-2 rounded-lg bg-[hsl(var(--secondary))]/50">
-                      <stat.icon className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
-                      <div>
-                        <p className="text-ui font-bold text-[hsl(var(--foreground))]">{stat.value}</p>
-                        <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{stat.label}</p>
+                      {/* Badge + subtitle */}
+                      <div className="mt-3 flex flex-col items-center gap-1">
+                        <CredibilityBadge tier={myCredibility.tier} />
+                        <p className="text-caption text-[hsl(var(--muted-foreground))]">Keep engaging to level up!</p>
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Stat grid */}
+                  <div className="px-5 pb-5 grid grid-cols-2 gap-2.5">
+                    {[
+                      { label: 'Check-ins',     value: myCredibility.total_checkins,          icon: MapPin,       color: 'text-sky-400',      bg: 'bg-sky-400/10'     },
+                      { label: 'Reviews',        value: myCredibility.total_reviews,           icon: Star,         color: 'text-amber-400',    bg: 'bg-amber-400/10'   },
+                      { label: 'Verified',       value: myCredibility.verified_checkins,       icon: CheckCircle2, color: 'text-emerald-400',  bg: 'bg-emerald-400/10' },
+                      { label: 'Confirms',       value: myCredibility.confirmations_received,  icon: ChevronUp,    color: 'text-violet-400',   bg: 'bg-violet-400/10'  },
+                    ].map(stat => (
+                      <div key={stat.label}
+                        className="flex items-center gap-2.5 p-3 rounded-xl bg-[hsl(var(--secondary))]/40 border border-[hsl(var(--border))]/50">
+                        <div className={`w-8 h-8 rounded-lg ${stat.bg} flex items-center justify-center flex-shrink-0`}>
+                          <stat.icon className={`w-4 h-4 ${stat.color}`} />
+                        </div>
+                        <div>
+                          <p className="text-body font-bold text-[hsl(var(--foreground))]">{stat.value}</p>
+                          <p className="text-[10px] text-[hsl(var(--muted-foreground))] leading-tight">{stat.label}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {}
             <div className="glass-card rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-              <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub">
+              <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-4 font-sub">
                 Community Trust Tiers
               </h3>
-              <div className="space-y-2.5">
+              <div className="space-y-1">
                 {(Object.entries(credibilityBadges) as [CredibilityTier, typeof credibilityBadges[CredibilityTier]][]).map(([tier, badge]) => {
-                  const Icon = badge.icon
+                  const isCurrentTier = myCredibility?.tier === tier
                   return (
-                    <div key={tier} className="flex items-center gap-2.5">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${badge.color}`}>
-                        <Icon className="w-3.5 h-3.5" />
+                    <div key={tier} className="relative">
+                      <div className={`flex items-center gap-3 px-2 py-2 rounded-xl transition-all duration-200 ${
+                        isCurrentTier
+                          ? 'bg-[hsl(var(--secondary))]/70 ring-1 ring-brand/25'
+                          : 'hover:bg-[hsl(var(--secondary))]/30'
+                      }`}>
+                        {/* Current-tier dot */}
+                        {isCurrentTier && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                        )}
+                        {!isCurrentTier && <span className="w-2 h-2 flex-shrink-0" />}
+
+                        <span className={`flex-1 text-caption font-semibold ${
+                          isCurrentTier ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'
+                        }`}>
+                          {badge.label}
+                        </span>
+
+                        {isCurrentTier && (
+                          <span className="text-[10px] font-semibold text-brand bg-brand/10 px-2 py-0.5 rounded-full">
+                            You
+                          </span>
+                        )}
                       </div>
-                      <span className="text-caption text-[hsl(var(--foreground))] font-medium">{badge.label}</span>
                     </div>
                   )
                 })}
