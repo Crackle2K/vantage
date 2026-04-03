@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import io
 import json
+import logging
 import re
 import time
 from collections import OrderedDict
@@ -14,6 +15,8 @@ from urllib.parse import quote_plus, urljoin
 
 import httpx
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 from config import GOOGLE_API_KEY
 
@@ -343,7 +346,13 @@ async def get_photo_payload(
             resolve_business_photo_payload(business, place_id, maxwidth),
             timeout=7.0,
         )
-    except (asyncio.TimeoutError, Exception):
+    except asyncio.TimeoutError:
+        content_type, payload = build_category_placeholder_bytes(
+            category=str(business.get("category") or ""),
+            label=str(business.get("name") or "V"),
+        )
+    except Exception:
+        logger.exception("Unexpected error resolving photo for place_id=%s", place_id)
         content_type, payload = build_category_placeholder_bytes(
             category=str(business.get("category") or ""),
             label=str(business.get("name") or "V"),
