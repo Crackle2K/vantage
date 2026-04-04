@@ -2,10 +2,11 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { 
-  Info, DollarSign, Star, 
-  ChevronLeft, ChevronRight, ArrowRight, Mail
+   
+  ChevronLeft, ChevronRight, Mail
 } from "lucide-react"
 import { HeroTransition } from "@/components/HeroTransition"
+import { FeatureShowcase } from "@/components/FeatureShowcase"
 
 
 
@@ -14,39 +15,11 @@ export default function HomePage() {
 
   const [testimonialIndex, setTestimonialIndex] = useState(0)
   const [email, setEmail] = useState("")
-  const [activeTab, setActiveTab] = useState(0)
 
   const testimonials = [
     { quote: "Vantage has transformed how I discover local businesses. They helped me find my favorite local spots!", name: "Richard Liu", title: "High School Student" },
     { quote: "Vantage gave me new insights on local businesses and helped me connect with my community.", name: "Charlie Shao", title: "Student at MMHS" },
     { quote: "I love supporting local businesses through Vantage. It's so easy to find exactly what I'm looking for nearby.", name: "Michael H.", title: "Aspiring Surgeon" },
-  ]
-
-  const tabFeatures = [
-    {
-      id: 0,
-      name: "Claim & Conversion",
-      icon: DollarSign,
-      title: "Claim & Conversion",
-      description: "Owners claim listings, launch deals, and turn discovery into real foot traffic.",
-      image: "/Images/Pricing.png"
-    },
-    {
-      id: 1,
-      name: "Verified Trust System",
-      icon: Star,
-      title: "Verified Trust System",
-      description: "We rank businesses using verified check-ins, credibility-weighted reviews, and live activity signals. This eliminates fake or inactive listings and makes results genuinely trustworthy.",
-      image: "/Images/Explore.png"
-    },
-    {
-      id: 2,
-      name: "Community Engagement Feed",
-      icon: Info,
-      title: "Community Engagement Feed ",
-      description: "Users engage with real local activity (verified check-ins, likes, comments, active-today signals), turning Vantage from a one-time search into a habit-forming local community platform.",
-      image: "/Images/Activity.png"
-    }
   ]
 
   const instagramImages = [
@@ -75,76 +48,8 @@ export default function HomePage() {
       <HeroTransition />
 
       {}
-      <section className="py-32 bg-surface-elevated dark:bg-surface/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <h2 className="text-display md:text-display font-bold text-center mb-8 font-heading text-[hsl(var(--foreground))]">
-            "Turning real community support into <br></br>authentic local visibility"
-          </h2>
 
-          {}
-          <div className="flex flex-wrap justify-center gap-4 mb-16">
-            {tabFeatures.map((tab) => {
-              const Icon = tab.icon
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex flex-col items-center p-6 rounded-xl transition-all duration-200 cursor-pointer border-2 min-w-[180px] ${
-                    isActive
-                      ? 'bg-surface-elevated border-brand shadow-lg'
-                      : 'bg-surface border-transparent hover:bg-surface-elevated hover:shadow-md'
-                  }`}
-                >
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${
-                    isActive ? 'bg-brand' : 'bg-surface-elevated'
-                  }`}>
-                    <Icon className={`w-6 h-6 ${isActive ? 'text-brand-on-primary' : 'text-[hsl(var(--foreground))]'}`} />
-                  </div>
-                  <span className={`text-body font-semibold ${
-                    isActive ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'
-                  }`}>
-                    {tab.name}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-
-          {}
-          <div 
-            key={activeTab}
-            className="grid md:grid-cols-2 gap-16 items-center animate-fade-in-up"
-          >
-            {}
-            <div>
-              <h3 className="text-heading md:text-display font-bold mb-8 font-heading text-[hsl(var(--foreground))]">
-                {tabFeatures[activeTab].title}
-              </h3>
-              <p className="text-body md:text-subheading text-[hsl(var(--muted-foreground))] leading-relaxed mb-10">
-                {tabFeatures[activeTab].description}
-              </p>
-              <Button
-                size="lg"
-                className="gradient-primary text-on-primary px-8 py-6 text-body rounded-xl hover:opacity-90 transition-opacity"
-                onClick={() => navigate("/businesses")}
-              >
-                Learn more
-                <ArrowRight className="w-5 h-5 ml-2" />
-              </Button>
-            </div>
-
-            {}
-            <div className="rounded-2xl overflow-hidden shadow-2xl aspect-[16/9] w-full">
-              <img
-                src={tabFeatures[activeTab].image}
-                alt={tabFeatures[activeTab].title}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
+ <FeatureShowcase />
 
       {}
       <section className="py-24 bg-surface dark:bg-surface">
