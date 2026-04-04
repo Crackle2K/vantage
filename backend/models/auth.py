@@ -8,7 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from google.oauth2 import id_token
 from google.auth.transport import requests
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from urllib import request as urllib_request, error as urllib_error
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -44,6 +44,13 @@ class RegisterRequest(BaseModel):
     role: UserRole = UserRole.CUSTOMER
     recaptcha_token: str = Field(..., min_length=1)
     recaptcha_action: Optional[str] = None
+
+    @field_validator("role")
+    @classmethod
+    def role_must_not_be_admin(cls, v: UserRole) -> UserRole:
+        if v == UserRole.ADMIN:
+            raise ValueError("Cannot self-assign admin role during registration")
+        return v
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(
