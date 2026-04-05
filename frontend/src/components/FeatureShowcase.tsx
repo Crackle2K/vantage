@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Check, Users, MapPin, Shield } from "lucide-react"
+import { Check, MapPin } from "lucide-react"
 
 // Custom hook for scroll-triggered animations
 function useScrollReveal() {
