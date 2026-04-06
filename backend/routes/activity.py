@@ -1,9 +1,11 @@
 import math
 from typing import List, Optional
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from bson import ObjectId
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from models.activity import (
     CheckInCreate,
@@ -24,8 +26,10 @@ from database.mongodb import (
     get_owner_posts_collection,
     get_reviews_collection,
 )
+from utils.security import sanitize_text
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 PULSE_VERIFIED_STATUSES = {
     CheckInStatus.GEO_VERIFIED.value,
@@ -68,9 +72,15 @@ def _pulse_business_snapshot(business: dict) -> dict:
 class ActivityCommentCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=500)
 
+    def get_sanitized_content(self) -> str:
+        return sanitize_text(self.content, max_length=500)
+
 class UserPostCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=500)
     business_id: Optional[str] = None
+
+    def get_sanitized_content(self) -> str:
+        return sanitize_text(self.content, max_length=500)
 
 class ActivityComment(BaseModel):
     id: str
@@ -115,7 +125,9 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 @router.post("/checkins", status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def create_checkin(
+    request: Request,
     data: CheckInCreate,
     current_user: User = Depends(get_current_user),
 ):
@@ -161,7 +173,7 @@ async def create_checkin(
         "latitude": data.latitude,
         "longitude": data.longitude,
         "distance_from_business": round(distance, 1) if distance else None,
-        "note": data.note,
+        "note": sanitize_text(data.note, max_length=280) if data.note else None,
         "photo_url": None,
         "confirmations": 0,
         "confirmed_by": [],
@@ -244,7 +256,9 @@ async def confirm_checkin(
     return {"status": "confirmed"}
 
 @router.post("/feed/posts", status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_user_post(
+    request: Request,
     data: UserPostCreate,
     current_user: User = Depends(get_current_user),
 ):
@@ -273,7 +287,7 @@ async def create_user_post(
         "business_name": business_name,
         "business_category": business_category,
         "title": f"{current_user.name} shared a post",
-        "description": data.content.strip(),
+        "description": data.get_sanitized_content(),
         "likes": 0,
         "liked_by": [],
         "comments": 0,
@@ -602,7 +616,9 @@ async def get_activity_comments(activity_id: str):
     ]
 
 @router.post("/feed/{activity_id}/comments", status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def add_activity_comment(
+    request: Request,
     activity_id: str,
     payload: ActivityCommentCreate,
     current_user: User = Depends(get_current_user),
@@ -614,7 +630,7 @@ async def add_activity_comment(
         "user_id": current_user.id,
         "user_name": current_user.name,
         "profile_picture": current_user.profile_picture,
-        "content": payload.content.strip(),
+        "content": payload.get_sanitized_content(),
         "created_at": datetime.utcnow(),
     }
 

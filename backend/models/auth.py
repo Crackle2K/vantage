@@ -27,6 +27,7 @@ from config import (
 )
 from models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
 from database.mongodb import get_users_collection
+from utils.security import validate_password_strength
 
 security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
@@ -40,7 +41,7 @@ class GoogleAuthRequest(BaseModel):
 class RegisterRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
     role: UserRole = UserRole.CUSTOMER
     recaptcha_token: str = Field(..., min_length=1)
     recaptcha_action: Optional[str] = None
@@ -50,6 +51,14 @@ class RegisterRequest(BaseModel):
     def role_must_not_be_admin(cls, v: UserRole) -> UserRole:
         if v == UserRole.ADMIN:
             raise ValueError("Cannot self-assign admin role during registration")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        is_valid, error_msg = validate_password_strength(v)
+        if not is_valid:
+            raise ValueError(error_msg)
         return v
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -251,7 +260,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
 @router.post("/google", response_model=Token)
-async def google_auth(auth_request: GoogleAuthRequest):
+@limiter.limit("10/minute")
+async def google_auth(request: Request, auth_request: GoogleAuthRequest):
     try:
         users_collection = get_users_collection()
     except Exception as db_error:

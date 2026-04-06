@@ -402,7 +402,7 @@ async def search_google_places(
     max_results: int = MAX_RETURN_RESULTS,
 ) -> List[Dict]:
     if not GOOGLE_API_KEY:
-        print("GOOGLE_API_KEY not set - skipping Places lookup")
+        # API key not configured - skip Google Places lookup
         return []
 
     base_params = {
