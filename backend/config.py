@@ -18,9 +18,17 @@ else:
 MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 DATABASE_NAME: str = os.getenv("DATABASE_NAME", "vantage")
 
-SECRET_KEY: str = os.getenv("SECRET_KEY", "CHANGE_ME")
+# Security: Fail fast if SECRET_KEY is not set
+_ENV_SECRET_KEY = os.getenv("SECRET_KEY")
+if not _ENV_SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable must be set")
+
+SECRET_KEY: str = _ENV_SECRET_KEY
 ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
+
+# Reduced from 7 days to 30 minutes for security
+ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 

@@ -569,3 +569,18 @@ body {
 	--muted-foreground: 220 7% 72%;
 	--shadow-soft: 220 38% 2%;
 }
+/* Feature showcase animations */
+@keyframes scale-in {
+ from {
+ opacity: 0;
+ transform: scale(0.5);
+ }
+ to {
+ opacity: 1;
+ transform: scale(1);
+ }
+}
+
+.animate-scale-in {
+ animation: scale-in 0.3s ease-out both;
+}

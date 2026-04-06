@@ -92,10 +92,8 @@ async def get_business_reviews(
         user = await users_collection.find_one({"_id": ObjectId(review["user_id"])})
         if user:
             review_dict["user_name"] = user.get("name", "Anonymous")
-            review_dict["user_email"] = user.get("email")
         else:
             review_dict["user_name"] = "Anonymous"
-            review_dict["user_email"] = None
         enriched_reviews.append(review_dict)
     return enriched_reviews
 

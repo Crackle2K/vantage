@@ -1,5 +1,6 @@
 from typing import List, Optional
 from datetime import datetime
+import re
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from fastapi.responses import StreamingResponse
 from bson import ObjectId
@@ -87,13 +88,14 @@ async def get_businesses(
     if category:
         query["category"] = category
     if city:
-        query["city"] = {"$regex": city, "$options": "i"}
+        query["city"] = {"$regex": re.escape(city), "$options": "i"}
     if min_rating is not None:
         query["rating_average"] = {"$gte": min_rating}
     if search:
+        escaped_search = re.escape(search)
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"description": {"$regex": search, "$options": "i"}}
+            {"name": {"$regex": escaped_search, "$options": "i"}},
+            {"description": {"$regex": escaped_search, "$options": "i"}}
         ]
     cursor = businesses_collection.find(query).skip(skip).limit(limit)
     businesses = await cursor.to_list(length=limit)
@@ -113,9 +115,10 @@ async def get_businesses_feed(
     if category:
         query["category"] = category
     if search:
+        escaped_search = re.escape(search)
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"description": {"$regex": search, "$options": "i"}}
+            {"name": {"$regex": escaped_search, "$options": "i"}},
+            {"description": {"$regex": escaped_search, "$options": "i"}}
         ]
 
     sort_field = "created_at"
