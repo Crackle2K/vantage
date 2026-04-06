@@ -1,15 +1,19 @@
 from typing import List
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from models.reviews import Review, ReviewCreate, ReviewUpdate, ReviewWithUser
 from models.user import User
 from models.auth import get_current_user
 from database.mongodb import get_reviews_collection, get_businesses_collection, get_users_collection
+from utils.security import sanitize_text
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 def review_helper(review) -> dict:
     if review:
@@ -18,7 +22,9 @@ def review_helper(review) -> dict:
     return review
 
 @router.post("/reviews", response_model=Review, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_review(
+    request: Request,
     review_data: ReviewCreate,
     current_user: User = Depends(get_current_user)
 ):
@@ -48,7 +54,7 @@ async def create_review(
         "business_id": review_data.business_id,
         "user_id": current_user.id,
         "rating": review_data.rating,
-        "comment": review_data.comment,
+        "comment": sanitize_text(review_data.comment, max_length=1000) if review_data.comment else None,
         "created_at": datetime.utcnow()
     }
     try:

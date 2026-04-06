@@ -1,8 +1,10 @@
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import JSONResponse
 from bson import ObjectId
 from bson.errors import InvalidId
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from models.user import User, UserUpdate, UserPreferencesUpdate, PasswordChange
 from models.auth import verify_password, get_password_hash
 from models.auth import get_current_user
@@ -13,8 +15,10 @@ from database.mongodb import (
     get_saved_collection,
     get_activity_feed_collection,
 )
+from utils.audit import log_data_export, log_account_deletion, log_password_change
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 def _users():
     try:
@@ -102,10 +106,13 @@ async def update_user_profile(
     return _serialize_user(updated_user)
 
 @router.put("/me/password", status_code=200)
+@limiter.limit("3/minute")
 async def change_password(
+    request: Request,
     password_change: PasswordChange,
     current_user: User = Depends(get_current_user)
 ):
+    ip_address = request.client.host if request.client else "unknown"
     users_collection = _users()
     user_key = _user_oid(current_user.id)
 
@@ -120,6 +127,7 @@ async def change_password(
         )
 
     if not verify_password(password_change.current_password, user_in_db["hashed_password"]):
+        log_password_change(current_user.id, ip_address, success=False)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect"
@@ -130,6 +138,7 @@ async def change_password(
         {"_id": user_key},
         {"$set": {"hashed_password": hashed, "updated_at": datetime.utcnow()}}
     )
+    log_password_change(current_user.id, ip_address, success=True)
     return {"message": "Password updated successfully"}
 
 @router.put("/preferences", response_model=User)
@@ -165,8 +174,9 @@ async def update_user_preferences(
     return _serialize_user(updated_user)
 
 @router.get("/me/export")
-async def export_user_data(current_user: User = Depends(get_current_user)):
+async def export_user_data(request: Request, current_user: User = Depends(get_current_user)):
     """Export all user data for GDPR compliance (right to portability)."""
+    ip_address = request.client.host if request.client else "unknown"
     users_collection = _users()
     reviews_collection = get_reviews_collection()
     checkins_collection = get_checkins_collection()
@@ -214,6 +224,7 @@ async def export_user_data(current_user: User = Depends(get_current_user)):
         if "created_at" in item and item["created_at"]:
             item["created_at"] = item["created_at"].isoformat()
 
+    log_data_export(current_user.id, ip_address, data_types=["user", "reviews", "checkins", "saved", "activity"])
     return JSONResponse(
         content={
             "user": user,
@@ -226,8 +237,9 @@ async def export_user_data(current_user: User = Depends(get_current_user)):
     )
 
 @router.delete("/me", status_code=status.HTTP_200_OK)
-async def delete_account(current_user: User = Depends(get_current_user)):
+async def delete_account(request: Request, current_user: User = Depends(get_current_user)):
     """Delete user account for GDPR compliance (right to erasure)."""
+    ip_address = request.client.host if request.client else "unknown"
     users_collection = _users()
     reviews_collection = get_reviews_collection()
     checkins_collection = get_checkins_collection()
@@ -251,4 +263,5 @@ async def delete_account(current_user: User = Depends(get_current_user)):
             detail="User not found"
         )
 
+    log_account_deletion(current_user.id, ip_address)
     return {"message": "Account deleted successfully"}

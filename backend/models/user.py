@@ -1,6 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Optional
 from enum import Enum
+
+from utils.security import validate_password_strength
 
 class UserRole(str, Enum):
     CUSTOMER = "customer"
@@ -35,8 +37,16 @@ class UserBase(BaseModel):
 class UserCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
     role: UserRole = UserRole.CUSTOMER
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        is_valid, error_msg = validate_password_strength(v)
+        if not is_valid:
+            raise ValueError(error_msg)
+        return v
 
 class User(UserBase):
     id: str
@@ -73,7 +83,15 @@ class UserPreferencesUpdate(BaseModel):
 
 class PasswordChange(BaseModel):
     current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        is_valid, error_msg = validate_password_strength(v)
+        if not is_valid:
+            raise ValueError(error_msg)
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
