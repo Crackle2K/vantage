@@ -1,4 +1,4 @@
-import type { Business, Review, Deal, ReviewCreate, User, AuthTokens, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse } from './types';
+import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse } from './types';
 
 function resolveApiUrl(): string {
   const configured = (import.meta.env.VITE_API_URL || '').trim();
@@ -77,8 +77,8 @@ async function requestOrNull<T>(path: string, init?: RequestInit): Promise<T | n
 }
 
 export const api = {
-  async login(email: string, password: string): Promise<AuthTokens> {
-    return request<AuthTokens>('/auth/login', {
+  async login(email: string, password: string): Promise<void> {
+    await request<{ message: string }>('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -92,8 +92,8 @@ export const api = {
     role: string,
     recaptchaToken: string,
     recaptchaAction: string
-  ): Promise<AuthTokens> {
-    return request<AuthTokens>('/auth/register', {
+  ): Promise<void> {
+    await request<{ message: string }>('/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -113,12 +113,18 @@ export const api = {
     }, 'Not authenticated');
   },
 
-  async googleAuth(credential: string): Promise<AuthTokens> {
-    return request<AuthTokens>('/auth/google', {
+  async googleAuth(credential: string): Promise<void> {
+    await request<{ message: string }>('/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential }),
     }, 'Google authentication failed');
+  },
+
+  async logout(): Promise<void> {
+    await request<{ message: string }>('/auth/logout', {
+      method: 'POST',
+    }, 'Logout failed');
   },
 
   async getUserProfile(userId: string): Promise<User> {

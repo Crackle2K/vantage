@@ -98,12 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     // Call backend logout endpoint to clear httpOnly cookie
     try {
-      const configuredApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const apiBaseUrl = configuredApiUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
-      await fetch(`${apiBaseUrl}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await api.logout();
     } catch {}
     setUser(null);
   };

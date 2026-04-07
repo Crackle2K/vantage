@@ -1,6 +1,7 @@
 import bcrypt
 import asyncio
 import json
+import math
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 from fastapi import APIRouter, HTTPException, status, Depends, Request, Response
@@ -29,7 +30,7 @@ from config import (
 from models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
 from database.mongodb import get_users_collection
 from utils.security import validate_password_strength
-from utils.audit import log_login, log_failed_auth
+from utils.audit import log_login, log_failed_auth, log_registration
 
 
 # In-memory store for account lockout (use Redis in production)
@@ -133,7 +134,9 @@ def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
     if "locked_until" in attempts:
         lockout_end = attempts["locked_until"]
         if datetime.utcnow() < lockout_end:
-            remaining = int((lockout_end - datetime.utcnow()).total_seconds() / 60)
+            remaining_seconds = (lockout_end - datetime.utcnow()).total_seconds()
+            # Use ceil and clamp to at least 1 to avoid confusing "0 minutes" messages
+            remaining = max(1, math.ceil(remaining_seconds / 60))
             return True, remaining
         else:
             # Lockout expired, clear the record
@@ -149,9 +152,22 @@ def record_failed_attempt(email: str) -> None:
     LOCKOUT_WINDOW_MINUTES, the counter resets before incrementing so that
     a small number of failures spread over a long period never permanently
     accumulates toward a lockout.
+
+    Also prunes fully-expired entries to keep the in-memory store bounded.
     """
     email_lower = email.lower()
     now = datetime.utcnow()
+
+    # Prune entries whose lockout has expired AND whose window has elapsed,
+    # so the dict doesn't grow without bound under a distributed-email attack.
+    expired_keys = [
+        k for k, v in _failed_attempts.items()
+        if ("locked_until" in v and v["locked_until"] < now)
+        or ("first_attempt" in v and "locked_until" not in v
+            and (now - v["first_attempt"]).total_seconds() / 60 > LOCKOUT_WINDOW_MINUTES)
+    ]
+    for k in expired_keys:
+        del _failed_attempts[k]
 
     if email_lower not in _failed_attempts:
         _failed_attempts[email_lower] = {
@@ -309,7 +325,7 @@ async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -
             detail="CAPTCHA verification failed: suspicious activity detected"
         )
 
-@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 async def register(request: Request, response: Response, user_data: RegisterRequest):
     try:
@@ -347,11 +363,11 @@ async def register(request: Request, response: Response, user_data: RegisterRequ
     set_auth_cookie(response, access_token)
 
     # Log successful registration
-    log_login(user_id=user_id, ip_address=request.client.host if request.client else "unknown", success=True, method="password")
+    log_registration(user_id=user_id, ip_address=request.client.host if request.client else "unknown")
 
-    return Token(access_token=access_token, token_type="bearer")
+    return {"message": "Registration successful"}
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 @limiter.limit("10/minute")
 async def login(request: Request, response: Response, user_credentials: UserLogin):
     # Check if account is locked
@@ -422,7 +438,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
         method="password"
     )
 
-    return Token(access_token=access_token, token_type="bearer")
+    return {"message": "Login successful"}
 
 @router.get("/me", response_model=User)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
@@ -435,7 +451,7 @@ async def logout(response: Response):
     clear_auth_cookie(response)
     return {"message": "Successfully logged out"}
 
-@router.post("/google", response_model=Token)
+@router.post("/google")
 @limiter.limit("10/minute")
 async def google_auth(request: Request, response: Response, auth_request: GoogleAuthRequest):
     try:
@@ -499,4 +515,4 @@ async def google_auth(request: Request, response: Response, auth_request: Google
         method="google"
     )
 
-    return Token(access_token=access_token, token_type="bearer")
+    return {"message": "Login successful"}
