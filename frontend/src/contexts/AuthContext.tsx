@@ -106,7 +106,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = () => {
+  const signOut = async () => {
+    // Call backend logout endpoint to clear httpOnly cookie
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      await fetch(`${apiUrl}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {}
+    // Also clear localStorage
     localStorage.removeItem('vantage_token');
     setUser(null);
   };

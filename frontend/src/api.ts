@@ -55,11 +55,13 @@ async function throwApiError(response: Response, fallback: string): Promise<neve
 }
 
 function getAuthHeaders(includeJson: boolean = false): HeadersInit {
-  const token = localStorage.getItem('vantage_token');
   const headers: HeadersInit = {};
   if (includeJson) {
     headers['Content-Type'] = 'application/json';
   }
+  // JWT is now stored in httpOnly cookie, sent automatically by browser
+  // We still include Authorization header for backward compatibility during transition
+  const token = localStorage.getItem('vantage_token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -67,13 +69,13 @@ function getAuthHeaders(includeJson: boolean = false): HeadersInit {
 }
 
 async function request<T>(path: string, init: RequestInit | undefined, fallback: string): Promise<T> {
-  const response = await fetch(buildApiUrl(path), init);
+  const response = await fetch(buildApiUrl(path), { ...init, credentials: 'include' });
   if (!response.ok) await throwApiError(response, fallback);
   return response.json() as Promise<T>;
 }
 
 async function requestOrNull<T>(path: string, init?: RequestInit): Promise<T | null> {
-  const response = await fetch(buildApiUrl(path), init);
+  const response = await fetch(buildApiUrl(path), { ...init, credentials: 'include' });
   if (!response.ok) return null;
   return response.json() as Promise<T>;
 }

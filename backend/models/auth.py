@@ -2,8 +2,8 @@ import bcrypt
 import asyncio
 import json
 from datetime import datetime, timedelta
-from typing import Optional
-from fastapi import APIRouter, HTTPException, status, Depends, Request
+from typing import Optional, Dict
+from fastapi import APIRouter, HTTPException, status, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from google.oauth2 import id_token
@@ -28,6 +28,14 @@ from config import (
 from models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
 from database.mongodb import get_users_collection
 from utils.security import validate_password_strength
+from utils.audit import log_login, log_failed_auth
+
+
+# In-memory store for account lockout (use Redis in production)
+# Structure: {email: {"count": int, "locked_until": datetime, "first_attempt": datetime}}
+_failed_attempts: Dict[str, Dict] = {}
+LOCKOUT_THRESHOLD = 5
+LOCKOUT_DURATION_MINUTES = 15
 
 security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
@@ -82,6 +90,74 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def set_auth_cookie(response: Response, access_token: str) -> None:
+    """Set JWT token in httpOnly secure cookie."""
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,  # HTTPS only in production
+        samesite="strict",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    """Clear the authentication cookie."""
+    response.delete_cookie(
+        key="access_token",
+        path="/"
+    )
+
+
+def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
+    """
+    Check if account is locked due to too many failed attempts.
+    Returns (is_locked, minutes_remaining).
+    """
+    email_lower = email.lower()
+    if email_lower not in _failed_attempts:
+        return False, None
+
+    attempts = _failed_attempts[email_lower]
+    if "locked_until" in attempts:
+        lockout_end = attempts["locked_until"]
+        if datetime.utcnow() < lockout_end:
+            remaining = int((lockout_end - datetime.utcnow()).total_seconds() / 60)
+            return True, remaining
+        else:
+            # Lockout expired, clear the record
+            del _failed_attempts[email_lower]
+
+    return False, None
+
+
+def record_failed_attempt(email: str) -> None:
+    """Record a failed login attempt."""
+    email_lower = email.lower()
+    if email_lower not in _failed_attempts:
+        _failed_attempts[email_lower] = {
+            "count": 1,
+            "first_attempt": datetime.utcnow()
+        }
+    else:
+        _failed_attempts[email_lower]["count"] += 1
+
+        # Check if we should lock the account
+        if _failed_attempts[email_lower]["count"] >= LOCKOUT_THRESHOLD:
+            _failed_attempts[email_lower]["locked_until"] = (
+                datetime.utcnow() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+            )
+
+
+def clear_failed_attempts(email: str) -> None:
+    """Clear failed attempts after successful login."""
+    email_lower = email.lower()
+    if email_lower in _failed_attempts:
+        del _failed_attempts[email_lower]
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
     credentials_exception = HTTPException(
@@ -193,7 +269,7 @@ async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
-async def register(request: Request, user_data: RegisterRequest):
+async def register(request: Request, response: Response, user_data: RegisterRequest):
     try:
         users_collection = get_users_collection()
     except Exception as db_error:
@@ -224,11 +300,30 @@ async def register(request: Request, user_data: RegisterRequest):
     access_token = create_access_token(
         data={"sub": user_data.email, "user_id": user_id}
     )
+
+    # Set httpOnly cookie
+    set_auth_cookie(response, access_token)
+
+    # Log successful registration
+    log_login(user_id=user_id, ip_address=request.client.host if request.client else "unknown", success=True, method="password")
+
     return Token(access_token=access_token, token_type="bearer")
 
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")
-async def login(request: Request, user_credentials: UserLogin):
+async def login(request: Request, response: Response, user_credentials: UserLogin):
+    # Check if account is locked
+    is_locked, minutes_remaining = is_account_locked(user_credentials.email)
+    if is_locked:
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="account_locked"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"Account temporarily locked due to too many failed attempts. Try again in {minutes_remaining} minutes.",
+        )
+
     try:
         users_collection = get_users_collection()
     except Exception as db_error:
@@ -238,30 +333,69 @@ async def login(request: Request, user_credentials: UserLogin):
         )
     user = await users_collection.find_one({"email": user_credentials.email})
     if not user:
+        # Record failed attempt
+        record_failed_attempt(user_credentials.email)
+
+        # Log failed login attempt
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="user_not_found"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not verify_password(user_credentials.password, user["hashed_password"]):
+        # Record failed attempt
+        record_failed_attempt(user_credentials.email)
+
+        # Log failed login attempt
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="invalid_password"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Clear failed attempts on successful login
+    clear_failed_attempts(user_credentials.email)
+
     user_id = str(user["_id"])
     access_token = create_access_token(
         data={"sub": user["email"], "user_id": user_id}
     )
+
+    # Set httpOnly cookie
+    set_auth_cookie(response, access_token)
+
+    # Log successful login
+    log_login(
+        user_id=user_id,
+        ip_address=request.client.host if request.client else "unknown",
+        success=True,
+        method="password"
+    )
+
     return Token(access_token=access_token, token_type="bearer")
 
 @router.get("/me", response_model=User)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear authentication cookie."""
+    clear_auth_cookie(response)
+    return {"message": "Successfully logged out"}
+
 @router.post("/google", response_model=Token)
 @limiter.limit("10/minute")
-async def google_auth(request: Request, auth_request: GoogleAuthRequest):
+async def google_auth(request: Request, response: Response, auth_request: GoogleAuthRequest):
     try:
         users_collection = get_users_collection()
     except Exception as db_error:
@@ -279,6 +413,10 @@ async def google_auth(request: Request, auth_request: GoogleAuthRequest):
         email = idinfo['email']
         name = idinfo.get('name', email.split('@')[0])
     except ValueError as e:
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="invalid_google_token"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Google token: {str(e)}"
@@ -307,4 +445,16 @@ async def google_auth(request: Request, auth_request: GoogleAuthRequest):
     access_token = create_access_token(
         data={"sub": email, "user_id": user_id}
     )
+
+    # Set httpOnly cookie
+    set_auth_cookie(response, access_token)
+
+    # Log successful login
+    log_login(
+        user_id=user_id,
+        ip_address=request.client.host if request.client else "unknown",
+        success=True,
+        method="google"
+    )
+
     return Token(access_token=access_token, token_type="bearer")

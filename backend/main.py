@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from pymongo.errors import PyMongoError
 from slowapi import Limiter
@@ -35,10 +36,58 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Skip security headers for localhost development
+        if request.url.hostname in ["localhost", "127.0.0.1"]:
+            return response
+
+        # HSTS: Force HTTPS for 1 year, include subdomains
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+
+        # Prevent MIME type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # XSS protection (legacy browsers)
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+
+        # Referrer policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Content Security Policy
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https: blob:; "
+            "font-src 'self'; "
+            "connect-src 'self' https://accounts.google.com; "
+            "frame-ancestors 'none'"
+        )
+
+        # Permissions Policy (formerly Feature Policy)
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(self), "
+            "microphone=(), "
+            "camera=()"
+        )
+
+        return response
+
+
 # Rate limiting setup
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
@@ -72,6 +121,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["Set-Cookie"],
 )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
