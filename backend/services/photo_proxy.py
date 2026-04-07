@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
+import logging
 import re
 import time
 from collections import OrderedDict
@@ -13,6 +15,8 @@ from urllib.parse import quote_plus, urljoin
 
 import httpx
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 from config import GOOGLE_API_KEY
 
@@ -174,7 +178,7 @@ def build_category_placeholder_bytes(category: str = "", label: str = "V") -> tu
 </svg>"""
     return "image/svg+xml", svg.encode("utf-8")
 
-async def _fetch_bytes(url: str, timeout_seconds: float = 6.0) -> tuple[str, bytes]:
+async def _fetch_bytes(url: str, timeout_seconds: float = 4.0) -> tuple[str, bytes]:
     async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
         response = await client.get(url)
         response.raise_for_status()
@@ -191,14 +195,14 @@ async def _fetch_google_photo_bytes(photo_reference: str, maxwidth: int) -> tupl
         f"&photo_reference={quote_plus(photo_reference)}"
         f"&key={GOOGLE_API_KEY}"
     )
-    return await _fetch_bytes(url, timeout_seconds=8.0)
+    return await _fetch_bytes(url, timeout_seconds=3.5)
 
 async def _resolve_google_photo_references(place_id: str) -> list[str]:
     if not GOOGLE_API_KEY:
         return []
 
     try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=2.5) as client:
             response = await client.get(
                 GOOGLE_DETAILS_URL,
                 params={
@@ -232,7 +236,7 @@ async def _resolve_og_image_url(website_url: str) -> str:
         return ""
 
     try:
-        async with httpx.AsyncClient(timeout=4.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=1.5, follow_redirects=True) as client:
             response = await client.get(website_url)
             response.raise_for_status()
             html = response.text[:40000]
@@ -244,7 +248,7 @@ async def _resolve_og_image_url(website_url: str) -> str:
         return ""
 
 async def _fetch_cached_url(url: str) -> tuple[str, bytes]:
-    content_type, payload = await _fetch_bytes(url, timeout_seconds=5.0)
+    content_type, payload = await _fetch_bytes(url, timeout_seconds=4.0)
     if not content_type.startswith("image/"):
         raise ValueError("Resolved OG image URL did not return an image payload")
     return content_type, payload
@@ -337,9 +341,28 @@ async def get_photo_payload(
             except Exception:
                 pass
 
-    content_type, payload = await resolve_business_photo_payload(business, place_id, maxwidth)
-    _memory_set(cache_key, content_type, payload)
-    _disk_set(cache_key, content_type, payload)
+    is_fallback = False
+    try:
+        content_type, payload = await asyncio.wait_for(
+            resolve_business_photo_payload(business, place_id, maxwidth),
+            timeout=7.0,
+        )
+    except asyncio.TimeoutError:
+        is_fallback = True
+        content_type, payload = build_category_placeholder_bytes(
+            category=str(business.get("category") or ""),
+            label=str(business.get("name") or "V"),
+        )
+    except Exception:
+        is_fallback = True
+        logger.exception("Unexpected error resolving photo for place_id=%s", place_id)
+        content_type, payload = build_category_placeholder_bytes(
+            category=str(business.get("category") or ""),
+            label=str(business.get("name") or "V"),
+        )
+    if not is_fallback:
+        _memory_set(cache_key, content_type, payload)
+        _disk_set(cache_key, content_type, payload)
     return content_type, payload
 
 def build_stream(content_type: str, payload: bytes):
