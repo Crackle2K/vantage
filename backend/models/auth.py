@@ -213,6 +213,12 @@ async def login(user_credentials: UserLogin):
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not user.get("hashed_password"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account uses Google sign-in. Please sign in with Google.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not verify_password(user_credentials.password, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
