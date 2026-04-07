@@ -2,7 +2,29 @@
   "permissions": {
     "allow": [
       "Bash(npm run lint)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(git rm:*)",
+      "Bash(python -m pytest tests/test_security_fixes.py -v)",
+      "Bash(pip install:*)",
+      "Bash(cd:*)",
+      "Bash(sed -i '18d' page.tsx)",
+      "Bash(sed -i '26,51d' page.tsx)",
+      "Bash(npm run:*)",
+      "Bash(vercel logs:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx tsc:*)",
+      "Bash(grep -r \"DealsSection\\\\|SearchBar\" --include=*.tsx --include=*.ts .)",
+      "Bash(GIT_AUTHOR_DATE=\"2026-04-04T12:00:00\" GIT_COMMITTER_DATE=\"2026-04-04T12:00:00\" git commit -m \"$\\(cat <<''EOF'':*)",
+      "Bash(git push:*)",
+      "Bash(xxd)",
+      "WebSearch",
+      "WebFetch(domain:cash.app)",
+      "WebFetch(domain:waabi.ai)",
+      "Bash(python -m py_compile models/auth.py main.py)",
+      "Bash(python -c \"from models.auth import router; print\\(''✓ Auth router imports successfully''\\)\")",
+      "Bash(source .venv/Scripts/activate)",
+      "Bash(python test_security_changes.py)"
     ]
   }
 }
