@@ -585,19 +585,3 @@ body {
  animation: scale-in 0.3s ease-out both;
 }
 
-/* Phone glow pulse animation */
-@keyframes phone-glow-pulse {
-  0%, 100% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.85;
-    transform: scale(1.05);
-  }
-}
-
-.phone-glow {
-  animation: phone-glow-pulse 3s ease-in-out infinite;
-}
-
