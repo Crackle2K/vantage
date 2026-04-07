@@ -1,9 +1,10 @@
 import bcrypt
 import asyncio
 import json
+import math
 from datetime import datetime, timedelta
-from typing import Optional
-from fastapi import APIRouter, HTTPException, status, Depends, Request
+from typing import Optional, Dict
+from fastapi import APIRouter, HTTPException, status, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from google.oauth2 import id_token
@@ -17,6 +18,7 @@ from config import (
     SECRET_KEY,
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    ENVIRONMENT,
     GOOGLE_CLIENT_ID,
     RECAPTCHA_ENTERPRISE_PROJECT_ID,
     RECAPTCHA_ENTERPRISE_API_KEY,
@@ -28,8 +30,16 @@ from config import (
 from models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
 from database.mongodb import get_users_collection
 from utils.security import validate_password_strength
+from utils.audit import log_login, log_failed_auth, log_registration
 
-security = HTTPBearer()
+
+# In-memory store for account lockout (use Redis in production)
+# Structure: {email: {"count": int, "locked_until": datetime, "first_attempt": datetime}}
+_failed_attempts: Dict[str, Dict] = {}
+LOCKOUT_THRESHOLD = 5
+LOCKOUT_DURATION_MINUTES = 15
+LOCKOUT_WINDOW_MINUTES = 30  # Reset failed-attempt counter after this many minutes
+
 optional_security = HTTPBearer(auto_error=False)
 
 router = APIRouter()
@@ -83,14 +93,122 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
+
+def set_auth_cookie(response: Response, access_token: str) -> None:
+    """Set JWT token in httpOnly cookie with environment-aware security attributes.
+
+    In production (same-origin Vercel deployment) use Secure + SameSite=Strict.
+    In development (cross-origin localhost) use SameSite=Lax without Secure so
+    the browser actually stores the cookie over plain HTTP.
+    """
+    is_production = ENVIRONMENT == "production"
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=is_production,
+        samesite="strict" if is_production else "lax",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/"
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    """Clear the authentication cookie."""
+    response.delete_cookie(
+        key="access_token",
+        path="/"
+    )
+
+
+def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
+    """
+    Check if account is locked due to too many failed attempts.
+    Returns (is_locked, minutes_remaining).
+    """
+    email_lower = email.lower()
+    if email_lower not in _failed_attempts:
+        return False, None
+
+    attempts = _failed_attempts[email_lower]
+    if "locked_until" in attempts:
+        lockout_end = attempts["locked_until"]
+        if datetime.utcnow() < lockout_end:
+            remaining_seconds = (lockout_end - datetime.utcnow()).total_seconds()
+            # Use ceil and clamp to at least 1 to avoid confusing "0 minutes" messages
+            remaining = max(1, math.ceil(remaining_seconds / 60))
+            return True, remaining
+        else:
+            # Lockout expired, clear the record
+            del _failed_attempts[email_lower]
+
+    return False, None
+
+
+def record_failed_attempt(email: str) -> None:
+    """Record a failed login attempt.
+
+    Uses a rolling window: if the first recorded attempt falls outside
+    LOCKOUT_WINDOW_MINUTES, the counter resets before incrementing so that
+    a small number of failures spread over a long period never permanently
+    accumulates toward a lockout.
+
+    Also prunes fully-expired entries to keep the in-memory store bounded.
+    """
+    email_lower = email.lower()
+    now = datetime.utcnow()
+
+    # Prune entries whose lockout has expired AND whose window has elapsed,
+    # so the dict doesn't grow without bound under a distributed-email attack.
+    expired_keys = [
+        k for k, v in _failed_attempts.items()
+        if ("locked_until" in v and v["locked_until"] < now)
+        or ("first_attempt" in v and "locked_until" not in v
+            and (now - v["first_attempt"]).total_seconds() / 60 > LOCKOUT_WINDOW_MINUTES)
+    ]
+    for k in expired_keys:
+        del _failed_attempts[k]
+
+    if email_lower not in _failed_attempts:
+        _failed_attempts[email_lower] = {
+            "count": 1,
+            "first_attempt": now
+        }
+    else:
+        attempts = _failed_attempts[email_lower]
+        first_attempt = attempts.get("first_attempt", now)
+        window_elapsed_minutes = (now - first_attempt).total_seconds() / 60
+
+        # Reset counter when we're outside the rolling window
+        if window_elapsed_minutes > LOCKOUT_WINDOW_MINUTES:
+            _failed_attempts[email_lower] = {
+                "count": 1,
+                "first_attempt": now
+            }
+        else:
+            _failed_attempts[email_lower]["count"] += 1
+
+            # Lock the account once the threshold is reached
+            if _failed_attempts[email_lower]["count"] >= LOCKOUT_THRESHOLD:
+                _failed_attempts[email_lower]["locked_until"] = (
+                    now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+                )
+
+
+def clear_failed_attempts(email: str) -> None:
+    """Clear failed attempts after successful login."""
+    email_lower = email.lower()
+    if email_lower in _failed_attempts:
+        del _failed_attempts[email_lower]
+
+async def _get_user_from_token(token: str) -> User:
+    """Decode a JWT and return the corresponding User from the database."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         user_id: str = payload.get("user_id")
@@ -114,14 +232,30 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user["created_at"] = user["created_at"].isoformat()
     return User(**user)
 
+async def get_current_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+) -> User:
+    """Resolve the authenticated user from a Bearer token or httpOnly cookie."""
+    token = credentials.credentials if credentials else request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return await _get_user_from_token(token)
+
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
 ) -> Optional[User]:
-    if credentials is None:
+    token = credentials.credentials if credentials else request.cookies.get("access_token")
+    if not token:
         return None
 
     try:
-        return await get_current_user(credentials)
+        return await _get_user_from_token(token)
     except HTTPException:
         return None
 
@@ -191,9 +325,9 @@ async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -
             detail="CAPTCHA verification failed: suspicious activity detected"
         )
 
-@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
-async def register(request: Request, user_data: RegisterRequest):
+async def register(request: Request, response: Response, user_data: RegisterRequest):
     try:
         users_collection = get_users_collection()
     except Exception as db_error:
@@ -224,11 +358,30 @@ async def register(request: Request, user_data: RegisterRequest):
     access_token = create_access_token(
         data={"sub": user_data.email, "user_id": user_id}
     )
-    return Token(access_token=access_token, token_type="bearer")
 
-@router.post("/login", response_model=Token)
+    # Set httpOnly cookie
+    set_auth_cookie(response, access_token)
+
+    # Log successful registration
+    log_registration(user_id=user_id, ip_address=request.client.host if request.client else "unknown")
+
+    return {"message": "Registration successful"}
+
+@router.post("/login")
 @limiter.limit("10/minute")
-async def login(request: Request, user_credentials: UserLogin):
+async def login(request: Request, response: Response, user_credentials: UserLogin):
+    # Check if account is locked
+    is_locked, minutes_remaining = is_account_locked(user_credentials.email)
+    if is_locked:
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="account_locked"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"Account temporarily locked due to too many failed attempts. Try again in {minutes_remaining} minutes.",
+        )
+
     try:
         users_collection = get_users_collection()
     except Exception as db_error:
@@ -238,30 +391,69 @@ async def login(request: Request, user_credentials: UserLogin):
         )
     user = await users_collection.find_one({"email": user_credentials.email})
     if not user:
+        # Record failed attempt
+        record_failed_attempt(user_credentials.email)
+
+        # Log failed login attempt
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="user_not_found"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not verify_password(user_credentials.password, user["hashed_password"]):
+        # Record failed attempt
+        record_failed_attempt(user_credentials.email)
+
+        # Log failed login attempt
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="invalid_password"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Clear failed attempts on successful login
+    clear_failed_attempts(user_credentials.email)
+
     user_id = str(user["_id"])
     access_token = create_access_token(
         data={"sub": user["email"], "user_id": user_id}
     )
-    return Token(access_token=access_token, token_type="bearer")
+
+    # Set httpOnly cookie
+    set_auth_cookie(response, access_token)
+
+    # Log successful login
+    log_login(
+        user_id=user_id,
+        ip_address=request.client.host if request.client else "unknown",
+        success=True,
+        method="password"
+    )
+
+    return {"message": "Login successful"}
 
 @router.get("/me", response_model=User)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.post("/google", response_model=Token)
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear authentication cookie."""
+    clear_auth_cookie(response)
+    return {"message": "Successfully logged out"}
+
+@router.post("/google")
 @limiter.limit("10/minute")
-async def google_auth(request: Request, auth_request: GoogleAuthRequest):
+async def google_auth(request: Request, response: Response, auth_request: GoogleAuthRequest):
     try:
         users_collection = get_users_collection()
     except Exception as db_error:
@@ -279,6 +471,10 @@ async def google_auth(request: Request, auth_request: GoogleAuthRequest):
         email = idinfo['email']
         name = idinfo.get('name', email.split('@')[0])
     except ValueError as e:
+        log_failed_auth(
+            ip_address=request.client.host if request.client else "unknown",
+            reason="invalid_google_token"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Google token: {str(e)}"
@@ -307,4 +503,16 @@ async def google_auth(request: Request, auth_request: GoogleAuthRequest):
     access_token = create_access_token(
         data={"sub": email, "user_id": user_id}
     )
-    return Token(access_token=access_token, token_type="bearer")
+
+    # Set httpOnly cookie
+    set_auth_cookie(response, access_token)
+
+    # Log successful login
+    log_login(
+        user_id=user_id,
+        ip_address=request.client.host if request.client else "unknown",
+        success=True,
+        method="google"
+    )
+
+    return {"message": "Login successful"}

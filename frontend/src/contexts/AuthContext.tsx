@@ -44,18 +44,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchUser = useCallback(async () => {
-    const token = localStorage.getItem('vantage_token');
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
     try {
       const userData = await api.getMe();
       setUser(userData);
     } catch {
-      localStorage.removeItem('vantage_token');
       setUser(null);
     } finally {
       setLoading(false);
@@ -68,8 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const tokens = await api.login(email, password);
-      localStorage.setItem('vantage_token', tokens.access_token);
+      await api.login(email, password);
       await fetchUser();
       return { error: null };
     } catch (err) {
@@ -86,8 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     recaptchaAction: string
   ) => {
     try {
-      const tokens = await api.register(name, email, password, role, recaptchaToken, recaptchaAction);
-      localStorage.setItem('vantage_token', tokens.access_token);
+      await api.register(name, email, password, role, recaptchaToken, recaptchaAction);
       await fetchUser();
       return { error: null };
     } catch (err) {
@@ -97,8 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async (credential: string) => {
     try {
-      const tokens = await api.googleAuth(credential);
-      localStorage.setItem('vantage_token', tokens.access_token);
+      await api.googleAuth(credential);
       await fetchUser();
       return { error: null };
     } catch (err) {
@@ -106,8 +95,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = () => {
-    localStorage.removeItem('vantage_token');
+  const signOut = async () => {
+    // Call backend logout endpoint to clear httpOnly cookie
+    try {
+      await api.logout();
+    } catch {}
     setUser(null);
   };
 

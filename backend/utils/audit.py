@@ -105,3 +105,14 @@ def log_failed_auth(ip_address: str, reason: str) -> None:
         success=False,
         details={"reason": reason},
     )
+
+
+def log_registration(user_id: str, ip_address: str, method: str = "password") -> None:
+    """Log account registration."""
+    log_security_event(
+        event_type="registration",
+        user_id=user_id,
+        ip_address=ip_address,
+        success=True,
+        details={"method": method},
+    )

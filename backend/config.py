@@ -46,6 +46,8 @@ API_URL: str = os.getenv("API_URL", "http://localhost:8000")
 
 FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+
 DEMO_MODE: bool = _get_bool("DEMO_MODE", False)
 DEMO_LAT: float = float(os.getenv("DEMO_LAT", "43.6532"))
 DEMO_LNG: float = float(os.getenv("DEMO_LNG", "-79.3832"))
