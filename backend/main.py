@@ -62,17 +62,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Referrer policy
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-        # Content Security Policy
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https: blob:; "
-            "font-src 'self'; "
-            "connect-src 'self' https://accounts.google.com; "
-            "frame-ancestors 'none'"
-        )
+        # Apply CSP only to non-docs HTML responses so FastAPI's built-in
+        # Swagger/ReDoc pages keep working in production.
+        content_type = response.headers.get("content-type", "")
+        request_path = request.url.path
+        is_html_response = content_type.startswith("text/html")
+        is_fastapi_docs_path = request_path in ["/docs", "/redoc", "/docs/oauth2-redirect"]
 
+        if is_html_response and not is_fastapi_docs_path:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https: blob:; "
+                "font-src 'self'; "
+                "connect-src 'self' https://accounts.google.com; "
+                "frame-ancestors 'none'"
+            )
         # Permissions Policy (formerly Feature Policy)
         response.headers["Permissions-Policy"] = (
             "geolocation=(self), "
