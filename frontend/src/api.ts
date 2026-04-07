@@ -59,12 +59,8 @@ function getAuthHeaders(includeJson: boolean = false): HeadersInit {
   if (includeJson) {
     headers['Content-Type'] = 'application/json';
   }
-  // JWT is now stored in httpOnly cookie, sent automatically by browser
-  // We still include Authorization header for backward compatibility during transition
-  const token = localStorage.getItem('vantage_token');
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
+  // Authentication is handled via httpOnly cookies, which are sent automatically
+  // by the browser when requests use `credentials: 'include'`.
   return headers;
 }
 

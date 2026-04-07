@@ -17,6 +17,7 @@ from config import (
     SECRET_KEY,
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    ENVIRONMENT,
     GOOGLE_CLIENT_ID,
     RECAPTCHA_ENTERPRISE_PROJECT_ID,
     RECAPTCHA_ENTERPRISE_API_KEY,
@@ -36,8 +37,8 @@ from utils.audit import log_login, log_failed_auth
 _failed_attempts: Dict[str, Dict] = {}
 LOCKOUT_THRESHOLD = 5
 LOCKOUT_DURATION_MINUTES = 15
+LOCKOUT_WINDOW_MINUTES = 30  # Reset failed-attempt counter after this many minutes
 
-security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
 
 router = APIRouter()
@@ -93,13 +94,19 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def set_auth_cookie(response: Response, access_token: str) -> None:
-    """Set JWT token in httpOnly secure cookie."""
+    """Set JWT token in httpOnly cookie with environment-aware security attributes.
+
+    In production (same-origin Vercel deployment) use Secure + SameSite=Strict.
+    In development (cross-origin localhost) use SameSite=Lax without Secure so
+    the browser actually stores the cookie over plain HTTP.
+    """
+    is_production = ENVIRONMENT == "production"
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,  # HTTPS only in production
-        samesite="strict",
+        secure=is_production,
+        samesite="strict" if is_production else "lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/"
     )
@@ -136,21 +143,40 @@ def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
 
 
 def record_failed_attempt(email: str) -> None:
-    """Record a failed login attempt."""
+    """Record a failed login attempt.
+
+    Uses a rolling window: if the first recorded attempt falls outside
+    LOCKOUT_WINDOW_MINUTES, the counter resets before incrementing so that
+    a small number of failures spread over a long period never permanently
+    accumulates toward a lockout.
+    """
     email_lower = email.lower()
+    now = datetime.utcnow()
+
     if email_lower not in _failed_attempts:
         _failed_attempts[email_lower] = {
             "count": 1,
-            "first_attempt": datetime.utcnow()
+            "first_attempt": now
         }
     else:
-        _failed_attempts[email_lower]["count"] += 1
+        attempts = _failed_attempts[email_lower]
+        first_attempt = attempts.get("first_attempt", now)
+        window_elapsed_minutes = (now - first_attempt).total_seconds() / 60
 
-        # Check if we should lock the account
-        if _failed_attempts[email_lower]["count"] >= LOCKOUT_THRESHOLD:
-            _failed_attempts[email_lower]["locked_until"] = (
-                datetime.utcnow() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
-            )
+        # Reset counter when we're outside the rolling window
+        if window_elapsed_minutes > LOCKOUT_WINDOW_MINUTES:
+            _failed_attempts[email_lower] = {
+                "count": 1,
+                "first_attempt": now
+            }
+        else:
+            _failed_attempts[email_lower]["count"] += 1
+
+            # Lock the account once the threshold is reached
+            if _failed_attempts[email_lower]["count"] >= LOCKOUT_THRESHOLD:
+                _failed_attempts[email_lower]["locked_until"] = (
+                    now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+                )
 
 
 def clear_failed_attempts(email: str) -> None:
@@ -159,14 +185,14 @@ def clear_failed_attempts(email: str) -> None:
     if email_lower in _failed_attempts:
         del _failed_attempts[email_lower]
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
+async def _get_user_from_token(token: str) -> User:
+    """Decode a JWT and return the corresponding User from the database."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        token = credentials.credentials
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         user_id: str = payload.get("user_id")
@@ -190,14 +216,30 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         user["created_at"] = user["created_at"].isoformat()
     return User(**user)
 
+async def get_current_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+) -> User:
+    """Resolve the authenticated user from a Bearer token or httpOnly cookie."""
+    token = credentials.credentials if credentials else request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return await _get_user_from_token(token)
+
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
 ) -> Optional[User]:
-    if credentials is None:
+    token = credentials.credentials if credentials else request.cookies.get("access_token")
+    if not token:
         return None
 
     try:
-        return await get_current_user(credentials)
+        return await _get_user_from_token(token)
     except HTTPException:
         return None
 

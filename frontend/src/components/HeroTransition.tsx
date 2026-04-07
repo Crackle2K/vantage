@@ -145,16 +145,18 @@ const PHOTOBOOTH_IMAGES = [
   "/Images/volosgreekcuisine.webp",
 ]
 
-function makeStrip(offset: number, count = 12): string[] {
-  return Array.from({ length: count }, (_, i) =>
-    PHOTOBOOTH_IMAGES[(i + offset) % PHOTOBOOTH_IMAGES.length]
-  )
+function makeStrip(offset: number, count = 12, step = 1): string[] {
+  const imageCount = PHOTOBOOTH_IMAGES.length
+  return Array.from({ length: count }, (_, i) => {
+    const index = ((offset + i * step) % imageCount + imageCount) % imageCount
+    return PHOTOBOOTH_IMAGES[index]
+  })
 }
 
 const STRIP_A = makeStrip(0)
-const STRIP_B = makeStrip(3)
-const STRIP_C = makeStrip(5)
-const STRIP_D = makeStrip(2)
+const STRIP_B = makeStrip(0, 12, -1)
+const STRIP_C = makeStrip(1)
+const STRIP_D = makeStrip(2, 12, -1)
 
 // ─── Photobooth Strip Sub-Component ──────────────────────────────────────────
 
@@ -204,7 +206,7 @@ function PhotoStrip({
 export function HeroTransition() {
 
   // ── Refs ──────────────────────────────────────────────────────────────────
-  const outerRef = useRef<HTMLDivElement>(null) // 420vh scroll container
+  const outerRef = useRef<HTMLDivElement>(null) // 680vh scroll container
   const videoWrapRef = useRef<HTMLDivElement>(null) // Video wrapper for clip-path animation
   const textTopRef = useRef<HTMLDivElement>(null) // Top text line
   const textBotRef = useRef<HTMLDivElement>(null) // Bottom text line
