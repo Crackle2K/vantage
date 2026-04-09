@@ -314,6 +314,7 @@ def normalize_business_metadata(doc: dict) -> dict:
         if proxy_url:
             existing_images = doc.get("image_urls") or []
             doc["image_url"] = proxy_url
+            doc["primary_image_url"] = proxy_url
             doc["image_urls"] = normalize_image_urls(existing_images, primary_image=proxy_url)
 
     return doc
