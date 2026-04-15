@@ -19,7 +19,7 @@ pydantic_core==2.41.5
 pymongo==4.9.2
 python-dotenv==1.0.1
 PyJWT==2.12.1
-python-multipart==0.0.22
+python-multipart==0.0.26
 rsa==4.9.1
 six==1.17.0
 starlette==0.50.0
