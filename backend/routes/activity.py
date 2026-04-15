@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from models.activity import (
+from backend.models.activity import (
     CheckInCreate,
     CheckInStatus,
     ActivityType,
@@ -16,9 +16,9 @@ from models.activity import (
     OwnerEventCreate,
     calculate_credibility_score,
 )
-from models.user import User
-from models.auth import get_current_user
-from database.mongodb import (
+from backend.models.user import User
+from backend.models.auth import get_current_user
+from backend.database.document_store import (
     get_checkins_collection,
     get_activity_feed_collection,
     get_businesses_collection,
@@ -26,7 +26,7 @@ from database.mongodb import (
     get_owner_posts_collection,
     get_reviews_collection,
 )
-from utils.security import sanitize_text
+from backend.utils.security import sanitize_text
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)

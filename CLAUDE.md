@@ -86,7 +86,7 @@ Mounted under `/api/` prefix in `backend/main.py`:
 
 ### Key Architectural Decisions
 
-- **Demo mode**: `config.py` exposes `DEMO_MODE` flag; `database/mongodb.py` seeds from `data/demo_businesses.json` when enabled. Routes fall back to demo data if MongoDB is unreachable (`DatabaseUnavailableError`).
+- **Demo mode**: `config.py` exposes `DEMO_MODE` flag; `database/document_store.py` seeds from `data/demo_businesses.json` when enabled. Routes fall back to demo data if Supabase document storage is unreachable (`DatabaseUnavailableError`).
 - **Ranking**: `services/visibility_score.py` and `services/match_score.py` compute per-business scores used by `routes/discovery.py`.
 - **Google Places**: `services/google_places.py` enriches business data; results are cached in the `geo_cache` MongoDB collection.
 - **Auth flow**: Frontend stores JWT in context (`AuthContext`). Backend issues JWTs via `routes/auth.py` using PyJWT. Google OAuth is handled both client-side (`@react-oauth/google`) and server-side (`google-auth`).

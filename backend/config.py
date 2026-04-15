@@ -15,9 +15,6 @@ if _BACKEND_ENV.exists():
 else:
     load_dotenv(dotenv_path=_ROOT_ENV)
 
-MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-DATABASE_NAME: str = os.getenv("DATABASE_NAME", "vantage")
-
 # Security: Fail fast if SECRET_KEY is not set
 _ENV_SECRET_KEY = os.getenv("SECRET_KEY")
 if not _ENV_SECRET_KEY:
@@ -51,3 +48,13 @@ ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 DEMO_MODE: bool = _get_bool("DEMO_MODE", False)
 DEMO_LAT: float = float(os.getenv("DEMO_LAT", "43.6532"))
 DEMO_LNG: float = float(os.getenv("DEMO_LNG", "-79.3832"))
+
+# Supabase configuration
+SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
+
+# Stripe billing configuration
+STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY: str = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")

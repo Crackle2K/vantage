@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Optional
 from enum import Enum
 
-from utils.security import validate_password_strength
+from backend.utils.security import validate_password_strength
 
 class UserRole(str, Enum):
     CUSTOMER = "customer"

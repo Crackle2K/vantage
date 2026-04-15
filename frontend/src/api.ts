@@ -216,8 +216,8 @@ export const api = {
     return request<TierInfo[]>('/subscriptions/tiers', undefined, 'Failed to fetch tiers');
   },
 
-  async createSubscription(sub: SubscriptionCreate): Promise<Subscription> {
-    return request<Subscription>('/subscriptions', {
+  async createSubscription(sub: SubscriptionCreate): Promise<Subscription | { checkout_url: string; checkout_session_id?: string; status: string }> {
+    return request<Subscription | { checkout_url: string; checkout_session_id?: string; status: string }>('/subscriptions', {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify(sub),

@@ -14,7 +14,7 @@ from urllib import request as urllib_request, error as urllib_error
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from config import (
+from backend.config import (
     SECRET_KEY,
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -27,10 +27,10 @@ from config import (
     RECAPTCHA_MIN_SCORE,
     RECAPTCHA_VERIFY_TIMEOUT_SECONDS,
 )
-from models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
-from database.mongodb import get_users_collection
-from utils.security import validate_password_strength
-from utils.audit import log_login, log_failed_auth, log_registration
+from backend.models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
+from backend.utils.security import validate_password_strength
+from backend.utils.audit import log_login, log_failed_auth, log_registration
+from backend.repositories.users import SupabaseUsersRepository
 
 
 # In-memory store for account lockout (use Redis in production)
@@ -44,6 +44,7 @@ optional_security = HTTPBearer(auto_error=False)
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
+users_repository = SupabaseUsersRepository()
 
 class GoogleAuthRequest(BaseModel):
     credential: str
@@ -217,19 +218,9 @@ async def _get_user_from_token(token: str) -> User:
         token_data = TokenData(email=email, user_id=user_id)
     except jwt.PyJWTError:
         raise credentials_exception
-    try:
-        users_collection = get_users_collection()
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database unavailable"
-        )
-    user = await users_collection.find_one({"email": token_data.email})
+    user = await users_repository.get_by_email(token_data.email)
     if user is None:
         raise credentials_exception
-    user["id"] = str(user["_id"])
-    if "created_at" in user and user["created_at"]:
-        user["created_at"] = user["created_at"].isoformat()
     return User(**user)
 
 async def get_current_user(
@@ -268,6 +259,29 @@ async def get_current_admin_user(current_user: User = Depends(get_current_user))
         )
     return current_user
 
+def _is_recaptcha_configured() -> bool:
+    """Check if reCAPTCHA Enterprise is properly configured."""
+
+    def _is_placeholder(value: str) -> bool:
+        cleaned = (value or "").strip().lower()
+        if not cleaned:
+            return True
+        # Ignore common template placeholders so local/dev defaults don't break signup.
+        placeholder_markers = (
+            "your-",
+            "example",
+            "changeme",
+            "replace",
+            "placeholder",
+        )
+        return any(marker in cleaned for marker in placeholder_markers)
+
+    return not (
+        _is_placeholder(RECAPTCHA_ENTERPRISE_PROJECT_ID)
+        or _is_placeholder(RECAPTCHA_ENTERPRISE_API_KEY)
+        or _is_placeholder(RECAPTCHA_ENTERPRISE_SITE_KEY)
+    )
+
 def _build_recaptcha_assessment_url() -> str:
     return (
         "https://recaptchaenterprise.googleapis.com/v1/projects/"
@@ -293,11 +307,7 @@ def _request_recaptcha_assessment(token: str, expected_action: str) -> dict:
         return json.loads(body)
 
 async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -> None:
-    if (
-        not RECAPTCHA_ENTERPRISE_PROJECT_ID
-        or not RECAPTCHA_ENTERPRISE_API_KEY
-        or not RECAPTCHA_ENTERPRISE_SITE_KEY
-    ):
+    if not _is_recaptcha_configured():
         return  # reCAPTCHA not configured; skip server-side verification
 
     action = requested_action or RECAPTCHA_SIGNUP_ACTION
@@ -328,14 +338,7 @@ async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 async def register(request: Request, response: Response, user_data: RegisterRequest):
-    try:
-        users_collection = get_users_collection()
-    except Exception as db_error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {str(db_error)}"
-        )
-    existing_user = await users_collection.find_one({"email": user_data.email})
+    existing_user = await users_repository.get_by_email(user_data.email)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -348,13 +351,13 @@ async def register(request: Request, response: Response, user_data: RegisterRequ
         "name": user_data.name,
         "email": user_data.email,
         "hashed_password": hashed_password,
-        "role": user_data.role,
+        "role": user_data.role.value,
         "favorites": [],
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.utcnow().isoformat(),
         **default_user_preferences(),
     }
-    result = await users_collection.insert_one(user_dict)
-    user_id = str(result.inserted_id)
+    created_user = await users_repository.create(user_dict)
+    user_id = created_user["id"]
     access_token = create_access_token(
         data={"sub": user_data.email, "user_id": user_id}
     )
@@ -382,14 +385,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
             detail=f"Account temporarily locked due to too many failed attempts. Try again in {minutes_remaining} minutes.",
         )
 
-    try:
-        users_collection = get_users_collection()
-    except Exception as db_error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {str(db_error)}"
-        )
-    user = await users_collection.find_one({"email": user_credentials.email})
+    user = await users_repository.get_by_email(user_credentials.email)
     if not user:
         # Record failed attempt
         record_failed_attempt(user_credentials.email)
@@ -428,7 +424,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
     # Clear failed attempts on successful login
     clear_failed_attempts(user_credentials.email)
 
-    user_id = str(user["_id"])
+    user_id = user["id"]
     access_token = create_access_token(
         data={"sub": user["email"], "user_id": user_id}
     )
@@ -461,13 +457,6 @@ async def logout(response: Response):
 @limiter.limit("10/minute")
 async def google_auth(request: Request, response: Response, auth_request: GoogleAuthRequest):
     try:
-        users_collection = get_users_collection()
-    except Exception as db_error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {str(db_error)}"
-        )
-    try:
         idinfo = id_token.verify_oauth2_token(
             auth_request.credential, 
             requests.Request(), 
@@ -485,14 +474,14 @@ async def google_auth(request: Request, response: Response, auth_request: Google
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Google token: {str(e)}"
         )
-    user = await users_collection.find_one({"email": email})
+    user = await users_repository.get_by_email(email)
     if user:
         if "google_id" not in user or user["google_id"] != google_id:
-            await users_collection.update_one(
-                {"email": email},
-                {"$set": {"google_id": google_id, "updated_at": datetime.utcnow()}}
+            await users_repository.update_by_email(
+                email,
+                {"google_id": google_id, "auth_provider": "google", "updated_at": datetime.utcnow().isoformat()},
             )
-        user_id = str(user["_id"])
+        user_id = user["id"]
     else:
         user_dict = {
             "name": name,
@@ -500,12 +489,12 @@ async def google_auth(request: Request, response: Response, auth_request: Google
             "google_id": google_id,
             "role": "customer",
             "favorites": [],
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.utcnow().isoformat(),
             "auth_provider": "google",
             **default_user_preferences(),
         }
-        result = await users_collection.insert_one(user_dict)
-        user_id = str(result.inserted_id)
+        created_user = await users_repository.create(user_dict)
+        user_id = created_user["id"]
     access_token = create_access_token(
         data={"sub": email, "user_id": user_id}
     )

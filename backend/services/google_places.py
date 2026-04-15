@@ -5,14 +5,14 @@ from typing import List, Dict, Optional
 
 import httpx
 
-from config import GOOGLE_API_KEY
-from database.mongodb import get_api_usage_log_collection
-from services.business_metadata import (
+from backend.config import GOOGLE_API_KEY
+from backend.database.document_store import get_api_usage_log_collection
+from backend.services.business_metadata import (
     derive_known_for,
     generate_short_description,
     normalize_image_urls,
 )
-from services.local_business_classifier import classify_local_business
+from backend.services.local_business_classifier import classify_local_business
 
 _TYPE_MAP: Dict[str, str] = {
     "restaurant": "Restaurants",

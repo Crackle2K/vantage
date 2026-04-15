@@ -90,11 +90,17 @@ export default function PricingPage() {
 
     setSubscribing(true)
     try {
-      await api.createSubscription({
+      const result = await api.createSubscription({
         business_id: selectedBusiness,
         tier: tier as 'starter' | 'pro' | 'premium',
         billing_cycle: billingCycle,
       })
+
+      if (result && typeof result === 'object' && 'checkout_url' in result && result.checkout_url) {
+        window.location.assign(result.checkout_url)
+        return
+      }
+
       setSuccess(`Successfully subscribed to ${tierLabels[tier] || tier} plan!`)
       loadData()
     } catch (err) {

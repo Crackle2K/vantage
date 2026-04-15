@@ -6,26 +6,25 @@ import re
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from fastapi.responses import StreamingResponse
 from bson import ObjectId
-import pymongo.errors
 
-from models.business import (
+from backend.models.business import (
     Business,
     BusinessCreate,
     BusinessProfileUpdate,
     BusinessUpdate,
     CategoryEnum,
 )
-from models.user import User
-from models.auth import get_current_user
-from database.mongodb import get_businesses_collection, DatabaseUnavailableError
-from services.business_metadata import (
+from backend.models.user import User
+from backend.models.auth import get_current_user
+from backend.database.document_store import get_businesses_collection, DatabaseUnavailableError
+from backend.services.business_metadata import (
     derive_known_for,
     generate_short_description,
     normalize_business_metadata,
     normalize_image_urls,
 )
-from services.photo_proxy import build_category_placeholder_bytes, build_stream, get_photo_payload
-from routes.discovery import discover_businesses
+from backend.services.photo_proxy import build_category_placeholder_bytes, build_stream, get_photo_payload
+from backend.routes.discovery import discover_businesses
 
 router = APIRouter()
 
@@ -78,7 +77,7 @@ async def get_business_photo(
         businesses_collection = get_businesses_collection()
         content_type, payload = await get_photo_payload(businesses_collection, place_id.strip(), maxwidth)
         stream, headers = build_stream(content_type, payload)
-    except (DatabaseUnavailableError, pymongo.errors.PyMongoError):
+    except DatabaseUnavailableError:
         logger.exception("DB error serving photo for place_id=%s", place_id)
         content_type, payload = build_category_placeholder_bytes(label="V")
         stream = io.BytesIO(payload)

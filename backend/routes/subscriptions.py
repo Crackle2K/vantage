@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, status, Depends
-from bson import ObjectId
 
-from models.subscription import (
+from backend.models.subscription import (
     SubscriptionCreate,
     SubscriptionUpdate,
     SubscriptionTier,
@@ -10,31 +9,23 @@ from models.subscription import (
     TIER_FEATURES,
     TIER_DISPLAY,
 )
-from models.user import User
-from models.auth import get_current_user
-from database.mongodb import (
-    get_subscriptions_collection,
-    get_businesses_collection,
+from backend.models.user import User
+from backend.models.auth import get_current_user
+from backend.repositories.factory import (
+    get_subscriptions_read_repository,
+    get_subscriptions_write_repositories,
 )
+from backend.services.stripe_service import create_checkout_session, stripe_is_configured
+from backend.config import FRONTEND_URL
 
 router = APIRouter()
-
-def _oid(raw_id: str, label: str) -> ObjectId:
-    if not ObjectId.is_valid(raw_id):
-        raise HTTPException(status_code=400, detail=f"Invalid {label}")
-    return ObjectId(raw_id)
-
-def _sub(doc: dict | None) -> dict | None:
-    if doc:
-        doc["id"] = str(doc.pop("_id"))
-    return doc
 
 def _period_end(now: datetime, cycle: BillingCycle) -> datetime:
     return now + (timedelta(days=365) if cycle == BillingCycle.YEARLY else timedelta(days=30))
 
 async def _owned_business_or_404(business_id: str, current_user: User) -> dict:
-    businesses = get_businesses_collection()
-    business = await businesses.find_one({"_id": _oid(business_id, "business ID")})
+    read_repo = get_subscriptions_read_repository()
+    business = await read_repo.get_business(business_id)
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
     if str(business.get("owner_id")) != current_user.id:
@@ -57,7 +48,7 @@ async def create_subscription(
     data: SubscriptionCreate,
     current_user: User = Depends(get_current_user),
 ):
-    subs = get_subscriptions_collection()
+    write_repos = get_subscriptions_write_repositories()
 
     if current_user.role != "business_owner":
         raise HTTPException(status_code=403, detail="Only business owners can subscribe")
@@ -69,6 +60,48 @@ async def create_subscription(
             status_code=400,
             detail="Business must be claimed before subscribing. Submit a claim first.",
         )
+
+    if stripe_is_configured():
+        price_map = {
+            SubscriptionTier.FREE: 0,
+            SubscriptionTier.STARTER: 9.99,
+            SubscriptionTier.PRO: 19.99,
+            SubscriptionTier.PREMIUM: 49.99,
+        }
+        amount = price_map.get(data.tier, 0)
+        if amount <= 0:
+            return {
+                "status": "no_payment_required",
+                "tier": data.tier,
+            }
+
+        recurring_interval = "year" if data.billing_cycle == BillingCycle.YEARLY else "month"
+        session = create_checkout_session(
+            mode="subscription",
+            success_url=f"{FRONTEND_URL.rstrip('/')}/pricing?checkout=success",
+            cancel_url=f"{FRONTEND_URL.rstrip('/')}/pricing?checkout=cancel",
+            client_reference_id=current_user.id,
+            customer_email=current_user.email,
+            line_items=[
+                {
+                    "quantity": 1,
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": int(amount * 100),
+                        "recurring": {"interval": recurring_interval},
+                        "product_data": {
+                            "name": f"Vantage {data.tier.value.title()}",
+                            "description": f"{data.tier.value.title()} plan for {business.get('name', 'your business')}",
+                        },
+                    },
+                }
+            ],
+        )
+        return {
+            "checkout_url": session.url,
+            "checkout_session_id": session.id,
+            "status": "checkout_required",
+        }
 
     now = datetime.utcnow()
     sub_doc = {
@@ -84,33 +117,27 @@ async def create_subscription(
         "updated_at": now,
     }
 
-    await subs.delete_many({"business_id": data.business_id, "user_id": current_user.id})
+    created = None
+    for index, repo in enumerate(write_repos):
+        result = await repo.create_or_replace(sub_doc)
+        if index == 0:
+            created = result
 
-    result = await subs.insert_one(sub_doc)
-    created = await subs.find_one({"_id": result.inserted_id})
-    return _sub(created)
+    return created
 
 @router.get("/subscriptions/my")
 async def get_my_subscriptions(current_user: User = Depends(get_current_user)):
-    subs = get_subscriptions_collection()
-    cursor = subs.find({"user_id": current_user.id}).sort("created_at", -1)
-    results = await cursor.to_list(length=50)
-    return [_sub(item) for item in results]
+    read_repo = get_subscriptions_read_repository()
+    return await read_repo.list_for_user(current_user.id, limit=50)
 
 @router.get("/subscriptions/business/{business_id}")
 async def get_business_subscription(
     business_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    subs = get_subscriptions_collection()
+    read_repo = get_subscriptions_read_repository()
 
-    sub = await subs.find_one(
-        {
-            "business_id": business_id,
-            "user_id": current_user.id,
-            "status": "active",
-        }
-    )
+    sub = await read_repo.get_active_for_business_user(business_id, current_user.id)
 
     if not sub:
         return {
@@ -120,7 +147,7 @@ async def get_business_subscription(
         }
 
     features = TIER_FEATURES.get(sub["tier"], TIER_FEATURES[SubscriptionTier.FREE])
-    result = _sub(sub)
+    result = dict(sub)
     result["features"] = features
     return result
 
@@ -130,9 +157,10 @@ async def update_subscription(
     data: SubscriptionUpdate,
     current_user: User = Depends(get_current_user),
 ):
-    subs = get_subscriptions_collection()
-    sub_key = _oid(sub_id, "subscription ID")
-    sub = await subs.find_one({"_id": sub_key})
+    read_repo = get_subscriptions_read_repository()
+    write_repos = get_subscriptions_write_repositories()
+
+    sub = await read_repo.get_by_id(sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
@@ -145,34 +173,36 @@ async def update_subscription(
 
     update["updated_at"] = datetime.utcnow()
 
-    await subs.update_one({"_id": sub_key}, {"$set": update})
+    updated = None
+    for index, repo in enumerate(write_repos):
+        result = await repo.update_by_id(sub_id, update)
+        if index == 0:
+            updated = result
 
-    updated = await subs.find_one({"_id": sub_key})
-    return _sub(updated)
+    return updated
 
 @router.post("/subscriptions/{sub_id}/cancel")
 async def cancel_subscription(
     sub_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    subs = get_subscriptions_collection()
-    sub_key = _oid(sub_id, "subscription ID")
-    sub = await subs.find_one({"_id": sub_key})
+    read_repo = get_subscriptions_read_repository()
+    write_repos = get_subscriptions_write_repositories()
+
+    sub = await read_repo.get_by_id(sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     if sub["user_id"] != current_user.id:
         raise HTTPException(status_code=403, detail="Not your subscription")
 
-    await subs.update_one(
-        {"_id": sub_key},
-        {
-            "$set": {
-                "cancel_at_period_end": True,
-                "updated_at": datetime.utcnow(),
-            }
-        },
-    )
+    update = {
+        "cancel_at_period_end": True,
+        "updated_at": datetime.utcnow(),
+    }
+
+    for repo in write_repos:
+        await repo.update_by_id(sub_id, update)
 
     return {
         "status": "cancelling",

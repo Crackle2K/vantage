@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from services.photo_proxy import build_photo_proxy_url
+from backend.services.photo_proxy import build_photo_proxy_url
 
 _CATEGORY_TO_SINGULAR: dict[str, str] = {
     "Restaurants": "restaurant",

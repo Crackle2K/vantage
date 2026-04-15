@@ -1,47 +1,25 @@
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import JSONResponse
-from bson import ObjectId
-from bson.errors import InvalidId
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from models.user import User, UserUpdate, UserPreferencesUpdate, PasswordChange
-from models.auth import verify_password, get_password_hash
-from models.auth import get_current_user
-from database.mongodb import (
-    get_users_collection,
+from backend.models.user import User, UserUpdate, UserPreferencesUpdate, PasswordChange
+from backend.models.auth import verify_password, get_password_hash
+from backend.models.auth import get_current_user
+from backend.database.document_store import (
     get_reviews_collection,
     get_checkins_collection,
     get_saved_collection,
     get_activity_feed_collection,
 )
-from utils.audit import log_data_export, log_account_deletion, log_password_change
+from backend.repositories.users import SupabaseUsersRepository
+from backend.utils.audit import log_data_export, log_account_deletion, log_password_change
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
-
-def _users():
-    try:
-        return get_users_collection()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {exc}"
-        ) from exc
-
-def _user_oid(user_id: str) -> ObjectId:
-    try:
-        return ObjectId(user_id)
-    except InvalidId as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid user ID format"
-        ) from exc
+users_repository = SupabaseUsersRepository()
 
 def _serialize_user(user: dict) -> User:
-    user["id"] = str(user.pop("_id"))
-    if "created_at" in user and user["created_at"]:
-        user["created_at"] = user["created_at"].isoformat()
     return User(**user)
 
 def _normalize_text_list(values: list[str], limit: int) -> list[str]:
@@ -62,8 +40,7 @@ def _normalize_text_list(values: list[str], limit: int) -> list[str]:
 
 @router.get("/{user_id}", response_model=User)
 async def get_user_profile(user_id: str):
-    users_collection = _users()
-    user = await users_collection.find_one({"_id": _user_oid(user_id)})
+    user = await users_repository.get_by_id(user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -76,8 +53,6 @@ async def update_user_profile(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user)
 ):
-    users_collection = _users()
-    user_key = _user_oid(current_user.id)
     update_data = {}
     if user_update.name is not None:
         update_data["name"] = user_update.name
@@ -90,19 +65,13 @@ async def update_user_profile(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No fields to update"
         )
-    update_data["updated_at"] = datetime.utcnow()
-    result = await users_collection.update_one(
-        {"_id": user_key},
-        {"$set": update_data}
-    )
-    if result.modified_count == 0:
-        user = await users_collection.find_one({"_id": user_key})
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-    updated_user = await users_collection.find_one({"_id": user_key})
+    update_data["updated_at"] = datetime.utcnow().isoformat()
+    updated_user = await users_repository.update_by_id(current_user.id, update_data)
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     return _serialize_user(updated_user)
 
 @router.put("/me/password", status_code=200)
@@ -113,10 +82,7 @@ async def change_password(
     current_user: User = Depends(get_current_user)
 ):
     ip_address = request.client.host if request.client else "unknown"
-    users_collection = _users()
-    user_key = _user_oid(current_user.id)
-
-    user_in_db = await users_collection.find_one({"_id": user_key})
+    user_in_db = await users_repository.get_by_id(current_user.id)
     if not user_in_db:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -134,10 +100,7 @@ async def change_password(
         )
 
     hashed = get_password_hash(password_change.new_password)
-    await users_collection.update_one(
-        {"_id": user_key},
-        {"$set": {"hashed_password": hashed, "updated_at": datetime.utcnow()}}
-    )
+    await users_repository.update_by_id(current_user.id, {"hashed_password": hashed, "updated_at": datetime.utcnow().isoformat()})
     log_password_change(current_user.id, ip_address, success=True)
     return {"message": "Password updated successfully"}
 
@@ -146,9 +109,6 @@ async def update_user_preferences(
     preferences_update: UserPreferencesUpdate,
     current_user: User = Depends(get_current_user)
 ):
-    users_collection = _users()
-    user_key = _user_oid(current_user.id)
-
     update_data = {
         "preferred_categories": _normalize_text_list(preferences_update.preferred_categories, 8),
         "preferred_vibes": _normalize_text_list(preferences_update.preferred_vibes, 10),
@@ -156,15 +116,10 @@ async def update_user_preferences(
         "price_pref": preferences_update.price_pref.value if preferences_update.price_pref else None,
         "discovery_mode": preferences_update.discovery_mode.value,
         "preferences_completed": bool(preferences_update.preferences_completed),
-        "updated_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow().isoformat(),
     }
 
-    await users_collection.update_one(
-        {"_id": user_key},
-        {"$set": update_data}
-    )
-
-    updated_user = await users_collection.find_one({"_id": user_key})
+    updated_user = await users_repository.update_by_id(current_user.id, update_data)
     if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -177,24 +132,18 @@ async def update_user_preferences(
 async def export_user_data(request: Request, current_user: User = Depends(get_current_user)):
     """Export all user data for GDPR compliance (right to portability)."""
     ip_address = request.client.host if request.client else "unknown"
-    users_collection = _users()
     reviews_collection = get_reviews_collection()
     checkins_collection = get_checkins_collection()
     saved_collection = get_saved_collection()
     activity_collection = get_activity_feed_collection()
 
-    user_key = _user_oid(current_user.id)
-
     # Get user profile
-    user = await users_collection.find_one({"_id": user_key})
+    user = await users_repository.get_by_id(current_user.id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Remove sensitive data
     user.pop("hashed_password", None)
-    user["id"] = str(user.pop("_id"))
-    if "created_at" in user and user["created_at"]:
-        user["created_at"] = user["created_at"].isoformat()
 
     # Get user's reviews
     reviews = await reviews_collection.find({"user_id": current_user.id}).to_list(length=None)
@@ -240,13 +189,10 @@ async def export_user_data(request: Request, current_user: User = Depends(get_cu
 async def delete_account(request: Request, current_user: User = Depends(get_current_user)):
     """Delete user account for GDPR compliance (right to erasure)."""
     ip_address = request.client.host if request.client else "unknown"
-    users_collection = _users()
     reviews_collection = get_reviews_collection()
     checkins_collection = get_checkins_collection()
     saved_collection = get_saved_collection()
     activity_collection = get_activity_feed_collection()
-
-    user_key = _user_oid(current_user.id)
 
     # Delete user data from all collections
     await reviews_collection.delete_many({"user_id": current_user.id})
@@ -255,13 +201,7 @@ async def delete_account(request: Request, current_user: User = Depends(get_curr
     await activity_collection.delete_many({"user_id": current_user.id})
 
     # Finally delete the user
-    result = await users_collection.delete_one({"_id": user_key})
-
-    if result.deleted_count == 0:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+    await users_repository.delete_by_id(current_user.id)
 
     log_account_deletion(current_user.id, ip_address)
     return {"message": "Account deleted successfully"}

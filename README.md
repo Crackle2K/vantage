@@ -49,6 +49,33 @@ npm run dev
 
 Frontend default URL: `http://localhost:5173`
 
+## Supabase Setup
+
+Vantage can now use Supabase directly for authentication and user profile storage.
+
+### Configure backend environment
+
+Add these values in `backend/.env` (see `backend/.env.example`):
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Recommended initial values:
+
+- `DB_READ_PROVIDER=mongo` for the remaining legacy data paths
+- `DB_WRITE_MODE=mongo` until the rest of the backend is rewritten
+
+### Run the Supabase users schema
+
+Execute:
+
+- `scripts/supabase/migrations/000_users.sql`
+
+### Notes
+
+- User auth, login, profile updates, password changes, and account deletion are now backed by Supabase users storage.
+- The remaining business/discovery/activity routes still use the existing Mongo-backed implementation and will need to be rewritten separately.
+
 ## Next Steps
 
 - Consolidate repeated frontend view helpers into shared utilities.

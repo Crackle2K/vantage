@@ -3,10 +3,10 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from bson import ObjectId
 
-from models.claim import BusinessClaim, ClaimCreate, ClaimReview, ClaimStatus
-from models.user import User
-from models.auth import get_current_user, get_current_admin_user
-from database.mongodb import (
+from backend.models.claim import BusinessClaim, ClaimCreate, ClaimReview, ClaimStatus
+from backend.models.user import User
+from backend.models.auth import get_current_user, get_current_admin_user
+from backend.database.document_store import (
     get_claims_collection,
     get_businesses_collection,
     get_activity_feed_collection,

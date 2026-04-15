@@ -1,27 +1,32 @@
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
-from pymongo.errors import PyMongoError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from config import DEMO_MODE
-from database.mongodb import connect_to_mongo, close_mongo_connection
-from database.mongodb import DatabaseUnavailableError
-from models.auth import router as auth_router
-from routes.businesses import router as businesses_router
-from routes.reviews import router as reviews_router
-from routes.deals import router as deals_router
-from routes.claims import router as claims_router
-from routes.subscriptions import router as subscriptions_router
-from routes.activity import router as activity_router
-from routes.discovery import router as discovery_router
-from routes.saved import router as saved_router
-from routes.users import router as users_router
+from backend.config import DEMO_MODE
+from backend.database.document_store import connect_to_mongo, close_mongo_connection
+from backend.database.document_store import DatabaseUnavailableError
+from backend.models.auth import router as auth_router
+from backend.routes.businesses import router as businesses_router
+from backend.routes.reviews import router as reviews_router
+from backend.routes.deals import router as deals_router
+from backend.routes.claims import router as claims_router
+from backend.routes.subscriptions import router as subscriptions_router
+from backend.routes.activity import router as activity_router
+from backend.routes.discovery import router as discovery_router
+from backend.routes.saved import router as saved_router
+from backend.routes.users import router as users_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -124,6 +129,7 @@ if production_url:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
@@ -148,16 +154,6 @@ async def handle_db_unavailable(_: Request, exc: DatabaseUnavailableError):
         content={
             "detail": str(exc),
             "error": "database_unavailable",
-        },
-    )
-
-@app.exception_handler(PyMongoError)
-async def handle_pymongo_error(_: Request, exc: PyMongoError):
-    return JSONResponse(
-        status_code=503,
-        content={
-            "detail": f"Database query failed: {str(exc)}",
-            "error": "database_query_failed",
         },
     )
 

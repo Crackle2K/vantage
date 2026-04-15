@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import quote
 
-from models.activity import ActivityType, CheckInStatus
-from services.business_metadata import derive_known_for, generate_short_description
-from services.visibility_score import calculate_live_visibility_score
+from backend.models.activity import ActivityType, CheckInStatus
+from backend.services.business_metadata import derive_known_for, generate_short_description
+from backend.services.visibility_score import calculate_live_visibility_score
 
 _PALETTE = [
     ("

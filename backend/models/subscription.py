@@ -84,6 +84,10 @@ class Subscription(BaseModel):
     cancel_at_period_end: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
+    stripe_customer_id: Optional[str] = None
+    stripe_subscription_id: Optional[str] = None
+    stripe_price_id: Optional[str] = None
+    billing_provider: str = "stripe"
 
     class Config:
         from_attributes = True

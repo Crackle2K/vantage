@@ -2,15 +2,14 @@ from typing import List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from bson import ObjectId
-from pymongo.errors import DuplicateKeyError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from models.reviews import Review, ReviewCreate, ReviewUpdate, ReviewWithUser
-from models.user import User
-from models.auth import get_current_user
-from database.mongodb import get_reviews_collection, get_businesses_collection, get_users_collection
-from utils.security import sanitize_text
+from backend.models.reviews import Review, ReviewCreate, ReviewUpdate, ReviewWithUser
+from backend.models.user import User
+from backend.models.auth import get_current_user
+from backend.database.document_store import get_reviews_collection, get_businesses_collection, get_users_collection
+from backend.utils.security import sanitize_text
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -57,13 +56,7 @@ async def create_review(
         "comment": sanitize_text(review_data.comment, max_length=1000) if review_data.comment else None,
         "created_at": datetime.utcnow()
     }
-    try:
-        result = await reviews_collection.insert_one(review_dict)
-    except DuplicateKeyError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You have already reviewed this business"
-        )
+    result = await reviews_collection.insert_one(review_dict)
     await update_business_rating(review_data.business_id)
     created_review = await reviews_collection.find_one({"_id": result.inserted_id})
     return review_helper(created_review)

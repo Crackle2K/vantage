@@ -3,10 +3,10 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from bson import ObjectId
 
-from models.deal import Deal, DealCreate, DealUpdate, DealWithBusiness
-from models.user import User
-from models.auth import get_current_user
-from database.mongodb import get_deals_collection, get_businesses_collection
+from backend.models.deal import Deal, DealCreate, DealUpdate, DealWithBusiness
+from backend.models.user import User
+from backend.models.auth import get_current_user
+from backend.database.document_store import get_deals_collection, get_businesses_collection
 
 router = APIRouter()
 

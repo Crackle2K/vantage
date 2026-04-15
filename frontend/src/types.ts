@@ -230,6 +230,17 @@ export interface Subscription {
   current_period_end: string;
   cancel_at_period_end: boolean;
   created_at: string;
+  updated_at?: string;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_price_id?: string | null;
+  billing_provider?: string;
+}
+
+export interface StripeCheckoutResponse {
+  checkout_url: string;
+  checkout_session_id?: string;
+  status: string;
 }
 
 export interface SubscriptionCreate {

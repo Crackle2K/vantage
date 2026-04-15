@@ -18,7 +18,7 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-from config import GOOGLE_API_KEY
+from backend.config import GOOGLE_API_KEY
 
 PHOTO_PROXY_TTL_SECONDS = 7 * 24 * 60 * 60
 PHOTO_PROXY_MEMORY_ITEMS = 192

@@ -1,16 +1,16 @@
 import asyncio
 import math
 import time
+from dataclasses import dataclass
 from copy import deepcopy
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from bson import ObjectId
-from pymongo import UpdateOne
 
-from models.user import User
-from models.auth import get_current_user, get_current_user_optional, get_current_admin_user
-from database.mongodb import (
+from backend.models.user import User
+from backend.models.auth import get_current_user, get_current_user_optional, get_current_admin_user
+from backend.database.document_store import (
     get_businesses_collection,
     get_visits_collection,
     get_reviews_collection,
@@ -18,17 +18,17 @@ from database.mongodb import (
     get_credibility_collection,
     get_geo_cache_collection,
 )
-from services.google_places import (
+from backend.services.google_places import (
     search_google_places,
     geo_cell_key,
     enrich_business_photo_urls,
 )
-from services.visibility_score import (
+from backend.services.visibility_score import (
     calculate_live_visibility_score,
     reviewer_credibility_weight,
 )
-from services.local_business_classifier import classify_local_business
-from services.business_metadata import normalize_business_metadata
+from backend.services.local_business_classifier import classify_local_business
+from backend.services.business_metadata import normalize_business_metadata
 
 router = APIRouter()
 
@@ -53,6 +53,12 @@ LANE_ITEM_LIMIT = 12
 LANE_CACHE_TTL_SECONDS = 60
 LANE_CACHE_MAX_ENTRIES = 48
 _lanes_cache: dict[str, tuple[float, dict]] = {}
+
+
+@dataclass
+class UpdateOne:
+    _filter: dict
+    _doc: dict
 
 def _lanes_cache_key(
     lat: float,
@@ -953,7 +959,7 @@ async def discover_businesses(
         return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
 
     cell = geo_cell_key(lat, lng, int(radius_meters))
-    cache_cutoff = datetime.utcnow() - timedelta(hours=CACHE_TTL_HOURS)
+    cache_cutoff = (datetime.utcnow() - timedelta(hours=CACHE_TTL_HOURS)).isoformat()
 
     cached = await geo_cache.find_one({
         **cell,
@@ -972,22 +978,28 @@ async def discover_businesses(
 
     if new_places:
         incoming_place_ids = [p["place_id"] for p in new_places]
-        existing_cursor = businesses.find(
+        existing_docs = await businesses.find(
             {"place_id": {"$in": incoming_place_ids}},
             {"place_id": 1},
-        )
-        existing_ids = {doc["place_id"] async for doc in existing_cursor}
+        ).to_list(length=None)
+        existing_ids = {doc.get("place_id") for doc in existing_docs if doc.get("place_id")}
 
         to_insert = [p for p in new_places if p["place_id"] not in existing_ids]
         if to_insert:
             await businesses.insert_many(to_insert, ordered=False)
             print(f"Backfilled {len(to_insert)} businesses from Google Places")
 
-    await geo_cache.update_one(
+    cache_payload = {
+        **cell,
+        "fetched_at": datetime.utcnow().isoformat(),
+        "result_count": len(new_places),
+    }
+    cache_update = await geo_cache.update_one(
         cell,
-        {"$set": {**cell, "fetched_at": datetime.utcnow(), "result_count": len(new_places)}},
-        upsert=True,
+        {"$set": cache_payload},
     )
+    if cache_update.modified_count == 0:
+        await geo_cache.insert_one(cache_payload)
 
     results = await _load_discovery_candidates(businesses, geo_filter, candidate_limit)
     return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
