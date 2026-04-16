@@ -15,7 +15,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@react-oauth/google": "^0.13.5",
     "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.103.0",
+    "@supabase/supabase-js": "^2.103.3",
     "@tailwindcss/postcss": "^4.2.2",
     "autoprefixer": "^10.5.0",
     "class-variance-authority": "^0.7.1",
