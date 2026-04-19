@@ -81,18 +81,26 @@ async def get_business_reviews(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Business not found"
         )
+    # Fetch reviews and all referenced user_ids in two queries instead of N+1
     cursor = reviews_collection.find(
         {"business_id": business_id}
     ).sort("created_at", -1).skip(skip).limit(limit)
     reviews = await cursor.to_list(length=limit)
+
+    user_ids = list({review["user_id"] for review in reviews})
+    user_map: dict[str, str] = {}
+    if user_ids:
+        # Fetch all users in one query using $in
+        user_docs = await users_collection.find(
+            {"_id": {"$in": user_ids}},
+            projection={"_id": 1, "name": 1}
+        ).to_list(length=None)
+        user_map = {doc["_id"]: doc.get("name", "Anonymous") for doc in user_docs}
+
     enriched_reviews = []
     for review in reviews:
         review_dict = review_helper(review)
-        user = await users_collection.find_one({"_id": ObjectId(review["user_id"])})
-        if user:
-            review_dict["user_name"] = user.get("name", "Anonymous")
-        else:
-            review_dict["user_name"] = "Anonymous"
+        review_dict["user_name"] = user_map.get(review["user_id"], "Anonymous")
         enriched_reviews.append(review_dict)
     return enriched_reviews
 

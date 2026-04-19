@@ -2,6 +2,7 @@ import bcrypt
 import asyncio
 import json
 import math
+import redis.asyncio as redis
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 from fastapi import APIRouter, HTTPException, status, Depends, Request, Response
@@ -14,31 +15,140 @@ from urllib import request as urllib_request, error as urllib_error
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from backend.config import (
-    SECRET_KEY,
-    ALGORITHM,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    ENVIRONMENT,
-    GOOGLE_CLIENT_ID,
-    RECAPTCHA_ENTERPRISE_PROJECT_ID,
-    RECAPTCHA_ENTERPRISE_API_KEY,
-    RECAPTCHA_ENTERPRISE_SITE_KEY,
-    RECAPTCHA_SIGNUP_ACTION,
-    RECAPTCHA_MIN_SCORE,
-    RECAPTCHA_VERIFY_TIMEOUT_SECONDS,
-)
+from backend.config import REDIS_URL, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, ENVIRONMENT, GOOGLE_CLIENT_ID, RECAPTCHA_ENTERPRISE_PROJECT_ID, RECAPTCHA_ENTERPRISE_API_KEY, RECAPTCHA_ENTERPRISE_SITE_KEY, RECAPTCHA_SIGNUP_ACTION, RECAPTCHA_MIN_SCORE, RECAPTCHA_VERIFY_TIMEOUT_SECONDS
 from backend.models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
 from backend.utils.security import validate_password_strength
 from backend.utils.audit import log_login, log_failed_auth, log_registration
 from backend.repositories.users import SupabaseUsersRepository
 
 
-# In-memory store for account lockout (use Redis in production)
-# Structure: {email: {"count": int, "locked_until": datetime, "first_attempt": datetime}}
-_failed_attempts: Dict[str, Dict] = {}
+# Redis-backed rate limiting and account lockout
+# Falls back to in-memory dict when Redis is unavailable (local dev without Redis).
+_redis: Optional[redis.Redis] = None
 LOCKOUT_THRESHOLD = 5
 LOCKOUT_DURATION_MINUTES = 15
-LOCKOUT_WINDOW_MINUTES = 30  # Reset failed-attempt counter after this many minutes
+LOCKOUT_WINDOW_MINUTES = 30
+
+
+async def _get_redis() -> Optional[redis.Redis]:
+    global _redis
+    if _redis is None:
+        try:
+            _redis = redis.from_url(REDIS_URL, decode_responses=True)
+            await _redis.ping()
+        except Exception:
+            _redis = None
+    return _redis
+
+
+async def _redis_get(key: str) -> Optional[str]:
+    r = await _get_redis()
+    if r is None:
+        return None
+    try:
+        return await r.get(key)
+    except Exception:
+        return None
+
+
+async def _redis_setex(key: str, ttl_seconds: int, value: str) -> bool:
+    r = await _get_redis()
+    if r is None:
+        return False
+    try:
+        await r.setex(key, ttl_seconds, value)
+        return True
+    except Exception:
+        return False
+
+
+# Fallback in-memory store (dev only, single-process only)
+_inmem: Dict[str, Dict] = {}
+
+
+async def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
+    email_lower = email.lower()
+    lock_key = f"lockout:{email_lower}"
+    locked_until_str = await _redis_get(lock_key)
+    if locked_until_str:
+        try:
+            lock_time = datetime.fromisoformat(locked_until_str)
+            remaining_seconds = (lock_time - datetime.utcnow()).total_seconds()
+            remaining = max(1, math.ceil(remaining_seconds / 60))
+            return True, int(remaining)
+        except Exception:
+            pass
+
+    # Fallback to in-memory
+    if email_lower not in _inmem:
+        return False, None
+    attempts = _inmem[email_lower]
+    if "locked_until" in attempts:
+        lockout_end = attempts["locked_until"]
+        if datetime.utcnow() < lockout_end:
+            remaining_seconds = (lockout_end - datetime.utcnow()).total_seconds()
+            remaining = max(1, math.ceil(remaining_seconds / 60))
+            return True, int(remaining)
+        else:
+            del _inmem[email_lower]
+    return False, None
+
+
+async def record_failed_attempt(email: str) -> None:
+    email_lower = email.lower()
+    now = datetime.utcnow()
+
+    if await _get_redis():
+        try:
+            r = await _get_redis()
+            lock_key = f"lockout:{email_lower}"
+            count_key = f"failed:{email_lower}"
+            pipe = r.pipeline()
+            pipe.incr(count_key)
+            pipe.expire(count_key, LOCKOUT_WINDOW_MINUTES * 60)
+            results = await pipe.execute()
+            count = int(results[0])
+            if count >= LOCKOUT_THRESHOLD:
+                lock_time = now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+                await r.setex(lock_key, LOCKOUT_DURATION_MINUTES * 60, lock_time.isoformat())
+            return
+        except Exception:
+            pass
+
+    # Fallback in-memory
+    expired_keys = [
+        k for k, v in _inmem.items()
+        if ("locked_until" in v and v["locked_until"] < now)
+        or ("first_attempt" in v and "locked_until" not in v
+            and (now - v["first_attempt"]).total_seconds() / 60 > LOCKOUT_WINDOW_MINUTES)
+    ]
+    for k in expired_keys:
+        del _inmem[k]
+
+    if email_lower not in _inmem:
+        _inmem[email_lower] = {"count": 1, "first_attempt": now}
+    else:
+        first_attempt = _inmem[email_lower].get("first_attempt", now)
+        if (now - first_attempt).total_seconds() / 60 > LOCKOUT_WINDOW_MINUTES:
+            _inmem[email_lower] = {"count": 1, "first_attempt": now}
+        else:
+            _inmem[email_lower]["count"] += 1
+
+        if _inmem[email_lower]["count"] >= LOCKOUT_THRESHOLD:
+            _inmem[email_lower]["locked_until"] = now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+
+
+async def clear_failed_attempts(email: str) -> None:
+    email_lower = email.lower()
+    if await _get_redis():
+        try:
+            r = await _get_redis()
+            await r.delete(f"failed:{email_lower}", f"lockout:{email_lower}")
+            return
+        except Exception:
+            pass
+    _inmem.pop(email_lower, None)
+
 
 optional_security = HTTPBearer(auto_error=False)
 
@@ -94,14 +204,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-
 def set_auth_cookie(response: Response, access_token: str) -> None:
-    """Set JWT token in httpOnly cookie with environment-aware security attributes.
-
-    In production (same-origin Vercel deployment) use Secure + SameSite=Strict.
-    In development (cross-origin localhost) use SameSite=Lax without Secure so
-    the browser actually stores the cookie over plain HTTP.
-    """
+    """Set JWT token in httpOnly cookie with environment-aware security attributes."""
     is_production = ENVIRONMENT == "production"
     response.set_cookie(
         key="access_token",
@@ -113,94 +217,12 @@ def set_auth_cookie(response: Response, access_token: str) -> None:
         path="/"
     )
 
-
 def clear_auth_cookie(response: Response) -> None:
     """Clear the authentication cookie."""
     response.delete_cookie(
         key="access_token",
         path="/"
     )
-
-
-def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
-    """
-    Check if account is locked due to too many failed attempts.
-    Returns (is_locked, minutes_remaining).
-    """
-    email_lower = email.lower()
-    if email_lower not in _failed_attempts:
-        return False, None
-
-    attempts = _failed_attempts[email_lower]
-    if "locked_until" in attempts:
-        lockout_end = attempts["locked_until"]
-        if datetime.utcnow() < lockout_end:
-            remaining_seconds = (lockout_end - datetime.utcnow()).total_seconds()
-            # Use ceil and clamp to at least 1 to avoid confusing "0 minutes" messages
-            remaining = max(1, math.ceil(remaining_seconds / 60))
-            return True, remaining
-        else:
-            # Lockout expired, clear the record
-            del _failed_attempts[email_lower]
-
-    return False, None
-
-
-def record_failed_attempt(email: str) -> None:
-    """Record a failed login attempt.
-
-    Uses a rolling window: if the first recorded attempt falls outside
-    LOCKOUT_WINDOW_MINUTES, the counter resets before incrementing so that
-    a small number of failures spread over a long period never permanently
-    accumulates toward a lockout.
-
-    Also prunes fully-expired entries to keep the in-memory store bounded.
-    """
-    email_lower = email.lower()
-    now = datetime.utcnow()
-
-    # Prune entries whose lockout has expired AND whose window has elapsed,
-    # so the dict doesn't grow without bound under a distributed-email attack.
-    expired_keys = [
-        k for k, v in _failed_attempts.items()
-        if ("locked_until" in v and v["locked_until"] < now)
-        or ("first_attempt" in v and "locked_until" not in v
-            and (now - v["first_attempt"]).total_seconds() / 60 > LOCKOUT_WINDOW_MINUTES)
-    ]
-    for k in expired_keys:
-        del _failed_attempts[k]
-
-    if email_lower not in _failed_attempts:
-        _failed_attempts[email_lower] = {
-            "count": 1,
-            "first_attempt": now
-        }
-    else:
-        attempts = _failed_attempts[email_lower]
-        first_attempt = attempts.get("first_attempt", now)
-        window_elapsed_minutes = (now - first_attempt).total_seconds() / 60
-
-        # Reset counter when we're outside the rolling window
-        if window_elapsed_minutes > LOCKOUT_WINDOW_MINUTES:
-            _failed_attempts[email_lower] = {
-                "count": 1,
-                "first_attempt": now
-            }
-        else:
-            _failed_attempts[email_lower]["count"] += 1
-
-            # Lock the account once the threshold is reached
-            if _failed_attempts[email_lower]["count"] >= LOCKOUT_THRESHOLD:
-                _failed_attempts[email_lower]["locked_until"] = (
-                    now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
-                )
-
-
-def clear_failed_attempts(email: str) -> None:
-    """Clear failed attempts after successful login."""
-    email_lower = email.lower()
-    if email_lower in _failed_attempts:
-        del _failed_attempts[email_lower]
 
 async def _get_user_from_token(token: str) -> User:
     """Decode a JWT and return the corresponding User from the database."""
@@ -266,7 +288,6 @@ def _is_recaptcha_configured() -> bool:
         cleaned = (value or "").strip().lower()
         if not cleaned:
             return True
-        # Ignore common template placeholders so local/dev defaults don't break signup.
         placeholder_markers = (
             "your-",
             "example",
@@ -362,10 +383,7 @@ async def register(request: Request, response: Response, user_data: RegisterRequ
         data={"sub": user_data.email, "user_id": user_id}
     )
 
-    # Set httpOnly cookie
     set_auth_cookie(response, access_token)
-
-    # Log successful registration
     log_registration(user_id=user_id, ip_address=request.client.host if request.client else "unknown")
 
     return {"message": "Registration successful"}
@@ -374,7 +392,7 @@ async def register(request: Request, response: Response, user_data: RegisterRequ
 @limiter.limit("10/minute")
 async def login(request: Request, response: Response, user_credentials: UserLogin):
     # Check if account is locked
-    is_locked, minutes_remaining = is_account_locked(user_credentials.email)
+    is_locked, minutes_remaining = await is_account_locked(user_credentials.email)
     if is_locked:
         log_failed_auth(
             ip_address=request.client.host if request.client else "unknown",
@@ -387,10 +405,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
 
     user = await users_repository.get_by_email(user_credentials.email)
     if not user:
-        # Record failed attempt
-        record_failed_attempt(user_credentials.email)
-
-        # Log failed login attempt
+        await record_failed_attempt(user_credentials.email)
         log_failed_auth(
             ip_address=request.client.host if request.client else "unknown",
             reason="user_not_found"
@@ -407,10 +422,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not verify_password(user_credentials.password, user["hashed_password"]):
-        # Record failed attempt
-        record_failed_attempt(user_credentials.email)
-
-        # Log failed login attempt
+        await record_failed_attempt(user_credentials.email)
         log_failed_auth(
             ip_address=request.client.host if request.client else "unknown",
             reason="invalid_password"
@@ -421,18 +433,14 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Clear failed attempts on successful login
-    clear_failed_attempts(user_credentials.email)
+    await clear_failed_attempts(user_credentials.email)
 
     user_id = user["id"]
     access_token = create_access_token(
         data={"sub": user["email"], "user_id": user_id}
     )
 
-    # Set httpOnly cookie
     set_auth_cookie(response, access_token)
-
-    # Log successful login
     log_login(
         user_id=user_id,
         ip_address=request.client.host if request.client else "unknown",
@@ -446,7 +454,6 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
-
 @router.post("/logout")
 async def logout(response: Response):
     """Clear authentication cookie."""
@@ -458,8 +465,8 @@ async def logout(response: Response):
 async def google_auth(request: Request, response: Response, auth_request: GoogleAuthRequest):
     try:
         idinfo = id_token.verify_oauth2_token(
-            auth_request.credential, 
-            requests.Request(), 
+            auth_request.credential,
+            requests.Request(),
             GOOGLE_CLIENT_ID
         )
         google_id = idinfo['sub']
@@ -499,10 +506,7 @@ async def google_auth(request: Request, response: Response, auth_request: Google
         data={"sub": email, "user_id": user_id}
     )
 
-    # Set httpOnly cookie
     set_auth_cookie(response, access_token)
-
-    # Log successful login
     log_login(
         user_id=user_id,
         ip_address=request.client.host if request.client else "unknown",
