@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
 import type { User } from '../types';
-import { createClient as createSupabaseClient } from '../utils/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -43,15 +42,6 @@ export const useAuth = () => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    try {
-      createSupabaseClient();
-    } catch (error) {
-      // Keep app usable when local env vars are missing during setup.
-      console.warn('Supabase client not initialized:', error);
-    }
-  }, []);
 
   const fetchUser = useCallback(async () => {
     try {

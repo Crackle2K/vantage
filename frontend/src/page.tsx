@@ -1,13 +1,11 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
-import { 
-   
+import {
   ChevronLeft, ChevronRight, Mail
 } from "lucide-react"
 import { HeroTransition } from "@/components/HeroTransition"
 import { FeatureShowcase } from "@/components/FeatureShowcase"
-
 
 
 export default function HomePage() {
@@ -38,7 +36,6 @@ export default function HomePage() {
 
   const handleNewsletterSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    navigate("/")
     setEmail("")
   }
 
@@ -47,11 +44,8 @@ export default function HomePage() {
 
       <HeroTransition />
 
-      {}
+      <FeatureShowcase />
 
- <FeatureShowcase />
-
-      {}
       <section className="py-24 bg-surface dark:bg-surface">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <h2 className="text-heading md:text-display font-bold text-center mb-4 font-heading text-[hsl(var(--foreground))]">
@@ -70,9 +64,9 @@ export default function HomePage() {
                 rel="noopener noreferrer"
                 className="block rounded-2xl overflow-hidden aspect-square hover:scale-105 transition-transform duration-300 shadow-md hover:shadow-xl"
               >
-                <img 
-                  src={img} 
-                  alt={`Instagram ${i + 1}`} 
+                <img
+                  src={img}
+                  alt={`Instagram ${i + 1}`}
                   className="w-full h-full object-cover"
                 />
               </a>
@@ -81,7 +75,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {}
       <section className="py-24 bg-surface-elevated dark:bg-surface/50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <h2 className="text-heading md:text-display font-bold text-center mb-16 font-heading text-[hsl(var(--foreground))]">
@@ -95,8 +88,8 @@ export default function HomePage() {
               </p>
               <div className="flex items-center justify-between">
                 <div>
-                    <p className="text-subheading font-bold mb-1">{testimonials[testimonialIndex].name}</p>
-                    <p className="text-secondary">{testimonials[testimonialIndex].title}</p>
+                  <p className="text-subheading font-bold mb-1">{testimonials[testimonialIndex].name}</p>
+                  <p className="text-secondary">{testimonials[testimonialIndex].title}</p>
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -132,16 +125,16 @@ export default function HomePage() {
           <form onSubmit={handleNewsletterSubmit} className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
             <div className="flex-1 flex items-center gap-3 px-5 py-4 bg-[hsl(var(--secondary))] rounded">
               <Mail className="w-5 h-5 text-[hsl(var(--muted-foreground))]" />
-              <input 
-                type="email" 
-                placeholder="Your email address" 
+              <input
+                type="email"
+                placeholder="Your email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="bg-transparent border-none outline-none w-full text-[hsl(var(--foreground))] placeholder-[hsl(var(--muted-foreground))]"
               />
             </div>
-            <Button 
+            <Button
               type="submit"
               size="lg"
               className="bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/90 text-white px-8 py-4 rounded transition-colors"
@@ -154,4 +147,3 @@ export default function HomePage() {
     </div>
   )
 }
-

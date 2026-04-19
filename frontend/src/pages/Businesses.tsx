@@ -202,8 +202,7 @@ function dedupeBusinesses(items: Business[]) {
 export default function Businesses() {
   const { user, setUser } = useAuth();
   const { savedIds, toggleSaved } = useSavedBusinesses();
-  const viewMode = 'grid' as const;
-  const [location, setLocation] = useState<UserLocation | null>(null);
+    const [location, setLocation] = useState<UserLocation | null>(null);
   const [radius, setRadius] = useState(DEFAULT_RADIUS);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [lanes, setLanes] = useState<ExploreLane[]>([]);
@@ -445,7 +444,7 @@ export default function Businesses() {
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_COUNT);
-  }, [lanes, searchQuery, selectedCategory, selectedTagFilters, viewMode, sortMode, selectedLaneId]);
+  }, [lanes, searchQuery, selectedCategory, selectedTagFilters, sortMode, selectedLaneId]);
 
   const topActiveBusinesses = useMemo(() => {
     const allBusinesses = filteredLanes.flatMap((lane) => lane.items);
@@ -555,6 +554,7 @@ export default function Businesses() {
   };
 
   const renderLoadingState = () => {
+  const viewMode = 'grid' as const;
     if (sortMode === 'canonical') {
       return (
         <div className="space-y-8" aria-hidden="true">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { AlertCircle, Loader2, UserPlus, Eye, EyeOff, User, Store } from 'lucide
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
-const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeKxXgsAAAAANwLN9rezo9U-4RZA6MFod2t5YVc';
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 const RECAPTCHA_SIGNUP_ACTION = 'SIGNUP';
 
 type RecaptchaEnterprise = {
@@ -44,7 +44,7 @@ export default function SignUpPage() {
   const [error, setError] = useState('');
   const [widgetId, setWidgetId] = useState<number | null>(null);
   const [recaptchaToken, setRecaptchaToken] = useState('');
-  const recaptchaRef = useRef<HTMLDivElement | null>(null);
+  const recaptchaRef = { current: null as HTMLDivElement | null };
 
   useEffect(() => {
     if (!RECAPTCHA_SITE_KEY || widgetId !== null) return;
