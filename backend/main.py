@@ -5,9 +5,12 @@ and route mounting. Manages the application lifespan including database
 connection setup, graceful shutdown, and health checks.
 """
 import asyncio
+import os
 import signal
 import sys
 from pathlib import Path
+
+is_vercel = os.getenv("VERCEL") == "1"
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -55,9 +58,12 @@ async def _graceful_shutdown(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_graceful_shutdown(app)))
+    # Only register signal handlers when NOT running in the Vercel serverless
+    # runtime, which does not support signal.SIGTERM/SIGINT registration.
+    if not is_vercel:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_graceful_shutdown(app)))
     await connect_to_mongo()
     yield
     _shutdown_event.set()
@@ -145,7 +151,6 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         },
     )
 
-import os
 allowed_origins = [
     "http://localhost:5173",
     "http://localhost:3000",
@@ -160,6 +165,14 @@ if frontend_url:
 production_url = os.getenv("PRODUCTION_URL")
 if production_url:
     allowed_origins.append(production_url)
+
+# Auto-detect and allow the Vercel deployment URL so CORS doesn't block
+# browser requests in production before PRODUCTION_URL is configured.
+vercel_url = os.getenv("VERCEL_URL")
+if vercel_url:
+    allowed_origins.append(f"https://{vercel_url}")
+    # Also allow the .vercel.app preview URL
+    allowed_origins.append(f"https://{vercel_url}.vercel.app")
 
 app.add_middleware(
     CORSMiddleware,
