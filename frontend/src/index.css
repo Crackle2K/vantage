@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Global stylesheet for the Vantage frontend. Defines CSS
+ * custom properties (design tokens) for both light and dark themes,
+ * typography scales, utility classes, component styles, animations,
+ * and scrollbar customization. Built on Tailwind CSS v4.
+ */
+
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -30,10 +37,10 @@
 	--space-5: 1.25rem;
 	--space-6: 1.5rem;
 
-	/* Typography */
-	--text-display: 3.75rem;
-	--text-heading: 2.5rem;
-	--text-subheading: 1.5rem;
+	/* Typography — fluid sizing with clamp() for uniform scaling across viewports */
+	--text-display: clamp(2.5rem, 5vw + 1rem, 3.75rem);
+	--text-heading: clamp(1.75rem, 3vw + 0.5rem, 2.5rem);
+	--text-subheading: clamp(1.25rem, 1.5vw + 0.75rem, 1.5rem);
 	--text-body: 1rem;
 	--text-ui: 0.875rem;
 	--text-caption: 0.75rem;
@@ -312,14 +319,13 @@ body {
 	background: hsl(var(--background));
 }
 
-.glass {
-	background-color: hsl(var(--background) / 0.92);
+.surface {
+	background-color: hsl(var(--background));
 	border: 1px solid hsl(var(--border) / 0.7);
-	backdrop-filter: blur(10px);
 }
 
-.glass-card {
-	background-color: hsl(var(--card) / 0.94);
+.card-surface {
+	background-color: hsl(var(--card));
 	border: 1px solid hsl(var(--border));
 	box-shadow: 0 8px 24px -16px hsl(var(--shadow-soft) / 0.4);
 }
@@ -344,7 +350,6 @@ body {
 	position: fixed;
 	inset: 0;
 	background: hsl(0 0% 0% / 0.5);
-	backdrop-filter: blur(4px);
 	z-index: 50;
 }
 
@@ -457,28 +462,6 @@ body {
 	}
 	100% {
 		background-position: 200% 0;
-	}
-}
-
-/* Iridescent shimmer animation for navbar */
-@keyframes nav-shimmer {
-	0% {
-		background-position: 100% 0%;
-		opacity: 0.4;
-	}
-	25% {
-		opacity: 0.7;
-	}
-	50% {
-		background-position: 0% 0%;
-		opacity: 0.6;
-	}
-	75% {
-		opacity: 0.8;
-	}
-	100% {
-		background-position: 100% 0%;
-		opacity: 0.4;
 	}
 }
 
