@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Sticky search bar and category chip rail for the explore
+ * page. Remains pinned below the header while scrolling, providing
+ * search input, category filters, and a filters modal toggle.
+ */
+
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CategoryChip } from './CategoryChip';
@@ -18,6 +24,14 @@ interface StickySearchFiltersProps {
   onFiltersToggle: () => void;
 }
 
+/**
+ * Renders the sticky search-and-filter bar for the explore page.
+ * Contains a search input, a FiltersButton, and a scrollable row of
+ * CategoryChip components.
+ *
+ * @param {StickySearchFiltersProps} props - Search state, categories, and callbacks.
+ * @returns {JSX.Element} The sticky search/filter section.
+ */
 export function StickySearchFilters({
   searchQuery,
   onSearchQueryChange,
@@ -28,7 +42,7 @@ export function StickySearchFilters({
   onFiltersToggle,
 }: StickySearchFiltersProps) {
   return (
-    <section className="sticky top-16 z-40 border-b border-[hsl(var(--border))/0.7] bg-[hsl(var(--background))]/95 px-6 py-3 backdrop-blur-sm sm:px-10">
+    <section className="sticky top-16 z-40 border-b border-[hsl(var(--border))/0.7] bg-[hsl(var(--background))] px-6 py-3 sm:px-10">
       <div className="space-y-3">
         {}
         <div className="relative">

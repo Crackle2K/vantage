@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Multi-step onboarding modal for setting user discovery
+ * preferences (categories, independent vs. chain, price tier, vibes,
+ * discovery mode). Also used as an editor from the account/settings
+ * pages. Saves preferences via the API on completion or skip.
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
@@ -55,6 +62,20 @@ interface PreferenceOnboardingModalProps {
   onSaved: (user: User) => void;
 }
 
+/**
+ * Renders a 5-step preference onboarding modal. Steps are: category
+ * selection (min 5), independent/chain slider, price tier, vibe tags,
+ * and discovery style. Saves preferences to the backend on completion.
+ *
+ * @param {boolean} open - Whether the modal is visible.
+ * @param {User | null} user - Current user, used to pre-fill existing preferences.
+ * @param {string} [title] - Override for the modal heading.
+ * @param {string} [subtitle] - Override for the modal subtitle.
+ * @param {boolean} [allowSkip=true] - Whether the "Skip for now" button is shown.
+ * @param {() => void} onClose - Callback to close the modal.
+ * @param {(user: User) => void} onSaved - Callback with the updated user after save.
+ * @returns {JSX.Element | null} The modal, or null when closed/no user.
+ */
 export function PreferenceOnboardingModal({
   open,
   user,
@@ -125,7 +146,7 @@ export function PreferenceOnboardingModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[hsl(var(--background))/0.72] backdrop-blur-md">
+    <div className="fixed inset-0 z-50 bg-[hsl(var(--background))/0.72]">
       <div className="absolute inset-0" onClick={() => !saving && onClose()} />
       <div className="relative mx-auto flex min-h-screen max-w-3xl items-center px-3 py-6 sm:px-6">
         <div className="w-full overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] shadow-[0_30px_80px_-36px_hsl(var(--shadow-soft)/0.7)]">

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Horizontal scrollable rail showing "Local Pulse" activity
+ * items (verified visits, reviews, owner updates) with relative timestamps.
+ * Each card links to the associated business.
+ */
+
 import { CalendarClock, CheckCircle2, MessageSquareText, Radio, Zap } from 'lucide-react';
 import type { ActivityPulseItem } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -25,6 +31,15 @@ function PulseIcon({ type }: { type: ActivityPulseItem['type'] }) {
   return <CalendarClock className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />;
 }
 
+/**
+ * Renders a horizontally scrollable rail of real-time local activity
+ * cards (verified visits, reviews, owner updates). Returns null when
+ * the items array is empty.
+ *
+ * @param {ActivityPulseItem[]} items - Pulse activity items to display.
+ * @param {(item: ActivityPulseItem) => void} onView - Callback when "View" is clicked.
+ * @returns {JSX.Element | null} The pulse rail section or null.
+ */
 export function PulseRail({ items, onView }: PulseRailProps) {
   if (items.length === 0) {
     return null;
@@ -61,7 +76,7 @@ export function PulseRail({ items, onView }: PulseRailProps) {
                 className="h-full w-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-              <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-caption text-white backdrop-blur-sm">
+              <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-caption text-white">
                 <PulseIcon type={item.type} />
                 <span>{item.type === 'verified_visit' ? 'Verified visit' : item.type === 'review' ? 'Review' : 'Owner update'}</span>
               </div>

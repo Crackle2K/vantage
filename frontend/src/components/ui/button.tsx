@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Reusable Button component with variant and size styles.
+ * Supports polymorphic rendering via Radix UI Slot (asChild prop).
+ * Built on class-variance-authority for variant management.
+ */
+
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"

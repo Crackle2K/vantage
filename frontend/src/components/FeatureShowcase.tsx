@@ -1,7 +1,20 @@
+/**
+ * @fileoverview Animated feature showcase section for the landing page.
+ * Uses a scroll-triggered reveal with three interactive demo panels
+ * (check-in flow, trust score animation, community activity feed) to
+ * illustrate Vantage's core value propositions.
+ */
+
 import { useEffect, useRef, useState } from "react"
 import { Check, MapPin } from "lucide-react"
 
-// Custom hook for scroll-triggered animations
+/**
+ * Custom hook that uses IntersectionObserver to detect when an element
+ * enters the viewport (with 20% threshold and 100px bottom margin).
+ *
+ * @returns {{ ref: React.RefObject<HTMLDivElement>, isVisible: boolean }}
+ *   ref to attach to the target element and a boolean visibility flag.
+ */
 function useScrollReveal() {
   const ref = useRef<HTMLDivElement>(null)
   const [isVisible, setIsVisible] = useState(false)
@@ -26,7 +39,13 @@ function useScrollReveal() {
   return { ref, isVisible }
 }
 
-// Animated demo component that shows user flows
+/**
+ * Animated phone-shaped demo that cycles through step-based UI states.
+ * Delegates to CheckInDemo, TrustDemo, or CommunityDemo based on type.
+ *
+ * @param {"checkin" | "trust" | "community"} type - The demo variant to render.
+ * @returns {JSX.Element} The animated demo container.
+ */
 function AnimatedDemo({ type }: { type: "checkin" | "trust" | "community" }) {
   const [step, setStep] = useState(0)
   const [hasCompleted, setHasCompleted] = useState(false)
@@ -47,7 +66,7 @@ function AnimatedDemo({ type }: { type: "checkin" | "trust" | "community" }) {
   }, [hasCompleted])
 
   return (
-    <div className="relative w-full aspect-[3/5] bg-[#0a0a0a] rounded-2xl overflow-hidden border border-[#1a1a1a] shadow-2xl">
+    <div className="relative w-full aspect-[3/5] sm:aspect-[3/5] max-h-[70vh] bg-[#0a0a0a] rounded-2xl overflow-hidden border border-[#1a1a1a] shadow-2xl">
       {/* Subtle grid background */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute inset-0" style={{
@@ -70,7 +89,7 @@ function AnimatedDemo({ type }: { type: "checkin" | "trust" | "community" }) {
 
 function CheckInDemo({ step }: { step: number }) {
   return (
-    <div className="relative z-10 p-8 h-full flex flex-col">
+    <div className="relative z-10 p-4 sm:p-6 md:p-8 h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -85,7 +104,7 @@ function CheckInDemo({ step }: { step: number }) {
         <div className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-500 ${
           step >= 2 ? 'bg-[#00ff88] text-black' : 'bg-[#1a1a1a] text-[#666]'
         }`}>
-          {step >= 2 ? '✓ Verified' : 'Tap to check in'}
+          {step >= 2 ? 'Verified' : 'Tap to check in'}
         </div>
       </div>
 
@@ -136,14 +155,14 @@ function CheckInDemo({ step }: { step: number }) {
 
 function TrustDemo({ step }: { step: number }) {
   const stages = [
-    { label: 'Search', icon: '🔍' },
-    { label: 'Verify', icon: '✓' },
-    { label: 'Rank', icon: '📊' },
-    { label: 'Trust', icon: '⭐' }
+    { label: 'Search', icon: '' },
+    { label: 'Verify', icon: '' },
+    { label: 'Rank', icon: '' },
+    { label: 'Trust', icon: '' }
   ]
 
   return (
-    <div className="relative z-10 p-8 h-full flex flex-col">
+    <div className="relative z-10 p-4 sm:p-6 md:p-8 h-full flex flex-col">
       {/* Title */}
       <div className="text-center mb-8">
         <div className="text-white font-semibold text-lg mb-1">Trust Score</div>
@@ -152,7 +171,7 @@ function TrustDemo({ step }: { step: number }) {
 
       {/* Central visualization */}
       <div className="flex-1 flex items-center justify-center">
-        <div className="relative w-48 h-48">
+        <div className="relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48">
           {/* Outer ring */}
           <svg className="absolute inset-0 w-full h-full -rotate-90">
             <circle
@@ -239,9 +258,6 @@ function CommunityDemo({ step }: { step: number }) {
           >
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00ff88]/30 to-[#00ff88]/10 flex items-center justify-center text-sm">
-                {activity.type === 'checkin' && '📍'}
-                {activity.type === 'review' && '⭐'}
-                {activity.type === 'like' && '❤️'}
               </div>
               <div className="flex-1">
                 <div className="text-white text-sm">
@@ -277,6 +293,13 @@ function CommunityDemo({ step }: { step: number }) {
   )
 }
 
+/**
+ * Renders the "Built for local trust" feature section with three animated
+ * demo cards that reveal on scroll. Each card demonstrates a core product
+ * feature (check-in, trust scoring, community activity).
+ *
+ * @returns {JSX.Element} The feature showcase section.
+ */
 export function FeatureShowcase() {
   const { ref, isVisible } = useScrollReveal()
 
@@ -299,7 +322,7 @@ export function FeatureShowcase() {
   ]
 
   return (
-    <section className="relative bg-[#050505] py-32 overflow-hidden">
+    <section className="relative bg-[#050505] py-16 sm:py-24 md:py-32 overflow-hidden">
       {/* Background effects */}
       <div className="absolute inset-0">
         {/* Subtle gradient */}
@@ -316,19 +339,19 @@ export function FeatureShowcase() {
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-[#00ff88] opacity-[0.03] blur-[120px] rounded-full" />
       </div>
 
-      <div ref={ref} className="relative z-10 max-w-7xl mx-auto px-6">
+      <div ref={ref} className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
         {/* Header */}
-        <div className={`text-center mb-20 transition-all duration-1000 ${
+        <div className={`text-center mb-12 sm:mb-16 md:mb-20 transition-all duration-1000 ${
           isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
         }`}>
 
-          <h2 className="text-5xl md:text-7xl font-bold text-white mb-6 tracking-tight">
+          <h2 className="text-3xl sm:text-5xl md:text-7xl font-bold text-white mb-4 sm:mb-6 tracking-tight">
             Built for <span className="text-[#00ff88]">local trust</span>
           </h2>
         </div>
 
         {/* Feature cards side by side */}
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
           {features.map((feature, i) => (
             <div
               key={i}

@@ -1,7 +1,21 @@
+/**
+ * @fileoverview Inline trust explanation panel. Displays a list of
+ * human-readable reasons why a particular business is being surfaced
+ * to the user, supporting Vantage's trust-first transparency model.
+ */
+
+/** Props for the TrustExplanation component. */
 interface TrustExplanationProps {
   reasons: string[];
 }
 
+/**
+ * Renders a "Why this is surfacing" explanation block with bullet-pointed
+ * reason strings. Returns null when the reasons array is empty.
+ *
+ * @param {string[]} reasons - Human-readable explanation strings.
+ * @returns {JSX.Element | null} The explanation panel, or null.
+ */
 export function TrustExplanation({ reasons }: TrustExplanationProps) {
   if (reasons.length === 0) {
     return null;

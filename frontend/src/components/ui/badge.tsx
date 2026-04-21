@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Reusable Badge component with variant styles (default,
+ * secondary, destructive, outline). Built on class-variance-authority.
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 

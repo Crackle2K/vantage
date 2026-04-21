@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Selectable chip for filtering businesses by category in
+ * the explore page's horizontal chip rail.
+ */
+
 import { cn } from '@/lib/utils';
 
 interface CategoryChipProps {
@@ -7,6 +12,16 @@ interface CategoryChipProps {
   onClick?: () => void;
 }
 
+/**
+ * Renders a selectable category filter chip with an optional count badge.
+ * Highlighted when selected via primary color background.
+ *
+ * @param {string} label - Display text for the category.
+ * @param {number} [count] - Optional count to display next to the label.
+ * @param {boolean} [selected=false] - Whether the chip is currently active.
+ * @param {() => void} [onClick] - Click handler for toggling selection.
+ * @returns {JSX.Element} The category chip button.
+ */
 export function CategoryChip({ label, count, selected = false, onClick }: CategoryChipProps) {
   return (
     <button

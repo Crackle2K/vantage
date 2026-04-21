@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Card for displaying a business owner event (e.g. wine
+ * tasting, seasonal promo) in the explore grid. Shows the event image,
+ * title, date/time, description, and a "View business" button.
+ */
+
 import type { KeyboardEvent } from 'react';
 import { CalendarDays, Clock3, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +33,14 @@ function eventDateLabel(start: string, end: string): string {
   return `${startLabel} to ${endLabel}`;
 }
 
+/**
+ * Renders a card for an owner-created event with image, date label,
+ * description, host info, and a "View business" button.
+ *
+ * @param {OwnerEvent} event - The event data to display.
+ * @param {() => void} onViewBusiness - Callback to navigate to the host business.
+ * @returns {JSX.Element} The event card element.
+ */
 export function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
   const dateLabel = eventDateLabel(event.start_time, event.end_time);
   const businessName = event.business_name || 'Claimed business';
@@ -55,7 +69,7 @@ export function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
           className="h-full w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-        <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 py-1 text-caption text-white backdrop-blur-sm">
+        <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 py-1 text-caption text-white">
           <Sparkles className="h-3.5 w-3.5" />
           Owner event
         </div>

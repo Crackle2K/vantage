@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Lazy-loaded business image with category-based gradient
+ * fallback. Uses IntersectionObserver for deferred loading, cycles
+ * through fallback image candidates on error, and animates the
+ * gradient-to-image transition on load.
+ */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -39,6 +46,17 @@ function normalizeCategory(category?: string): string {
   return 'default';
 }
 
+/**
+ * Renders a business image with lazy loading and a category-based gradient
+ * placeholder. Falls back through candidate images on load error.
+ *
+ * @param {string} [primaryImage] - Preferred image URL.
+ * @param {string[]} [imageCandidates] - Ordered fallback URLs.
+ * @param {string} [category] - Business category for gradient selection.
+ * @param {string} alt - Alt text for the image.
+ * @param {string} [className] - Additional CSS classes.
+ * @returns {JSX.Element} The image container with placeholder and loaded image.
+ */
 export function BusinessImage({ primaryImage, imageCandidates, category, alt, className }: BusinessImageProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState<boolean>(() => {

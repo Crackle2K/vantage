@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Floating pill navigation header and slide-out side menu.
+ * Displays the Vantage logo, nav links, theme toggle, and auth-aware
+ * user controls (sign-in button for guests, profile + hamburger for
+ * logged-in users).
+ */
+
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Award, LayoutDashboard, LogIn, LogOut, Menu, Moon, Settings, Sun, User, X } from 'lucide-react';
@@ -5,6 +12,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 
+/**
+ * Top navigation bar rendered as a floating pill. Shows logo and auth
+ * controls; logged-in users get a hamburger that opens a right-side
+ * drawer with nav links, theme toggle, dashboard/claim links (for
+ * business owners), and sign-out.
+ *
+ * Side effects:
+ * - Closes the side menu on route change.
+ * - Locks body scroll when the side menu is open.
+ *
+ * @returns {JSX.Element} The header bar and optional side drawer.
+ */
 export function Header() {
 	const { user, isAuthenticated, signOut } = useAuth();
 	const { isDark, toggleTheme } = useTheme();
@@ -48,16 +67,14 @@ export function Header() {
 
 	return (
 		<>
-			{/* Floating glass pill navbar with iridescent glow */}
+			{/* Floating pill navbar */}
 			<header
-				className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-xl"
+				className="fixed top-3 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1.5rem)] sm:w-[calc(100%-2rem)] max-w-xl"
 				style={{
 					background: `linear-gradient(135deg,
-						hsl(var(--background) / 0.72) 0%,
-						hsl(var(--card) / 0.55) 45%,
-						hsl(var(--background) / 0.78) 100%)`,
-					backdropFilter: 'blur(28px) saturate(180%)',
-					WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+						hsl(var(--background)) 0%,
+						hsl(var(--card)) 45%,
+						hsl(var(--background)) 100%)`,
 					borderRadius: '1rem',
 					boxShadow: `
 						0 0 0 1px hsl(var(--border) / 0.25),
@@ -69,35 +86,7 @@ export function Header() {
 					`,
 				}}
 			>
-				{/* Animated iridescent shimmer overlay */}
-				<div
-					className="absolute inset-0 rounded-2xl pointer-events-none overflow-hidden opacity-60"
-					style={{
-						background: `linear-gradient(
-							110deg,
-							transparent 0%,
-							transparent 40%,
-							hsl(var(--primary) / 0.12) 45%,
-							hsl(280 55% 70% / 0.08) 50%,
-							hsl(200 65% 65% / 0.08) 55%,
-							hsl(var(--primary) / 0.1) 60%,
-							transparent 65%,
-							transparent 100%
-						)`,
-						animation: 'nav-shimmer 6s ease-in-out infinite',
-						backgroundSize: '250% 100%',
-					}}
-				/>
-
-				{/* Subtle inner glow on hover */}
-				<div
-					className="absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-500 opacity-0 hover:opacity-100"
-					style={{
-						background: `radial-gradient(ellipse at 50% 0%, hsl(var(--primary) / 0.08) 0%, transparent 70%)`,
-					}}
-				/>
-
-				<div className="relative flex h-16 items-center justify-between px-5">
+				<div className="relative flex h-14 sm:h-16 items-center justify-between px-4 sm:px-5">
 					{/* Left: Logo + Brand */}
 					<Link to="/" className="flex items-center gap-2">
 						<img className="h-8 w-8" src="/Images/Vantage.png" alt="Vantage Logo" />
@@ -166,7 +155,7 @@ export function Header() {
 					{/* Overlay */}
 					<div
 						className={cn(
-							'fixed inset-0 z-60 bg-black/40 backdrop-blur-sm transition-opacity duration-300',
+							'fixed inset-0 z-60 bg-black/40 transition-opacity duration-300',
 							sideMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
 						)}
 						onClick={() => setSideMenuOpen(false)}

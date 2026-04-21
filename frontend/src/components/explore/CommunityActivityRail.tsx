@@ -1,6 +1,13 @@
+/**
+ * @fileoverview Horizontal scrollable rail showing recent community activity
+ * items (check-ins, reviews, etc.) for the explore page. Each card
+ * displays a business thumbnail, name, category, and activity summary.
+ */
+
 import { CheckCircle2, Heart } from 'lucide-react';
 import { BusinessImage } from './BusinessImage';
 
+/** A single community activity item for the rail display. */
 export interface CommunityActivityItem {
   id: string;
   name: string;
@@ -15,6 +22,13 @@ interface CommunityActivityRailProps {
   items: CommunityActivityItem[];
 }
 
+/**
+ * Renders a horizontally scrollable rail of community activity cards.
+ * Returns null when the items array is empty.
+ *
+ * @param {CommunityActivityItem[]} items - Activity items to display.
+ * @returns {JSX.Element | null} The activity rail section or null.
+ */
 export function CommunityActivityRail({ items }: CommunityActivityRailProps) {
   if (items.length === 0) {
     return null;

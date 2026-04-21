@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Pinterest-style business card for the explore grid.
+ * Displays a business image with category-based gradient fallback, a
+ * heart/favorite toggle, distance badge, name, and address. Supports
+ * variable aspect ratios for a masonry layout.
+ */
+
 import type { KeyboardEvent } from 'react';
 import { Heart, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -5,6 +12,7 @@ import { BusinessImage } from '@/components/explore/BusinessImage';
 import { buildApiUrl } from '@/api';
 import type { Business } from '@/types';
 
+/** Props for the BusinessCard component. */
 interface BusinessCardProps {
   business: Business;
   isFavorite: boolean;
@@ -57,6 +65,16 @@ function collectImages(business: Business, proxyUrl?: string): string[] {
   return [...direct, ...proxied, ...placeholders];
 }
 
+/**
+ * Renders a masonry-style card for a business with image, favorite toggle,
+ * and distance badge. Clickable cards open the business detail modal.
+ *
+ * @param {Business} business - The business data to display.
+ * @param {boolean} isFavorite - Whether the business is saved by the user.
+ * @param {() => void} onToggleFavorite - Callback to toggle saved state.
+ * @param {() => void} [onViewDetails] - Optional callback to open detail view.
+ * @returns {JSX.Element} The business card element.
+ */
 export function BusinessCard({
   business,
   isFavorite,
@@ -119,7 +137,7 @@ export function BusinessCard({
               onToggleFavorite();
             }}
             className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-sm transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/20',
+              'flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/20',
               'opacity-100 sm:translate-y-1 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100',
               isFavorite && 'border-[hsl(var(--primary))/0.35] bg-[hsl(var(--primary))/0.28] text-white'
             )}
@@ -131,7 +149,7 @@ export function BusinessCard({
 
         {distance && (
           <div className="absolute bottom-3 right-3">
-            <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/35 px-2.5 py-1 text-caption text-white/90 backdrop-blur-sm">
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/35 px-2.5 py-1 text-caption text-white/90">
               <MapPin className="h-3.5 w-3.5" />
               {distance}
             </span>

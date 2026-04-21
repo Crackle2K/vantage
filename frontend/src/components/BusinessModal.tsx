@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Full-screen modal for viewing a single business in detail.
+ * Shows the business image, rating, contact info, verified/trust status,
+ * check-in button, tabbed content (Details, Reviews, Deals), and an
+ * inline review form. Claimed owners can edit their short description
+ * and "known for" tags directly from this modal.
+ */
+
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { X, Star, MapPin, Phone, Mail, Globe, Tag, Send, Loader2, MessageSquare, Clock, CheckCircle2, Award, Zap, Edit3, Save } from 'lucide-react'
@@ -7,6 +15,7 @@ import type { Business, Review, Deal, BusinessActivityStatus } from '../types'
 import { api, buildApiUrl } from '../api'
 import { useAuth } from '@/contexts/AuthContext'
 
+/** Props for the BusinessModal component. */
 interface BusinessModalProps {
   business: Business
   onClose: () => void
@@ -32,6 +41,20 @@ function parseKnownFor(value: string) {
     .filter(Boolean)
 }
 
+/**
+ * Renders a business detail modal with three tabs (Details, Reviews, Deals).
+ *
+ * Key behaviors:
+ * - Loads reviews, deals, and activity status on mount via the API.
+ * - Supports check-in with browser geolocation.
+ * - Authenticated users can write reviews; claimed owners can edit profile.
+ * - Closes on Escape key or backdrop click; locks body scroll while open.
+ *
+ * @param {BusinessModalProps} business - The business to display.
+ * @param {BusinessModalProps} onClose - Callback to close the modal.
+ * @param {BusinessModalProps} onBusinessUpdated - Optional callback when profile is edited.
+ * @returns {JSX.Element} The modal overlay and content.
+ */
 export function BusinessModal({ business, onClose, onBusinessUpdated }: BusinessModalProps) {
   const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
@@ -202,7 +225,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-      <div className="absolute inset-0 bg-scrim-dark/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-scrim-dark/60" />
 
       <div
         className="relative w-full max-w-3xl max-h-[88vh] rounded-[28px] bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-2xl overflow-hidden flex flex-col animate-scale-in"
@@ -210,7 +233,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-scrim-dark/40 backdrop-blur-sm text-on-primary flex items-center justify-center hover:bg-scrim-dark/60 transition-colors"
+          className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-scrim-dark/40 text-on-primary flex items-center justify-center hover:bg-scrim-dark/60 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>

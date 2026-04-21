@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Filter controls for the explore page: a toggle button
+ * for the FiltersButton chip and a modal (FiltersModal) with location
+ * enable, radius slider, and tag-based filter toggles.
+ */
+
 import { useRef, useEffect } from 'react';
 import { Navigation, SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +14,14 @@ interface FiltersButtonProps {
   onToggle: () => void;
 }
 
+/**
+ * Renders the "Filters" chip button in the search bar, styled to match
+ * CategoryChip with an active highlight state.
+ *
+ * @param {boolean} isOpen - Whether the filters modal is currently open.
+ * @param {() => void} onToggle - Callback to toggle the filters modal.
+ * @returns {JSX.Element} The filter toggle button.
+ */
 export function FiltersButton({ isOpen, onToggle }: FiltersButtonProps) {
   return (
     <button
@@ -46,6 +60,13 @@ interface FiltersModalProps {
   onToggleTagFilter: (tag: string) => void;
 }
 
+/**
+ * Renders a filter dialog with location enable button, radius slider,
+ * and tag-based filter chips. Closes on Escape key or backdrop click.
+ *
+ * @param {FiltersModalProps} props - Filter state and callbacks.
+ * @returns {JSX.Element | null} The filter modal, or null when closed.
+ */
 export function FiltersModal({
   isOpen,
   onClose,
@@ -82,7 +103,7 @@ export function FiltersModal({
 
   return (
     <div 
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 backdrop-blur p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 p-4"
       onClick={onClose}
       aria-hidden="true"
     >

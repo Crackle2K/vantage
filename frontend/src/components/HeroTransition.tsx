@@ -475,13 +475,13 @@ export function HeroTransition() {
           style={{ zIndex: 30 }}
         >
           <div ref={textTopRef}>
-            <h1 className="text-[3.5rem] md:text-[5rem] lg:text-[6rem] leading-none font-bold text-white font-heading">
+            <h1 className="text-[2.5rem] sm:text-[3.5rem] md:text-[5rem] lg:text-[6rem] leading-none font-bold text-white font-heading">
               Powered by people.
             </h1>
           </div>
 
           <div ref={textBotRef}>
-            <h1 className="text-[3.5rem] md:text-[5rem] lg:text-[6rem] leading-none font-bold text-white font-heading">
+            <h1 className="text-[2.5rem] sm:text-[3.5rem] md:text-[5rem] lg:text-[6rem] leading-none font-bold text-white font-heading">
               Proven by presence.
             </h1>
           </div>
@@ -490,7 +490,7 @@ export function HeroTransition() {
         {/* Final stage - title and description */}
         <div
           ref={finalStageRef}
-          className="absolute inset-0 flex items-center justify-between px-16 lg:px-24"
+          className="absolute inset-0 flex items-center justify-between px-6 sm:px-10 md:px-16 lg:px-24"
           style={{ opacity: 0, zIndex: 50 }}
         >
           {/* Left - Title */}

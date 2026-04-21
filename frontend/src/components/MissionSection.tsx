@@ -1,8 +1,22 @@
+/**
+ * @fileoverview Mission statement section for the landing page. Presents
+ * Vantage's mission with a tabbed feature explorer showing "Claim &
+ * Conversion", "Verified Trust System", and "Community Engagement Feed"
+ * with screenshots and descriptions.
+ */
+
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Info, DollarSign, Star, ArrowRight } from "lucide-react"
 
+/**
+ * Renders the mission statement section with a three-tab feature switcher.
+ * Each tab shows a title, description, and product screenshot, with a
+ * "Learn more" CTA that navigates to the explore page.
+ *
+ * @returns {JSX.Element} The mission section with tabbed feature display.
+ */
 export function MissionSection() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState(0)
@@ -41,11 +55,11 @@ export function MissionSection() {
 
       {/* Subtle animated gradient orbs */}
       <div
-        className="absolute top-1/4 left-1/4 w-96 h-96 bg-[hsl(var(--primary)/0.08)] rounded-full blur-3xl animate-pulse"
+        className="absolute top-1/4 left-1/4 w-96 h-96 bg-[hsl(var(--primary)/0.08)] rounded-full animate-pulse"
         style={{ animationDuration: '8s' }}
       />
       <div
-        className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-[hsl(var(--accent)/0.12)] rounded-full blur-3xl animate-pulse"
+        className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-[hsl(var(--accent)/0.12)] rounded-full animate-pulse"
         style={{ animationDuration: '10s', animationDelay: '2s' }}
       />
 
@@ -147,7 +161,7 @@ export function MissionSection() {
 
           {/* Image with refined styling */}
           <div className="order-1 md:order-2 relative">
-            <div className="absolute -inset-4 bg-gradient-to-r from-[hsl(var(--primary)/0.1)] to-[hsl(var(--accent)/0.1)] rounded-3xl blur-2xl opacity-60" />
+            <div className="absolute -inset-4 bg-gradient-to-r from-[hsl(var(--primary)/0.1)] to-[hsl(var(--accent)/0.1)] rounded-3xl opacity-60" />
             <div className="relative rounded-2xl overflow-hidden shadow-2xl aspect-[16/9] w-full border border-[hsl(var(--border)/0.5)]">
               <img
                 src={tabFeatures[activeTab].image}

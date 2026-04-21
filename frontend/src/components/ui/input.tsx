@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Reusable Input component wrapping native HTML input with
+ * consistent styling, focus ring, and disabled state. Uses forwardRef
+ * for ref forwarding.
+ */
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
