@@ -1,5 +1,20 @@
+/**
+ * @fileoverview Central API client for the Vantage frontend. Resolves the
+ * correct backend base URL based on environment (localhost vs. Vercel
+ * production) and exposes a typed `api` object whose methods map 1:1 to
+ * backend REST endpoints. All requests include credentials (httpOnly
+ * cookies) for session-based authentication.
+ */
+
 import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse } from './types';
 
+/**
+ * Determines the API base URL based on environment variables and the
+ * current hostname. Returns `/api` for production (same-origin) or
+ * `http://localhost:8000/api` for local development.
+ *
+ * @returns The resolved API base URL string.
+ */
 function resolveApiUrl(): string {
   const configured = (import.meta.env.VITE_API_URL || '').trim();
 
@@ -32,6 +47,13 @@ function resolveApiUrl(): string {
 
 const API_URL = resolveApiUrl();
 
+/**
+ * Constructs a full API URL from a path, handling `/api` prefix
+ * deduplication when the base URL already ends with `/api`.
+ *
+ * @param {string} path - The API path (e.g. `/auth/login` or `/api/photos`).
+ * @returns {string} The fully resolved URL.
+ */
 export function buildApiUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   if (API_URL.endsWith('/api') && normalizedPath.startsWith('/api/')) {
@@ -43,6 +65,14 @@ export function buildApiUrl(path: string): string {
   return `${API_URL}${normalizedPath}`;
 }
 
+/**
+ * Reads the error detail from an API response and throws an Error.
+ * Falls back to a generic message including the HTTP status code.
+ *
+ * @param {Response} response - The failed fetch Response object.
+ * @param {string} fallback - Default error message if no detail is found.
+ * @returns {never} Always throws; the return type is `never`.
+ */
 async function throwApiError(response: Response, fallback: string): Promise<never> {
   let message = `${fallback} (HTTP ${response.status})`;
   try {
@@ -54,6 +84,14 @@ async function throwApiError(response: Response, fallback: string): Promise<neve
   throw new Error(message);
 }
 
+/**
+ * Builds request headers for authenticated API calls. Authentication
+ * credentials are sent automatically via httpOnly cookies, so this
+ * primarily sets Content-Type when needed.
+ *
+ * @param {boolean} includeJson - Whether to add `application/json` Content-Type.
+ * @returns {HeadersInit} The headers object.
+ */
 function getAuthHeaders(includeJson: boolean = false): HeadersInit {
   const headers: HeadersInit = {};
   if (includeJson) {
@@ -64,12 +102,30 @@ function getAuthHeaders(includeJson: boolean = false): HeadersInit {
   return headers;
 }
 
+/**
+ * Performs an authenticated fetch request and returns the parsed JSON.
+ * Throws on non-OK responses with a descriptive error message.
+ *
+ * @param {string} path - API endpoint path.
+ * @param {RequestInit | undefined} init - Fetch options.
+ * @param {string} fallback - Error message used if the response fails.
+ * @returns {Promise<T>} Parsed JSON response body.
+ */
 async function request<T>(path: string, init: RequestInit | undefined, fallback: string): Promise<T> {
   const response = await fetch(buildApiUrl(path), { ...init, credentials: 'include' });
   if (!response.ok) await throwApiError(response, fallback);
   return response.json() as Promise<T>;
 }
 
+/**
+ * Performs an authenticated fetch and returns parsed JSON, or null on
+ * any non-OK response. Used for optional/conditional API calls where a
+ * 404 or error should not crash the UI.
+ *
+ * @param {string} path - API endpoint path.
+ * @param {RequestInit} [init] - Fetch options.
+ * @returns {Promise<T | null>} Parsed JSON or null.
+ */
 async function requestOrNull<T>(path: string, init?: RequestInit): Promise<T | null> {
   const response = await fetch(buildApiUrl(path), { ...init, credentials: 'include' });
   if (!response.ok) return null;

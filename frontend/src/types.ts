@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Shared TypeScript type definitions for the Vantage frontend.
+ * Covers business entities, user models, authentication, subscriptions,
+ * activity feed, and explore/discovery data shapes. All API response types
+ * are defined here to ensure consistency between the API client and UI.
+ */
+
+/** Business category labels accepted by the backend and displayed in the UI. */
 export type CategoryType =
   | 'Restaurants'
   | 'Cafes & Coffee'
@@ -25,7 +33,9 @@ export type CategoryType =
   | 'entertainment'
   | 'health';
 
+/** Sort modes available for the explore/discover page. */
 export type ExploreSortMode = 'canonical' | 'distance' | 'newest' | 'most_reviewed';
+/** Intent presets for the "Decide for me" feature, representing user goals. */
 export type DecideIntent =
   | 'DINNER'
   | 'COFFEE'
@@ -39,9 +49,12 @@ export type DecideIntent =
   | 'TRENDING'
   | 'HIDDEN_GEM'
   | 'MOST_TRUSTED';
+/** User's price tier preference ($, $$, $$$). */
 export type UserPricePreference = '$' | '$$' | '$$$';
+/** Controls which candidates surface in the For You explore lane. */
 export type DiscoveryMode = 'new_places' | 'trending' | 'trusted';
 
+/** Components that contribute to a business's ranking score. */
 export interface BusinessRankingComponents {
   verified_visits: number;
   weighted_reviews: number;
@@ -52,6 +65,7 @@ export interface BusinessRankingComponents {
   final_score: number;
 }
 
+/** How well a business matches a user's saved preferences. */
 export interface BusinessPreferenceMatch {
   score: number;
   matched_categories: string[];
@@ -59,6 +73,7 @@ export interface BusinessPreferenceMatch {
   reason_codes: string[];
 }
 
+/** A horizontal lane of businesses in the explore page (e.g. "For You", "Active"). */
 export interface ExploreLane {
   id: 'for_you' | 'active' | 'hidden_gems' | 'trusted' | string;
   title: string;
@@ -66,6 +81,7 @@ export interface ExploreLane {
   items: Business[];
 }
 
+/** Core business entity returned by the API and displayed throughout the UI. */
 export interface Business {
   id: string;
   _id?: string;
@@ -120,6 +136,7 @@ export interface Business {
   place_id?: string;
 }
 
+/** A user-submitted review for a business. */
 export interface Review {
   id: string;
   _id?: string;
@@ -132,6 +149,7 @@ export interface Review {
   verified: boolean;
 }
 
+/** A promotional deal offered by a business. */
 export interface Deal {
   id: string;
   _id?: string;
@@ -146,12 +164,14 @@ export interface Deal {
   is_active: boolean;
 }
 
+/** Payload for creating a new review. */
 export interface ReviewCreate {
   business_id: string;
   rating: number;
   comment: string;
 }
 
+/** Authenticated user profile returned by the API. */
 export interface User {
   id: string;
   _id?: string;
@@ -171,12 +191,14 @@ export interface User {
   preferences_completed?: boolean;
 }
 
+/** Partial update payload for the current user's profile. */
 export interface UserUpdate {
   name?: string;
   profile_picture?: string;
   about_me?: string;
 }
 
+/** Payload for updating the user's discovery preferences. */
 export interface UserPreferencesUpdate {
   preferred_categories: string[];
   preferred_vibes: string[];
@@ -186,11 +208,13 @@ export interface UserPreferencesUpdate {
   preferences_completed?: boolean;
 }
 
+/** JWT auth tokens (used internally by the backend; frontend relies on cookies). */
 export interface AuthTokens {
   access_token: string;
   token_type: string;
 }
 
+/** A business ownership claim submission with verification status. */
 export interface BusinessClaim {
   id: string;
   business_id: string;
@@ -207,6 +231,7 @@ export interface BusinessClaim {
   reviewed_at?: string;
 }
 
+/** Payload for submitting a business ownership claim. */
 export interface ClaimCreate {
   business_id: string;
   owner_name: string;
@@ -216,9 +241,12 @@ export interface ClaimCreate {
   proof_description?: string;
 }
 
+/** Subscription tier names available for business owners. */
 export type SubscriptionTier = 'free' | 'starter' | 'pro' | 'premium';
+/** Billing period for subscriptions. */
 export type BillingCycle = 'monthly' | 'yearly';
 
+/** An active or past subscription for a business listing. */
 export interface Subscription {
   id: string;
   user_id: string;
@@ -237,18 +265,21 @@ export interface Subscription {
   billing_provider?: string;
 }
 
+/** Stripe Checkout session response for subscription sign-up. */
 export interface StripeCheckoutResponse {
   checkout_url: string;
   checkout_session_id?: string;
   status: string;
 }
 
+/** Payload for creating a new subscription. */
 export interface SubscriptionCreate {
   business_id: string;
   tier: SubscriptionTier;
   billing_cycle: BillingCycle;
 }
 
+/** Describes a subscription tier's name, pricing, and feature list. */
 export interface TierInfo {
   tier: SubscriptionTier;
   name: string;
@@ -259,10 +290,14 @@ export interface TierInfo {
   highlighted: boolean;
 }
 
+/** Verification status of a user check-in. */
 export type CheckInStatus = 'self_reported' | 'geo_verified' | 'receipt_verified' | 'community_confirmed';
+/** User credibility tiers, from newcomer to ambassador. */
 export type CredibilityTier = 'new' | 'regular' | 'trusted' | 'local_guide' | 'ambassador';
+/** Types of activity that can appear in the community feed. */
 export type ActivityType = 'checkin' | 'review' | 'deal_posted' | 'event_created' | 'business_claimed' | 'milestone' | 'user_post';
 
+/** A user check-in at a business, with optional geo-verification. */
 export interface CheckIn {
   id: string;
   user_id: string;
@@ -278,6 +313,7 @@ export interface CheckIn {
   created_at: string;
 }
 
+/** Payload for submitting a check-in. */
 export interface CheckInCreate {
   business_id: string;
   latitude?: number;
@@ -285,6 +321,7 @@ export interface CheckInCreate {
   note?: string;
 }
 
+/** A user's credibility metrics and tier, used for trust-weighted interactions. */
 export interface UserCredibility {
   user_id: string;
   total_checkins: number;
@@ -301,6 +338,7 @@ export interface UserCredibility {
   last_active?: string;
 }
 
+/** A single item in the community activity feed. */
 export interface ActivityFeedItem {
   id: string;
   activity_type: ActivityType;
@@ -319,6 +357,7 @@ export interface ActivityFeedItem {
   created_at: string;
 }
 
+/** A comment on an activity feed item. */
 export interface ActivityComment {
   id: string;
   user_id: string;
@@ -328,12 +367,14 @@ export interface ActivityComment {
   created_at: string;
 }
 
+/** Result of toggling a like on an activity feed item. */
 export interface ActivityLikeResult {
   liked: boolean;
   likes: number;
   comments: number;
 }
 
+/** Real-time activity metrics for a single business. */
 export interface BusinessActivityStatus {
   business_id: string;
   is_active_today: boolean;
@@ -344,19 +385,23 @@ export interface BusinessActivityStatus {
   trending_score: number;
 }
 
+/** Response containing the explore lane groups returned by the backend. */
 export interface ExploreLanesResponse {
   lanes: ExploreLane[];
 }
 
+/** Response from the "Decide for me" endpoint, containing curated picks. */
 export interface DecideResponse {
   items: Business[];
   intent_explanation: string[];
 }
 
+/** Response containing the user's saved/bookmarked businesses. */
 export interface SavedBusinessesResponse {
   items: Business[];
 }
 
+/** Lightweight business summary used in pulse/activity items. */
 export interface PulseBusinessSummary {
   business_id: string;
   name: string;
@@ -366,6 +411,7 @@ export interface PulseBusinessSummary {
   address?: string;
 }
 
+/** A privacy-safe recent activity item shown in the Local Pulse rail. */
 export interface ActivityPulseItem {
   id: string;
   type: 'verified_visit' | 'review' | 'owner_post' | string;
@@ -375,6 +421,7 @@ export interface ActivityPulseItem {
   business: PulseBusinessSummary;
 }
 
+/** An event created by a business owner (e.g. wine tasting, promo). */
 export interface OwnerEvent {
   id: string;
   business_id: string;
@@ -389,6 +436,7 @@ export interface OwnerEvent {
   business_image_url?: string;
 }
 
+/** Payload for creating a new owner event. */
 export interface OwnerEventCreate {
   business_id: string;
   title: string;
