@@ -1,3 +1,13 @@
+"""Supabase-backed document store with a MongoDB-compatible async API.
+
+This module implements a document database interface on top of Supabase,
+exposing an async API that mimics Motor/PyMongo's collection interface.
+Documents are stored as JSON blobs in a single Supabase ``documents``
+table keyed by ``(collection, doc_id)``.
+
+Note: This file is a parallel copy of ``document_store.py``. Both are
+kept in sync; the application imports from ``document_store`` at runtime.
+"""
 from __future__ import annotations
 
 import math

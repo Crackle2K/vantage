@@ -1,3 +1,20 @@
+"""Supabase-backed document store with a MongoDB-compatible async API.
+
+This module implements a document database interface on top of Supabase,
+exposing an async API that mimics Motor/PyMongo's collection interface
+(``find``, ``find_one``, ``insert_one``, ``update_one``, ``delete_one``,
+``aggregate``, etc.). Documents are stored as JSON blobs in a single
+Supabase ``documents`` table keyed by ``(collection, doc_id)``.
+
+The query engine supports a subset of MongoDB operators: ``$or``, ``$and``,
+``$in``, ``$nin``, ``$ne``, ``$gt``, ``$gte``, ``$lt``, ``$lte``, ``$regex``,
+``$exists``, ``$near``, ``$set``, ``$inc``, ``$push``, ``$addToSet``,
+``$pull``, and the aggregation stages ``$match`` and ``$group`` (with
+``$sum`` and ``$avg``).
+
+If ``DEMO_MODE`` is enabled, ``connect_to_mongo()`` also seeds a curated
+set of demo businesses on first connection.
+"""
 from __future__ import annotations
 
 import math
@@ -16,30 +33,43 @@ _CONNECTED = False
 
 
 class DatabaseUnavailableError(RuntimeError):
-    pass
+    """Raised when the document store has not been connected or is unreachable."""
 
 
 @dataclass
 class InsertOneResult:
+    """Result of a single-document insert."""
+
     inserted_id: str
 
 
 @dataclass
 class InsertManyResult:
+    """Result of a multi-document insert."""
+
     inserted_ids: list[str]
 
 
 @dataclass
 class UpdateResult:
+    """Result of an update operation."""
+
     modified_count: int
 
 
 @dataclass
 class DeleteResult:
+    """Result of a delete operation."""
+
     deleted_count: int
 
 
 class SupabaseCursor:
+    """Async cursor that mimics Motor's cursor interface over Supabase rows.
+
+    Supports chaining ``sort()``, ``skip()``, and ``limit()`` before
+    calling ``to_list()`` to execute the query.
+    """
     def __init__(self, collection: "SupabaseCollection", query: dict | None = None, projection: dict | None = None):
         self.collection = collection
         self.query = query or {}
@@ -82,6 +112,10 @@ class SupabaseCursor:
 
 
 class AggregateCursor:
+    """Async cursor for aggregation pipelines over a Supabase collection.
+
+    Supports a subset of MongoDB aggregation stages (``$match``, ``$group``).
+    """
     def __init__(self, collection: "SupabaseCollection", pipeline: list[dict]):
         self._collection = collection
         self._pipeline = pipeline
@@ -95,6 +129,12 @@ class AggregateCursor:
 
 
 class SupabaseCollection:
+    """A MongoDB-like collection backed by Supabase's ``documents`` table.
+
+    Each document is stored as a JSON blob in the ``documents`` table with
+    ``collection`` and ``doc_id`` columns. Provides async CRUD operations
+    and a subset of MongoDB's query/update operators.
+    """
     def __init__(self, name: str):
         self.name = name
 
@@ -477,11 +517,18 @@ def _apply_update(doc: dict, update: dict):
 
 
 class SupabaseDocumentDatabase:
+    """Top-level database accessor that returns ``SupabaseCollection`` by name."""
     def __getitem__(self, item: str):
         return SupabaseCollection(item)
 
 
 async def connect_to_mongo():
+    """Initialize the Supabase document store connection.
+
+    Verifies connectivity by reading a single row from the ``documents``
+    table. When ``DEMO_MODE`` is enabled, also seeds demo data via
+    ``seed_demo_dataset``.
+    """
     global _CONNECTED
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         _CONNECTED = False
@@ -514,6 +561,14 @@ async def close_mongo_connection():
 
 
 def get_database():
+    """Return the document database instance.
+
+    Returns:
+        SupabaseDocumentDatabase: The active database accessor.
+
+    Raises:
+        DatabaseUnavailableError: If the database has not been connected.
+    """
     if not _CONNECTED:
         raise DatabaseUnavailableError(
             "Supabase document store is not connected. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set "
