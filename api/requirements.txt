@@ -19,7 +19,7 @@ pydantic==2.12.5
 pydantic-settings==2.13.0
 pydantic_core==2.41.5
 pymongo==4.9.2
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 PyJWT==2.12.1
 python-multipart==0.0.26
 rsa==4.9.1
