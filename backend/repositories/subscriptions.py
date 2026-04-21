@@ -1,3 +1,8 @@
+"""Subscription repository with abstract interface and Supabase implementation.
+
+Defines the ``SubscriptionsRepository`` ABC and its ``SupabaseSubscriptionsRepository``
+implementation for managing business subscription records.
+"""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -7,6 +12,7 @@ from backend.database.supabase import get_supabase_client
 
 
 class SubscriptionsRepository(ABC):
+    """Abstract base class for subscription persistence."""
     @abstractmethod
     async def get_business(self, business_id: str) -> dict[str, Any] | None:
         raise NotImplementedError
@@ -33,6 +39,13 @@ class SubscriptionsRepository(ABC):
 
 
 class SupabaseSubscriptionsRepository(SubscriptionsRepository):
+    """Supabase-backed implementation of the subscription repository.
+
+    Business data is read from the ``documents`` table; subscription
+    records are stored in a dedicated ``subscriptions`` table.
+    ``create_or_replace`` deletes any existing subscription for the
+    same user+business pair before inserting.
+    """
     async def get_business(self, business_id: str) -> dict[str, Any] | None:
         client = get_supabase_client()
         result = (

@@ -1,3 +1,8 @@
+"""Saved-business repository with abstract interface and Supabase implementation.
+
+Defines the ``SavedRepository`` ABC and its ``SupabaseSavedRepository``
+implementation for saving, removing, and listing bookmarked businesses.
+"""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -8,6 +13,7 @@ from backend.database.supabase import get_supabase_client
 
 
 class SavedRepository(ABC):
+    """Abstract base class for saved-business persistence."""
     @abstractmethod
     async def business_exists(self, business_id: str) -> bool:
         raise NotImplementedError
@@ -30,6 +36,11 @@ class SavedRepository(ABC):
 
 
 class SupabaseSavedRepository(SavedRepository):
+    """Supabase-backed implementation of the saved-business repository.
+
+    Stores save records in the ``saved`` table and reads business data
+    from the ``documents`` table (filtered by ``collection=businesses``).
+    """
     async def business_exists(self, business_id: str) -> bool:
         client = get_supabase_client()
         result = (
