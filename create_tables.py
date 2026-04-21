@@ -1,5 +1,17 @@
-"""
-Create missing Supabase tables for Vantage
+"""Supabase table verification script for Vantage.
+
+Checks whether the required Supabase tables (users, saved, subscriptions)
+exist in the remote database.  The script contains the full DDL migrations
+for reference, but because the Supabase Python client does not expose a
+raw-SQL endpoint, actual table creation must be performed manually through
+the Supabase SQL Editor using the migrations stored in
+``scripts/supabase/migrations/``.
+
+Usage:
+    python create_tables.py
+
+Exits with code 1 if Supabase credentials are missing or if any required
+table is not found.
 """
 import sys
 sys.path.insert(0, '/c/Users/nadee/OneDrive/Documents/GitHub/Vantage')
