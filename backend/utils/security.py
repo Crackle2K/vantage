@@ -1,4 +1,8 @@
-"""Security utilities for input validation and sanitization."""
+"""Security utilities for input validation and sanitization.
+
+Provides text sanitization (HTML stripping via bleach), password strength
+validation, and a basic profanity filter for user-generated content.
+"""
 import re
 import bleach
 from typing import Tuple
@@ -23,9 +27,17 @@ def sanitize_text(content: str, max_length: int = 500) -> str:
 
 
 def validate_password_strength(password: str) -> Tuple[bool, str]:
-    """
-    Validate password meets complexity requirements.
-    Returns (is_valid, error_message).
+    """Validate password meets complexity requirements.
+
+    Requires at least 8 characters (max 128) and at least 3 of:
+    uppercase, lowercase, digits, special characters.
+
+    Args:
+        password (str): The password to validate.
+
+    Returns:
+        Tuple[bool, str]: (is_valid, error_message). error_message is
+            empty when the password is valid.
     """
     if len(password) < 8:
         return False, "Password must be at least 8 characters long"

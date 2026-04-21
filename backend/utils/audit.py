@@ -1,4 +1,10 @@
-"""Audit logging utilities for security-sensitive operations."""
+"""Audit logging utilities for security-sensitive operations.
+
+Provides structured logging for authentication events (login, failed auth,
+registration), data export, account deletion, and password changes. All
+events include a timestamp, user ID, IP address, success flag, and
+sanitized details (sensitive keys like passwords and tokens are redacted).
+"""
 import os
 from datetime import datetime
 from typing import Optional, Any
