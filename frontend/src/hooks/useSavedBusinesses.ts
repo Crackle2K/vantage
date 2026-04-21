@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Custom hook for managing the user's saved/bookmarked
+ * businesses. Syncs to the API for authenticated users and falls back
+ * to localStorage for guests. Provides an optimistic toggleSaved
+ * action that rolls back on API failure.
+ */
+
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -41,6 +48,18 @@ function applyLocalState(setSavedIds: (ids: string[]) => void, setSavedBusinesse
   setSavedBusinesses(readLocalItems());
 }
 
+/**
+ * Manages the current user's saved businesses list. For authenticated
+ * users, data is fetched from and persisted to the API. For guests,
+ * data is stored in localStorage only.
+ *
+ * Side effects:
+ * - Fetches saved businesses from the API on mount (auth) or reads localStorage (guest).
+ * - toggleSaved performs an optimistic update and rolls back on API error.
+ *
+ * @returns {{ savedIds: string[], savedBusinesses: Business[], loading: boolean,
+ *   error: string | null, refresh: () => void, toggleSaved: (business: Business) => void }}
+ */
 export function useSavedBusinesses() {
   const { isAuthenticated } = useAuth();
   const [savedIds, setSavedIds] = useState<string[]>([]);

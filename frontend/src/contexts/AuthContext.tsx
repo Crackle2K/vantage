@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Authentication context provider and hook. Manages the
+ * current user session, sign-in (email + Google OAuth), sign-up,
+ * and sign-out. The backend uses httpOnly cookies for session
+ * persistence; this context exposes the user object and auth actions.
+ */
+
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
 import type { User } from '../types';
@@ -31,6 +38,12 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
 });
 
+/**
+ * Hook to access the auth context. Must be used within an AuthProvider.
+ *
+ * @returns {AuthContextType} The current user, loading state, and auth actions.
+ * @throws {Error} If used outside an AuthProvider.
+ */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -39,6 +52,14 @@ export const useAuth = () => {
   return context;
 };
 
+/**
+ * Provides authentication state and actions to the component tree.
+ * Fetches the current user on mount and exposes signIn, signUp,
+ * signInWithGoogle, signOut, and setUser methods.
+ *
+ * @param {React.ReactNode} children - Child components that need auth access.
+ * @returns {JSX.Element} The auth context provider wrapping children.
+ */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
