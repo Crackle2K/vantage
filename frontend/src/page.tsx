@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
   ChevronLeft, ChevronRight, Mail
@@ -9,8 +8,6 @@ import { FeatureShowcase } from "@/components/FeatureShowcase"
 
 
 export default function HomePage() {
-  const navigate = useNavigate()
-
   const [testimonialIndex, setTestimonialIndex] = useState(0)
   const [email, setEmail] = useState("")
 
