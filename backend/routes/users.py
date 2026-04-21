@@ -1,3 +1,9 @@
+"""User profile and account management routes.
+
+Provides endpoints for viewing profiles, updating profile fields and
+preferences, changing passwords, exporting user data (GDPR portability),
+and deleting accounts (GDPR erasure).
+"""
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import JSONResponse
@@ -23,6 +29,15 @@ def _serialize_user(user: dict) -> User:
     return User(**user)
 
 def _normalize_text_list(values: list[str], limit: int) -> list[str]:
+    """Deduplicate, trim, and truncate a list of text values.
+
+    Args:
+        values (list[str]): Raw input values.
+        limit (int): Maximum number of items to return.
+
+    Returns:
+        list[str]: Normalized, deduplicated, case-insensitive-unique list.
+    """
     normalized: list[str] = []
     seen: set[str] = set()
     for value in values:
@@ -40,6 +55,17 @@ def _normalize_text_list(values: list[str], limit: int) -> list[str]:
 
 @router.get("/{user_id}", response_model=User)
 async def get_user_profile(user_id: str):
+    """Retrieve a user's public profile by ID (GET /api/users/{user_id}).
+
+    Args:
+        user_id (str): The user's unique identifier.
+
+    Returns:
+        User: The user profile.
+
+    Raises:
+        HTTPException: 404 if the user does not exist.
+    """
     user = await users_repository.get_by_id(user_id)
     if not user:
         raise HTTPException(
@@ -50,6 +76,20 @@ async def get_user_profile(user_id: str):
 
 @router.put("/me", response_model=User)
 async def update_user_profile(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update the authenticated user's profile fields (PUT /api/users/me).
+
+    Accepts optional ``name``, ``profile_picture``, and ``about_me`` fields.
+
+    Returns:
+        User: The updated user profile.
+
+    Raises:
+        HTTPException: 400 if no fields are provided.
+        HTTPException: 404 if the user is not found after update.
+    """
     user_update: UserUpdate,
     current_user: User = Depends(get_current_user)
 ):
@@ -81,6 +121,17 @@ async def change_password(
     password_change: PasswordChange,
     current_user: User = Depends(get_current_user)
 ):
+    """Change the authenticated user's password (PUT /api/users/me/password).
+
+    Verifies the current password, then hashes and stores the new one.
+    Google-only accounts cannot change passwords. Rate-limited to 3 per minute.
+
+    Returns:
+        dict: ``{"message": "Password updated successfully"}``
+
+    Raises:
+        HTTPException: 400 if the current password is wrong or account is Google-only.
+    """
     ip_address = request.client.host if request.client else "unknown"
     user_in_db = await users_repository.get_by_id(current_user.id)
     if not user_in_db:
@@ -109,6 +160,17 @@ async def update_user_preferences(
     preferences_update: UserPreferencesUpdate,
     current_user: User = Depends(get_current_user)
 ):
+    """Update the authenticated user's discovery preferences (PUT /api/users/preferences).
+
+    Normalizes and deduplicates category/vibe lists, then persists the
+    preferences and marks ``preferences_completed`` as True.
+
+    Returns:
+        User: The updated user profile with new preferences.
+    """
+    preferences_update: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_user)
+):
     update_data = {
         "preferred_categories": _normalize_text_list(preferences_update.preferred_categories, 8),
         "preferred_vibes": _normalize_text_list(preferences_update.preferred_vibes, 10),
@@ -130,7 +192,14 @@ async def update_user_preferences(
 
 @router.get("/me/export")
 async def export_user_data(request: Request, current_user: User = Depends(get_current_user)):
-    """Export all user data for GDPR compliance (right to portability)."""
+    """Export all user data for GDPR right to portability (GET /api/users/me/export).
+
+    Aggregates the user's profile, reviews, check-ins, saved businesses,
+    and activity feed into a single JSON response.
+
+    Returns:
+        JSONResponse: All user data keyed by data type.
+    """
     ip_address = request.client.host if request.client else "unknown"
     reviews_collection = get_reviews_collection()
     checkins_collection = get_checkins_collection()
@@ -187,7 +256,14 @@ async def export_user_data(request: Request, current_user: User = Depends(get_cu
 
 @router.delete("/me", status_code=status.HTTP_200_OK)
 async def delete_account(request: Request, current_user: User = Depends(get_current_user)):
-    """Delete user account for GDPR compliance (right to erasure)."""
+    """Delete the authenticated user's account and all associated data (DELETE /api/users/me).
+
+    Implements the GDPR right to erasure by removing the user's reviews,
+    check-ins, saved businesses, activity feed entries, and the user record.
+
+    Returns:
+        dict: ``{"message": "Account deleted successfully"}``
+    """
     ip_address = request.client.host if request.client else "unknown"
     reviews_collection = get_reviews_collection()
     checkins_collection = get_checkins_collection()

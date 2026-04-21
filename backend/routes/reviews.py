@@ -1,3 +1,9 @@
+"""Review CRUD routes for business reviews.
+
+Provides endpoints for creating, reading, updating, and deleting reviews.
+After any write, the parent business's average rating and review count
+are recalculated and persisted.
+"""
 from typing import List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Request
@@ -23,6 +29,22 @@ def review_helper(review) -> dict:
 @router.post("/reviews", response_model=Review, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_review(
+    request: Request,
+    review_data: ReviewCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a review for a business (POST /api/reviews).
+
+    Each user may review a business only once. The business's average
+    rating and review count are recalculated after creation.
+
+    Returns:
+        Review: The newly created review.
+
+    Raises:
+        HTTPException: 400 if the user has already reviewed this business.
+        HTTPException: 404 if the business does not exist.
+    """
     request: Request,
     review_data: ReviewCreate,
     current_user: User = Depends(get_current_user)
@@ -63,6 +85,19 @@ async def create_review(
 
 @router.get("/reviews/business/{business_id}", response_model=List[ReviewWithUser])
 async def get_business_reviews(
+    business_id: str,
+    skip: int = 0,
+    limit: int = 50
+):
+    """List reviews for a business with reviewer names (GET /api/reviews/business/{business_id}).
+
+    Fetches reviews sorted by creation date (newest first) and enriches
+    each with the reviewer's display name using a batch user lookup
+    to avoid N+1 queries.
+
+    Returns:
+        List[ReviewWithUser]: Reviews with reviewer names attached.
+    """
     business_id: str,
     skip: int = 0,
     limit: int = 50
@@ -110,6 +145,21 @@ async def update_review(
     review_data: ReviewUpdate,
     current_user: User = Depends(get_current_user)
 ):
+    """Update an existing review (PUT /api/reviews/{review_id}).
+
+    Only the review's author may update it. If the rating changes, the
+    business's average rating is recalculated.
+
+    Returns:
+        Review: The updated review.
+
+    Raises:
+        HTTPException: 403 if the user is not the review author.
+    """
+    review_id: str,
+    review_data: ReviewUpdate,
+    current_user: User = Depends(get_current_user)
+):
     reviews_collection = get_reviews_collection()
     if not ObjectId.is_valid(review_id):
         raise HTTPException(
@@ -147,6 +197,17 @@ async def delete_review(
     review_id: str,
     current_user: User = Depends(get_current_user)
 ):
+    """Delete a review (DELETE /api/reviews/{review_id}).
+
+    Only the review's author may delete it. The business's average
+    rating is recalculated after deletion.
+
+    Raises:
+        HTTPException: 403 if the user is not the review author.
+    """
+    review_id: str,
+    current_user: User = Depends(get_current_user)
+):
     reviews_collection = get_reviews_collection()
     if not ObjectId.is_valid(review_id):
         raise HTTPException(
@@ -175,6 +236,15 @@ async def get_my_reviews(
     skip: int = 0,
     limit: int = 50
 ):
+    """List the authenticated user's own reviews (GET /api/reviews/user/me).
+
+    Returns:
+        List[Review]: The current user's reviews sorted newest first.
+    """
+    current_user: User = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 50
+):
     reviews_collection = get_reviews_collection()
     cursor = reviews_collection.find(
         {"user_id": current_user.id}
@@ -183,6 +253,14 @@ async def get_my_reviews(
     return [review_helper(review) for review in reviews]
 
 async def update_business_rating(business_id: str):
+    """Recalculate and persist a business's average rating and review count.
+
+    Called after any review create, update, or delete to keep the
+    business's ``rating_average`` and ``total_reviews`` in sync.
+
+    Args:
+        business_id (str): The business whose ratings should be recalculated.
+    """
     reviews_collection = get_reviews_collection()
     businesses_collection = get_businesses_collection()
     reviews = await reviews_collection.find({"business_id": business_id}).to_list(length=None)

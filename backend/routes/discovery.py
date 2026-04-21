@@ -1,3 +1,16 @@
+"""Discovery, ranking, and explore-lane routes.
+
+The core of Vantage's business discovery engine. Provides endpoints for
+location-based business discovery with multi-signal ranking (live visibility,
+local confidence, freshness), intent-based ``/decide`` recommendations,
+personalized ``/explore/lanes`` lanes, geo-verified visit submission,
+bulk photo enrichment, and chain/non-local business purging.
+
+Ranking is driven by ``live_visibility_score`` (weighted verified visits,
+credibility-weighted reviews, recency, engagement), ``local_confidence``
+(from the local business classifier), and a freshness boost for newer
+listings.
+"""
 import asyncio
 import math
 import time
@@ -847,6 +860,23 @@ async def decide_for_me(
     limit: int = Query(3, ge=1, le=12),
     constraints: Optional[str] = Query(None, description="Optional comma-separated fit constraints"),
 ):
+    """Intent-based business recommendations (GET /api/decide).
+
+    Accepts a primary intent (e.g. ``DINNER``, ``COFFEE``, ``TRENDING``,
+    ``HIDDEN_GEM``) and optional constraints, then scores and filters
+    businesses to return a short, curated list.
+
+    Returns:
+        dict: ``{"items": [...], "intent_explanation": list[str]}``
+    """
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(..., ge=0.1, le=50),
+    intent: str = Query(..., description="Primary decide intent"),
+    category: Optional[str] = None,
+    limit: int = Query(3, ge=1, le=12),
+    constraints: Optional[str] = Query(None, description="Optional comma-separated fit constraints"),
+):
     ranking_intents = {"TRENDING", "HIDDEN_GEM", "MOST_TRUSTED"}
     normalized_intent = _normalize_decide_intents([intent])[0]
     normalized_constraints = _normalize_decide_intents((constraints or "").split(","))
@@ -936,6 +966,27 @@ async def discover_businesses(
     ),
     refresh: bool = Query(False, description="Force bypass geo cache and refetch Places data"),
 ):
+    """Location-based business discovery (GET /api/discover).
+
+    Returns businesses near the given coordinates, ranked by the
+    selected sort mode. If fewer than ``MIN_RESULTS`` are found in
+    the local database and the geo cache is stale, fetches additional
+    businesses from Google Places and backfills them.
+
+    Returns:
+        list[dict]: Ranked business listings with ranking metadata.
+    """
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
+    category: Optional[str] = None,
+    limit: int = Query(200, ge=1, le=300),
+    sort_mode: str = Query(
+        "canonical",
+        description="Sort: canonical | distance | newest | most_reviewed",
+    ),
+    refresh: bool = Query(False, description="Force bypass geo cache and refetch Places data"),
+):
     businesses = get_businesses_collection()
     geo_cache = get_geo_cache_collection()
     radius_meters = radius * 1000
@@ -1006,6 +1057,22 @@ async def discover_businesses(
 
 @router.get("/explore/lanes")
 async def get_explore_lanes(
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
+    limit: int = Query(120, ge=24, le=240),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Personalized explore lanes (GET /api/explore/lanes).
+
+    Returns four lanes -- "For You", "Active Near You", "Hidden Gems",
+    and "Trusted Staples" -- each populated with businesses scored by
+    user preferences, recent activity, and credibility. Results are
+    cached per-user for 60 seconds.
+
+    Returns:
+        dict: ``{"lanes": [{"id": str, "title": str, "subtitle": str, "items": [...]}]}`
+    """
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
@@ -1109,6 +1176,18 @@ async def enrich_google_place_photos(
     limit: int = Query(1200, ge=1, le=5000, description="Max businesses to scan"),
     batch_size: int = Query(120, ge=10, le=300, description="Batch size per enrichment pass"),
 ):
+    """Bulk-enrich Google Place photo URLs (POST /api/discover/enrich-photos).
+
+    Admin-only endpoint that scans businesses with missing or low-resolution
+    photo URLs and fetches higher-quality images from the Google Places API.
+
+    Returns:
+        dict: ``{"scanned": int, "updated": int, "message": str}``
+    """
+    current_user: User = Depends(get_current_admin_user),
+    limit: int = Query(1200, ge=1, le=5000, description="Max businesses to scan"),
+    batch_size: int = Query(120, ge=10, le=300, description="Batch size per enrichment pass"),
+):
     businesses = get_businesses_collection()
     candidate_query = {
         "source": "google_places",
@@ -1184,6 +1263,20 @@ def _haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> flo
 
 @router.post("/visits", status_code=status.HTTP_201_CREATED)
 async def submit_visit(
+    business_id: str = Query(...),
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    current_user: User = Depends(get_current_user),
+):
+    """Submit a geo-verified visit to a business (POST /api/visits).
+
+    The user must be within 100m of the business. Duplicate visits
+    within 4 hours are rejected. After a visit, the business's live
+    visibility score is recalculated.
+
+    Returns:
+        dict: ``{"status": "verified", "distance_meters": float}``
+    """
     business_id: str = Query(...),
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
@@ -1303,6 +1396,16 @@ async def _recalculate_visibility(business_id: str):
 
 @router.delete("/purge-chains")
 async def purge_chain_businesses(current_user: User = Depends(get_current_admin_user)):
+    """Remove chain/non-local businesses from the database (DELETE /api/purge-chains).
+
+    Admin-only endpoint that re-classifies all Google-Places-sourced
+    unclaimed businesses using the local business classifier. Deletes
+    those classified as non-local and updates confidence scores for
+    borderline businesses.
+
+    Returns:
+        dict: ``{"deleted": int, "confidence_updated": int, "total_scanned": int}``
+    """
     businesses = get_businesses_collection()
 
     cursor = businesses.find({"source": "google_places", "is_claimed": {"$ne": True}})

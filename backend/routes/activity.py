@@ -1,3 +1,9 @@
+"""Activity feed, check-in, credibility, and event routes.
+
+Provides endpoints for check-ins with geo-verification, activity feed
+listing and interaction (likes/comments), owner-posted events, and
+per-business/per-user activity and credibility statistics.
+"""
 import math
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -131,6 +137,20 @@ async def create_checkin(
     data: CheckInCreate,
     current_user: User = Depends(get_current_user),
 ):
+    """Submit a check-in at a business (POST /api/checkins).
+
+    If the user's coordinates are within 200m of the business, the
+    check-in is geo-verified. Duplicate check-ins within 4 hours are
+    rejected. Creates an activity feed entry and updates the user's
+    credibility score.
+
+    Returns:
+        dict: The created check-in record.
+    """
+    request: Request,
+    data: CheckInCreate,
+    current_user: User = Depends(get_current_user),
+):
     checkins = get_checkins_collection()
     businesses = get_businesses_collection()
     activity_feed = get_activity_feed_collection()
@@ -224,6 +244,17 @@ async def confirm_checkin(
     checkin_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    """Confirm another user's check-in (POST /api/checkins/{checkin_id}/confirm).
+
+    Users cannot confirm their own check-ins. After 3 confirmations,
+    the check-in status is upgraded to ``community_confirmed``.
+
+    Returns:
+        dict: ``{"status": "confirmed"}``
+    """
+    checkin_id: str,
+    current_user: User = Depends(get_current_user),
+):
     checkins = get_checkins_collection()
     checkin_key = _oid(checkin_id, "checkin ID")
     checkin = await checkins.find_one({"_id": checkin_key})
@@ -258,6 +289,17 @@ async def confirm_checkin(
 @router.post("/feed/posts", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_user_post(
+    request: Request,
+    data: UserPostCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a community post in the activity feed (POST /api/feed/posts).
+
+    Optionally associated with a business. Content is sanitized.
+
+    Returns:
+        dict: The created activity feed item.
+    """
     request: Request,
     data: UserPostCreate,
     current_user: User = Depends(get_current_user),
@@ -307,6 +349,16 @@ async def get_activity_feed(
     city: Optional[str] = None,
     activity_type: Optional[str] = None,
 ):
+    """Paginated activity feed (GET /api/feed).
+
+    Returns:
+        dict: ``{"items": [...], "total": int, "page": int, "page_size": int, "has_more": bool}``
+    """
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    city: Optional[str] = None,
+    activity_type: Optional[str] = None,
+):
     activity_feed = get_activity_feed_collection()
 
     query: dict = {}
@@ -333,6 +385,19 @@ async def get_activity_feed(
 
 @router.get("/activity/pulse")
 async def get_activity_pulse(
+    lat: float = Query(..., ge=-90, le=90),
+    lng: float = Query(..., ge=-180, le=180),
+    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
+    limit: int = Query(12, ge=3, le=24),
+):
+    """Real-time activity pulse for nearby businesses (GET /api/activity/pulse).
+
+    Aggregates verified visits, recent reviews, and owner activity from
+    the past 48 hours within the given radius.
+
+    Returns:
+        dict: ``{"items": [...]}`` with typed activity summaries.
+    """
     lat: float = Query(..., ge=-90, le=90),
     lng: float = Query(..., ge=-180, le=180),
     radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
@@ -459,6 +524,20 @@ async def create_owner_event(
     event_data: OwnerEventCreate,
     current_user: User = Depends(get_current_user),
 ):
+    """Create an event for a claimed business (POST /api/events).
+
+    Only the claimed business owner may post events. Also creates an
+    activity feed entry for the event.
+
+    Returns:
+        OwnerEvent: The created event with business details.
+
+    Raises:
+        HTTPException: 403 if the user is not the claimed owner.
+    """
+    event_data: OwnerEventCreate,
+    current_user: User = Depends(get_current_user),
+):
     owner_posts = get_owner_posts_collection()
     activity_feed = get_activity_feed_collection()
     business = await _business_or_404(event_data.business_id)
@@ -509,6 +588,22 @@ async def get_owner_events(
     include_past: bool = Query(False, description="Include ended events"),
     limit: int = Query(20, ge=1, le=60),
 ):
+    """List upcoming events, optionally filtered by business or location (GET /api/events).
+
+    When ``business_id`` is provided, returns events for that business.
+    Otherwise, returns events from claimed businesses near the given
+    coordinates.
+
+    Returns:
+        List[OwnerEvent]: Upcoming (or all) events.
+    """
+    business_id: Optional[str] = None,
+    lat: Optional[float] = Query(None, ge=-90, le=90),
+    lng: Optional[float] = Query(None, ge=-180, le=180),
+    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
+    include_past: bool = Query(False, description="Include ended events"),
+    limit: int = Query(20, ge=1, le=60),
+):
     owner_posts = get_owner_posts_collection()
     businesses = get_businesses_collection()
 
@@ -552,6 +647,17 @@ async def toggle_activity_like(
     activity_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    """Toggle like on an activity feed item (POST /api/feed/{activity_id}/like).
+
+    If the user has already liked the item, the like is removed.
+    Otherwise, a like is added.
+
+    Returns:
+        dict: ``{"liked": bool, "likes": int, "comments": int}``
+    """
+    activity_id: str,
+    current_user: User = Depends(get_current_user),
+):
     activity_feed = get_activity_feed_collection()
     target_id = _oid(activity_id, "activity ID")
 
@@ -592,6 +698,11 @@ async def toggle_activity_like(
 
 @router.get("/feed/{activity_id}/comments", response_model=List[ActivityComment])
 async def get_activity_comments(activity_id: str):
+    """List comments on an activity feed item (GET /api/feed/{activity_id}/comments).
+
+    Returns:
+        List[ActivityComment]: Comments sorted chronologically.
+    """
     activity_feed = get_activity_feed_collection()
 
     item = await activity_feed.find_one(
@@ -618,6 +729,18 @@ async def get_activity_comments(activity_id: str):
 @router.post("/feed/{activity_id}/comments", status_code=status.HTTP_201_CREATED)
 @limiter.limit("20/minute")
 async def add_activity_comment(
+    request: Request,
+    activity_id: str,
+    payload: ActivityCommentCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Add a comment to an activity feed item (POST /api/feed/{activity_id}/comments).
+
+    Content is sanitized before storage.
+
+    Returns:
+        dict: ``{"comment": dict, "comments": int}``
+    """
     request: Request,
     activity_id: str,
     payload: ActivityCommentCreate,
@@ -655,6 +778,15 @@ async def add_activity_comment(
 
 @router.get("/businesses/{business_id}/activity")
 async def get_business_activity(business_id: str):
+    """Get activity statistics for a business (GET /api/businesses/{business_id}/activity).
+
+    Returns check-in counts for today and this week, trending score,
+    and the most recent check-in timestamp.
+
+    Returns:
+        dict: Activity summary with ``is_active_today``, ``checkins_today``,
+            ``checkins_this_week``, ``trending_score``, ``last_checkin_at``.
+    """
     checkins = get_checkins_collection()
     await _business_or_404(business_id, {"_id": 1})
 
@@ -686,6 +818,13 @@ async def get_business_activity(business_id: str):
 
 @router.get("/users/{user_id}/credibility")
 async def get_user_credibility(user_id: str):
+    """Get a user's credibility score and statistics (GET /api/users/{user_id}/credibility).
+
+    Returns the FREE-tier default if no credibility record exists.
+
+    Returns:
+        dict: Credibility score, tier, and activity counts.
+    """
     credibility = get_credibility_collection()
 
     doc = await credibility.find_one({"user_id": user_id})
@@ -707,9 +846,19 @@ async def get_user_credibility(user_id: str):
 
 @router.get("/credibility/me")
 async def get_my_credibility(current_user: User = Depends(get_current_user)):
+    """Get the authenticated user's own credibility score (GET /api/credibility/me)."""
     return await get_user_credibility(current_user.id)
 
 async def _update_user_credibility(user_id: str):
+    """Recalculate and persist a user's credibility score and tier.
+
+    Counts check-ins, reviews, and confirmations, then applies the
+    scoring formula from ``calculate_credibility_score`` and upserts
+    the result into the credibility collection.
+
+    Args:
+        user_id (str): The user whose credibility should be recalculated.
+    """
     checkins = get_checkins_collection()
     reviews = get_reviews_collection()
     credibility = get_credibility_collection()

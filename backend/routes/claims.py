@@ -1,3 +1,9 @@
+"""Business ownership claim routes.
+
+Provides endpoints for submitting business claims, viewing claim status,
+and admin review of pending claims. When a claim is verified, the
+business's ``owner_id`` and ``is_claimed`` fields are updated.
+"""
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query
@@ -22,6 +28,21 @@ def claim_helper(claim) -> dict:
 
 @router.post("/claims", response_model=BusinessClaim, status_code=status.HTTP_201_CREATED)
 async def submit_claim(
+    claim_data: ClaimCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Submit a business ownership claim (POST /api/claims).
+
+    Only ``business_owner`` accounts may submit claims. A business may
+    only have one active or pending claim at a time.
+
+    Returns:
+        BusinessClaim: The newly created claim.
+
+    Raises:
+        HTTPException: 403 if the user is not a business owner.
+        HTTPException: 400 if an active/pending claim already exists.
+    """
     claim_data: ClaimCreate,
     current_user: User = Depends(get_current_user),
 ):
@@ -83,6 +104,11 @@ async def submit_claim(
 
 @router.get("/claims/my", response_model=List[BusinessClaim])
 async def get_my_claims(current_user: User = Depends(get_current_user)):
+    """List the authenticated user's claims (GET /api/claims/my).
+
+    Returns:
+        List[BusinessClaim]: Claims submitted by the current user, newest first.
+    """
     claims_collection = get_claims_collection()
     cursor = claims_collection.find({"user_id": current_user.id}).sort("created_at", -1)
     claims = await cursor.to_list(length=50)
@@ -90,6 +116,11 @@ async def get_my_claims(current_user: User = Depends(get_current_user)):
 
 @router.get("/claims/business/{business_id}")
 async def get_business_claim_status(business_id: str):
+    """Check whether a business has an active claim (GET /api/claims/business/{business_id}).
+
+    Returns:
+        dict: ``{"business_id": str, "is_claimed": bool, "status": Optional[str]}``
+    """
     claims_collection = get_claims_collection()
 
     if not ObjectId.is_valid(business_id):
@@ -110,6 +141,23 @@ async def get_business_claim_status(business_id: str):
 
 @router.post("/claims/{claim_id}/review")
 async def review_claim(
+    claim_id: str,
+    review_data: ClaimReview,
+    current_user: User = Depends(get_current_admin_user),
+):
+    """Approve or reject a pending claim (POST /api/claims/{claim_id}/review).
+
+    Admin-only endpoint. When a claim is verified, the business's
+    ``owner_id`` is set to the claimant, ``is_claimed`` is set to True,
+    and an activity feed entry is created.
+
+    Returns:
+        dict: ``{"status": "ok", "claim_status": str}``
+
+    Raises:
+        HTTPException: 400 if the claim has already been reviewed.
+        HTTPException: 403 if the user is not an admin.
+    """
     claim_id: str,
     review_data: ClaimReview,
     current_user: User = Depends(get_current_admin_user),

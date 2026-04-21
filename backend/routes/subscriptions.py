@@ -1,3 +1,9 @@
+"""Subscription and billing routes.
+
+Provides endpoints for retrieving tier information, creating subscriptions
+(with optional Stripe checkout sessions), viewing and updating active
+subscriptions, and scheduling cancellations.
+"""
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, status, Depends
 
@@ -34,10 +40,20 @@ async def _owned_business_or_404(business_id: str, current_user: User) -> dict:
 
 @router.get("/subscriptions/tiers")
 async def get_tier_info():
+    """Return display-ready tier information for the pricing page (GET /api/subscriptions/tiers).
+
+    Returns:
+        list[dict]: Serialized ``TierInfo`` objects for each plan tier.
+    """
     return [tier.dict() for tier in TIER_DISPLAY]
 
 @router.get("/subscriptions/features/{tier}")
 async def get_tier_features(tier: SubscriptionTier):
+    """Return the feature matrix for a specific tier (GET /api/subscriptions/features/{tier}).
+
+    Returns:
+        dict: ``{"tier": str, "features": dict}``
+    """
     features = TIER_FEATURES.get(tier)
     if not features:
         raise HTTPException(status_code=404, detail="Tier not found")
@@ -45,6 +61,18 @@ async def get_tier_features(tier: SubscriptionTier):
 
 @router.post("/subscriptions", status_code=status.HTTP_201_CREATED)
 async def create_subscription(
+    data: SubscriptionCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Subscribe a business to a plan tier (POST /api/subscriptions).
+
+    For paid tiers with Stripe configured, creates a Stripe Checkout
+    session and returns the checkout URL. Otherwise, creates the
+    subscription record directly.
+
+    Returns:
+        dict: Subscription details or ``{"checkout_url": str, "status": "checkout_required"}``.
+    """
     data: SubscriptionCreate,
     current_user: User = Depends(get_current_user),
 ):
@@ -127,11 +155,26 @@ async def create_subscription(
 
 @router.get("/subscriptions/my")
 async def get_my_subscriptions(current_user: User = Depends(get_current_user)):
+    """List the current user's subscriptions (GET /api/subscriptions/my).
+
+    Returns:
+        list[dict]: Subscription records for the authenticated user.
+    """
     read_repo = get_subscriptions_read_repository()
     return await read_repo.list_for_user(current_user.id, limit=50)
 
 @router.get("/subscriptions/business/{business_id}")
 async def get_business_subscription(
+    business_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Get the active subscription for a specific business (GET /api/subscriptions/business/{business_id}).
+
+    Returns the FREE tier with feature details if no active subscription exists.
+
+    Returns:
+        dict: Subscription record with ``features`` key, or the FREE tier default.
+    """
     business_id: str,
     current_user: User = Depends(get_current_user),
 ):
@@ -153,6 +196,17 @@ async def get_business_subscription(
 
 @router.patch("/subscriptions/{sub_id}")
 async def update_subscription(
+    sub_id: str,
+    data: SubscriptionUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a subscription's tier or billing cycle (PATCH /api/subscriptions/{sub_id}).
+
+    Only the subscription owner may update it.
+
+    Returns:
+        dict: The updated subscription record.
+    """
     sub_id: str,
     data: SubscriptionUpdate,
     current_user: User = Depends(get_current_user),
@@ -183,6 +237,17 @@ async def update_subscription(
 
 @router.post("/subscriptions/{sub_id}/cancel")
 async def cancel_subscription(
+    sub_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Schedule a subscription for cancellation at period end (POST /api/subscriptions/{sub_id}/cancel).
+
+    Sets ``cancel_at_period_end`` to True. The subscription remains active
+    until ``current_period_end``.
+
+    Returns:
+        dict: ``{"status": "cancelling", "message": str}``
+    """
     sub_id: str,
     current_user: User = Depends(get_current_user),
 ):

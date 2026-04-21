@@ -1,3 +1,8 @@
+"""Saved/bookmarked business routes.
+
+Provides endpoints for saving and unsaving businesses, and listing
+the current user's saved businesses with full ranking metadata.
+"""
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,6 +32,17 @@ async def save_business(
     business_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    """Save/bookmark a business (POST /api/saved/{business_id}).
+
+    Returns:
+        SavedMutationResult: ``{"business_id": str, "saved": True}``
+
+    Raises:
+        HTTPException: 404 if the business does not exist.
+    """
+    business_id: str,
+    current_user: User = Depends(get_current_user),
+):
     read_repo = get_saved_read_repository()
     write_repos = get_saved_write_repositories()
 
@@ -44,6 +60,14 @@ async def remove_saved_business(
     business_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    """Remove a saved/bookmarked business (DELETE /api/saved/{business_id}).
+
+    Returns:
+        SavedMutationResult: ``{"business_id": str, "saved": False}``
+    """
+    business_id: str,
+    current_user: User = Depends(get_current_user),
+):
     write_repos = get_saved_write_repositories()
     for repo in write_repos:
         await repo.remove(current_user.id, business_id)
@@ -51,6 +75,16 @@ async def remove_saved_business(
 
 @router.get("/saved")
 async def get_saved_businesses(
+    current_user: User = Depends(get_current_user),
+):
+    """List the current user's saved businesses with ranking data (GET /api/saved).
+
+    Returns businesses in save-order (newest first) with computed
+    ranking components and reason codes.
+
+    Returns:
+        dict: ``{"items": [...]}`` with enriched business listings.
+    """
     current_user: User = Depends(get_current_user),
 ):
     read_repo = get_saved_read_repository()

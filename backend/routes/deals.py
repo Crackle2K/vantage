@@ -1,3 +1,9 @@
+"""Deal CRUD and toggle routes for business promotional deals.
+
+Provides endpoints for creating, listing, updating, deleting, and
+toggling the active status of deals. Only the business owner may
+modify deals for their business.
+"""
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, status, Depends, Query
@@ -18,6 +24,20 @@ def deal_helper(deal) -> dict:
 
 @router.post("/deals", response_model=Deal, status_code=status.HTTP_201_CREATED)
 async def create_deal(
+    deal_data: DealCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a deal for a business (POST /api/deals).
+
+    Only the business owner may create deals. Expiration must be in the future.
+
+    Returns:
+        Deal: The newly created deal.
+
+    Raises:
+        HTTPException: 403 if the user is not the business owner.
+        HTTPException: 400 if the expiration date has already passed.
+    """
     deal_data: DealCreate,
     current_user: User = Depends(get_current_user)
 ):
@@ -63,6 +83,17 @@ async def get_business_deals(
     active_only: bool = Query(True, description="Return only active deals"),
     include_expired: bool = Query(False, description="Include expired deals")
 ):
+    """List deals for a specific business (GET /api/deals/business/{business_id}).
+
+    By default returns only active, non-expired deals.
+
+    Returns:
+        List[Deal]: Deals for the specified business.
+    """
+    business_id: str,
+    active_only: bool = Query(True, description="Return only active deals"),
+    include_expired: bool = Query(False, description="Include expired deals")
+):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(business_id):
@@ -92,6 +123,18 @@ async def get_all_deals(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100)
 ):
+    """List all deals across businesses (GET /api/deals).
+
+    Enriches each deal with the parent business's name and category.
+
+    Returns:
+        List[DealWithBusiness]: Deals enriched with business details.
+    """
+    active_only: bool = Query(True, description="Return only active deals"),
+    include_expired: bool = Query(False, description="Include expired deals"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100)
+):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     query = {}
@@ -116,6 +159,21 @@ async def get_all_deals(
 
 @router.put("/deals/{deal_id}", response_model=Deal)
 async def update_deal(
+    deal_id: str,
+    deal_data: DealUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a deal (PUT /api/deals/{deal_id}).
+
+    Only the business owner may update deals.
+
+    Returns:
+        Deal: The updated deal.
+
+    Raises:
+        HTTPException: 403 if the user is not the business owner.
+        HTTPException: 400 if the new expiration date is in the past.
+    """
     deal_id: str,
     deal_data: DealUpdate,
     current_user: User = Depends(get_current_user)
@@ -162,6 +220,16 @@ async def delete_deal(
     deal_id: str,
     current_user: User = Depends(get_current_user)
 ):
+    """Delete a deal (DELETE /api/deals/{deal_id}).
+
+    Only the business owner may delete deals.
+
+    Raises:
+        HTTPException: 403 if the user is not the business owner.
+    """
+    deal_id: str,
+    current_user: User = Depends(get_current_user)
+):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(deal_id):
@@ -186,6 +254,16 @@ async def delete_deal(
 
 @router.patch("/deals/{deal_id}/toggle", response_model=Deal)
 async def toggle_deal_active(
+    deal_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Toggle a deal's active status (PATCH /api/deals/{deal_id}/toggle).
+
+    Flips the ``active`` boolean. Only the business owner may toggle deals.
+
+    Returns:
+        Deal: The deal with its updated active status.
+    """
     deal_id: str,
     current_user: User = Depends(get_current_user)
 ):

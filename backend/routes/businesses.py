@@ -1,3 +1,9 @@
+"""Business listing CRUD and photo proxy routes.
+
+Provides endpoints for listing, searching, creating, updating, and deleting
+businesses, plus a photo proxy that serves Google Place images with
+category-based SVG fallbacks.
+"""
 import io
 import logging
 from typing import List, Optional
@@ -73,6 +79,22 @@ async def get_business_photo(
     place_id: str = Query(..., min_length=3),
     maxwidth: int = Query(800, ge=120, le=1600),
 ):
+    """Proxy a business photo by Google Place ID (GET /api/photos).
+
+    Resolves the image from Google's photo API, an OG image on the
+    business website, or returns an SVG placeholder. Responses are
+    cached in memory and on disk.
+
+    Args:
+        place_id (str): Google Places place ID.
+        maxwidth (int): Desired image width in pixels (120-1600).
+
+    Returns:
+        StreamingResponse: The image payload with cache headers.
+    """
+    place_id: str = Query(..., min_length=3),
+    maxwidth: int = Query(800, ge=120, le=1600),
+):
     try:
         businesses_collection = get_businesses_collection()
         content_type, payload = await get_photo_payload(businesses_collection, place_id.strip(), maxwidth)
@@ -86,6 +108,21 @@ async def get_business_photo(
 
 @router.get("/businesses", response_model=List[Business])
 async def get_businesses(
+    category: Optional[CategoryEnum] = None,
+    city: Optional[str] = None,
+    search: Optional[str] = None,
+    min_rating: Optional[float] = Query(None, ge=0, le=5),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100)
+):
+    """List businesses with optional filtering (GET /api/businesses).
+
+    Supports filtering by category, city (case-insensitive regex), minimum
+    rating, and full-text search across name and description.
+
+    Returns:
+        List[Business]: Filtered and paginated business listings.
+    """
     category: Optional[CategoryEnum] = None,
     city: Optional[str] = None,
     search: Optional[str] = None,
@@ -113,6 +150,19 @@ async def get_businesses(
 
 @router.get("/businesses/feed")
 async def get_businesses_feed(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    category: Optional[CategoryEnum] = None,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = Query(None, description="Sort by: rating, reviews, newest"),
+):
+    """Paginated business feed with sorting (GET /api/businesses/feed).
+
+    Returns a page of businesses along with total count and pagination metadata.
+
+    Returns:
+        dict: ``{"businesses": [...], "total": int, "page": int, "page_size": int, "has_more": bool}``
+    """
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     category: Optional[CategoryEnum] = None,
@@ -165,6 +215,21 @@ async def get_nearby_businesses(
     min_rating: Optional[float] = Query(None, ge=0, le=5),
     limit: int = Query(50, ge=1, le=100)
 ):
+    """Find businesses near a given location (GET /api/businesses/nearby).
+
+    Delegates to the discovery engine and optionally filters by minimum
+    rating after retrieval.
+
+    Returns:
+        List[Business]: Businesses sorted by canonical ranking within the radius.
+    """
+    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
+    lng: float = Query(..., ge=-180, le=180, description="Longitude"),
+    radius: float = Query(10, ge=1, le=100, description="Search radius in kilometers"),
+    category: Optional[CategoryEnum] = None,
+    min_rating: Optional[float] = Query(None, ge=0, le=5),
+    limit: int = Query(50, ge=1, le=100)
+):
     businesses = await discover_businesses(
         lat=lat,
         lng=lng,
@@ -180,6 +245,14 @@ async def get_nearby_businesses(
 
 @router.get("/businesses/{business_id}", response_model=Business)
 async def get_business(business_id: str):
+    """Retrieve a single business by ID (GET /api/businesses/{business_id}).
+
+    Returns:
+        Business: The requested business.
+
+    Raises:
+        HTTPException: 404 if the business does not exist.
+    """
     return business_helper(await _business_or_404(business_id))
 
 @router.post("/businesses", response_model=Business, status_code=status.HTTP_201_CREATED)
@@ -187,6 +260,18 @@ async def create_business(
     business_data: BusinessCreate,
     current_user: User = Depends(get_current_user)
 ):
+    """Create a new business listing (POST /api/businesses).
+
+    Only users with the ``business_owner`` role may create businesses.
+    Auto-generates ``short_description`` and ``known_for`` tags from the
+    category and address.
+
+    Returns:
+        Business: The newly created business.
+
+    Raises:
+        HTTPException: 403 if the user is not a business owner.
+    """
     if current_user.role != "business_owner":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -226,6 +311,22 @@ async def create_business(
 
 @router.put("/businesses/{business_id}", response_model=Business)
 async def update_business(
+    business_id: str,
+    business_data: BusinessUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a business listing (PUT /api/businesses/{business_id}).
+
+    Only the business owner may update their listing. Re-derives
+    ``short_description`` and ``known_for`` when relevant fields change.
+
+    Returns:
+        Business: The updated business.
+
+    Raises:
+        HTTPException: 403 if the user is not the business owner.
+        HTTPException: 404 if the business does not exist.
+    """
     business_id: str,
     business_data: BusinessUpdate,
     current_user: User = Depends(get_current_user)
@@ -281,6 +382,21 @@ async def update_business_profile(
     profile_data: BusinessProfileUpdate,
     current_user: User = Depends(get_current_user)
 ):
+    """Update owner-editable profile fields (PUT /api/businesses/{business_id}/profile).
+
+    Restricted to the claimed business owner. Only ``short_description``
+    and ``known_for`` tags may be updated through this endpoint.
+
+    Returns:
+        Business: The updated business.
+
+    Raises:
+        HTTPException: 403 if the user is not the claimed owner.
+    """
+    business_id: str,
+    profile_data: BusinessProfileUpdate,
+    current_user: User = Depends(get_current_user)
+):
     businesses_collection = get_businesses_collection()
     business_key = _oid(business_id)
     business = await businesses_collection.find_one({"_id": business_key})
@@ -332,6 +448,14 @@ async def delete_business(
     business_id: str,
     current_user: User = Depends(get_current_user)
 ):
+    """Delete a business listing (DELETE /api/businesses/{business_id}).
+
+    Only the business owner may delete their listing.
+
+    Raises:
+        HTTPException: 403 if the user is not the business owner.
+        HTTPException: 404 if the business does not exist.
+    """
     businesses_collection = get_businesses_collection()
     business_key = _oid(business_id)
     business = await businesses_collection.find_one({"_id": business_key})
