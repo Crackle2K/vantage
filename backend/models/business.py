@@ -1,9 +1,17 @@
+"""Business domain models for the Vantage API.
+
+Defines Pydantic models for business listings including creation, updates,
+profile updates, and the full business response. Also provides the
+``CategoryEnum`` for business categorization and ``GeoLocation`` for
+storing point coordinates.
+"""
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
 
 class CategoryEnum(str, Enum):
+    """Business category values supporting both lower-case internal and display forms."""
     FOOD = "food"
     RETAIL = "retail"
     SERVICES = "services"
@@ -37,6 +45,12 @@ class CategoryEnum(str, Enum):
     OTHER = "Other"
 
 class GeoLocation(BaseModel):
+    """GeoJSON Point geometry for storing business coordinates.
+
+    Attributes:
+        type (str): Always ``Point``.
+        coordinates (List[float]): ``[longitude, latitude]`` pair.
+    """
     type: str = "Point"
     coordinates: List[float] = Field(..., min_length=2, max_length=2)
     class Config:
@@ -48,6 +62,15 @@ class GeoLocation(BaseModel):
         }
 
 class BusinessBase(BaseModel):
+    """Core business fields shared across request/response models.
+
+    Attributes:
+        name (str): Business name (2-200 characters).
+        category (CategoryEnum): Business category.
+        description (str): Business description (max 1000 characters).
+        address (str): Street address (max 300 characters).
+        city (str): City name (max 100 characters).
+    """
     name: str = Field(..., min_length=2, max_length=200)
     category: CategoryEnum
     description: str = Field(..., max_length=1000)
@@ -55,6 +78,23 @@ class BusinessBase(BaseModel):
     city: str = Field(..., max_length=100)
 
 class BusinessCreate(BaseModel):
+    """Request body for creating a new business listing.
+
+    Attributes:
+        name (str): Business name (2-200 characters).
+        category (CategoryEnum): Business category.
+        description (str): Description (max 1000 characters).
+        address (str): Street address (max 300 characters).
+        city (str): City name (max 100 characters).
+        location (GeoLocation): GeoJSON point coordinates.
+        phone (Optional[str]): Phone number.
+        email (Optional[str]): Contact email.
+        website (Optional[str]): Business website URL.
+        image_url (Optional[str]): Primary image URL.
+        image_urls (List[str]): Additional image URLs (max 8).
+        short_description (Optional[str]): Tagline (max 160 characters).
+        known_for (List[str]): Feature tags (max 6).
+    """
     name: str = Field(..., min_length=2, max_length=200)
     category: CategoryEnum
     description: str = Field(..., max_length=1000)
@@ -70,6 +110,7 @@ class BusinessCreate(BaseModel):
     known_for: List[str] = Field(default_factory=list, min_length=0, max_length=6)
 
 class BusinessUpdate(BaseModel):
+    """Request body for updating an existing business (all fields optional)."""
     name: Optional[str] = Field(None, min_length=2, max_length=200)
     category: Optional[CategoryEnum] = None
     description: Optional[str] = Field(None, max_length=1000)
@@ -85,10 +126,47 @@ class BusinessUpdate(BaseModel):
     known_for: Optional[List[str]] = Field(None, min_length=0, max_length=6)
 
 class BusinessProfileUpdate(BaseModel):
+    """Request body for owner-only profile field updates.
+
+    Restricted to fields that the claimed business owner can edit
+    (short_description and known_for tags).
+
+    Attributes:
+        short_description (Optional[str]): Tagline (max 160 characters).
+        known_for (Optional[List[str]]): Feature tags (max 6).
+    """
     short_description: Optional[str] = Field(None, max_length=160)
     known_for: Optional[List[str]] = Field(None, min_length=0, max_length=6)
 
 class Business(BusinessBase):
+    """Full business model returned in API responses.
+
+    Includes computed fields like rating, review count, credibility score,
+    visibility score, trending score, and claim status.
+
+    Attributes:
+        id (str): Unique business identifier.
+        owner_id (Optional[str]): ID of the claimed business owner.
+        place_id (Optional[str]): Google Places place ID.
+        location (Optional[GeoLocation]): GeoJSON coordinates.
+        rating (float): Average rating (0-5).
+        review_count (int): Total number of reviews.
+        has_deals (bool): Whether the business has active deals.
+        phone/email/website: Contact information.
+        image_url/image_urls: Photo URLs.
+        short_description (Optional[str]): Tagline.
+        known_for (List[str]): Feature tags.
+        is_claimed (bool): Whether the business has been claimed by an owner.
+        claim_status (Optional[str]): Current claim status.
+        is_seed (bool): Whether this is a seeded/demo record.
+        credibility_score (float): Computed credibility score.
+        live_visibility_score (float): Computed live visibility score.
+        local_confidence (float): Confidence that this is a local business.
+        is_active_today (bool): Whether there was activity today.
+        checkins_today (int): Number of check-ins today.
+        trending_score (float): Computed trending score.
+        last_activity_at (Optional[datetime]): Timestamp of last activity.
+    """
     id: str
     owner_id: Optional[str] = None
     place_id: Optional[str] = None

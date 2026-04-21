@@ -1,15 +1,38 @@
+"""Activity, check-in, credibility, and event domain models.
+
+Defines models for user check-ins, credibility scoring, the activity feed,
+owner-posted events, and business activity status. Also contains the
+``calculate_credibility_score`` function that maps user activity statistics
+to a numeric score and tier.
+"""
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
 class CheckInStatus(str, Enum):
+    """Verification level for a user check-in."""
     SELF_REPORTED = "self_reported"
     GEO_VERIFIED = "geo_verified"
     RECEIPT_VERIFIED = "receipt_verified"
     COMMUNITY_CONFIRMED = "community_confirmed"
 
 class CheckIn(BaseModel):
+    """Full check-in model returned in API responses.
+
+    Attributes:
+        id (str): Unique check-in identifier.
+        user_id (str): ID of the user who checked in.
+        business_id (str): ID of the business.
+        status (CheckInStatus): Verification status.
+        latitude/longitude (Optional[float]): User's location at check-in.
+        distance_from_business (Optional[float]): Meters from the business.
+        note (Optional[str]): User note (max 200 characters).
+        photo_url (Optional[str]): Photo attachment URL.
+        confirmations (int): Number of community confirmations.
+        confirmed_by (List[str]): IDs of users who confirmed this check-in.
+        created_at (datetime): Check-in timestamp.
+    """
     id: str
     user_id: str
     business_id: str
@@ -26,12 +49,21 @@ class CheckIn(BaseModel):
         from_attributes = True
 
 class CheckInCreate(BaseModel):
+    """Request body for submitting a check-in.
+
+    Attributes:
+        business_id (str): ID of the business to check in to.
+        latitude (Optional[float]): User's latitude (-90 to 90).
+        longitude (Optional[float]): User's longitude (-180 to 180).
+        note (Optional[str]): Optional note (max 200 characters).
+    """
     business_id: str
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
     note: Optional[str] = Field(None, max_length=200)
 
 class CredibilityTier(str, Enum):
+    """Credibility tier levels based on accumulated user activity."""
     NEW = "new"
     REGULAR = "regular"
     TRUSTED = "trusted"
@@ -39,6 +71,21 @@ class CredibilityTier(str, Enum):
     AMBASSADOR = "ambassador"
 
 class UserCredibility(BaseModel):
+    """User credibility statistics and tier returned in API responses.
+
+    Attributes:
+        user_id (str): ID of the user.
+        total_checkins (int): Total check-in count.
+        verified_checkins (int): Verified check-in count.
+        total_reviews (int): Total review count.
+        helpful_votes (int): Helpful vote count.
+        confirmations_given/received (int): Community confirmation counts.
+        events_attended (int): Event attendance count.
+        credibility_score (float): Computed score (0-100).
+        tier (CredibilityTier): Current credibility tier.
+        is_verified_local (bool): Whether the user is a verified local.
+        joined_at/last_active (Optional[datetime]): Activity timestamps.
+    """
     user_id: str
     total_checkins: int = 0
     verified_checkins: int = 0
@@ -56,6 +103,22 @@ class UserCredibility(BaseModel):
         from_attributes = True
 
 def calculate_credibility_score(stats: dict) -> tuple[float, CredibilityTier]:
+    """Compute a credibility score (0-100) and tier from user activity statistics.
+
+    Each activity type contributes a weighted amount: check-ins (2 pts),
+    verified check-ins (3 pts), reviews (3 pts), helpful votes (1 pt),
+    confirmations given (1 pt), confirmations received (2 pts), and
+    events attended (3 pts). The score is capped at 100.
+
+    Args:
+        stats (dict): Activity counts with keys ``total_checkins``,
+            ``verified_checkins``, ``total_reviews``, ``helpful_votes``,
+            ``confirmations_given``, ``confirmations_received``,
+            ``events_attended``.
+
+    Returns:
+        tuple[float, CredibilityTier]: The numeric score and corresponding tier.
+    """
     score = 0.0
     score += stats.get("total_checkins", 0) * 2
     score += stats.get("verified_checkins", 0) * 3
@@ -83,6 +146,7 @@ def calculate_credibility_score(stats: dict) -> tuple[float, CredibilityTier]:
     return score, tier
 
 class ActivityType(str, Enum):
+    """Types of activities that appear in the activity feed."""
     CHECKIN = "checkin"
     REVIEW = "review"
     DEAL_POSTED = "deal_posted"
@@ -92,6 +156,22 @@ class ActivityType(str, Enum):
     USER_POST = "user_post"
 
 class ActivityFeedItem(BaseModel):
+    """An item in the community activity feed.
+
+    Attributes:
+        id (str): Unique activity item identifier.
+        activity_type (ActivityType): Type of activity.
+        user_id/user_name (Optional[str]): The acting user.
+        user_credibility_tier (Optional[CredibilityTier]): User's credibility tier.
+        business_id (str): Associated business ID.
+        business_name (str): Business display name.
+        business_category (Optional[str]): Business category.
+        title (str): Activity headline.
+        description (Optional[str]): Activity detail text.
+        likes (int): Number of likes.
+        comments (int): Number of comments.
+        created_at (datetime): Activity timestamp.
+    """
     id: str
     activity_type: ActivityType
     user_id: Optional[str] = None
@@ -109,6 +189,17 @@ class ActivityFeedItem(BaseModel):
         from_attributes = True
 
 class ActivityFeedCreate(BaseModel):
+    """Request body for creating a new activity feed entry.
+
+    Attributes:
+        activity_type (ActivityType): Type of activity.
+        user_id (Optional[str]): ID of the acting user.
+        business_id (str): Associated business ID.
+        business_name (str): Business display name.
+        business_category (Optional[str]): Business category.
+        title (str): Activity headline.
+        description (Optional[str]): Activity detail text.
+    """
     activity_type: ActivityType
     user_id: Optional[str] = None
     user_name: Optional[str] = None
@@ -119,6 +210,16 @@ class ActivityFeedCreate(BaseModel):
     description: Optional[str] = None
 
 class OwnerEventCreate(BaseModel):
+    """Request body for a business owner to create an event.
+
+    Attributes:
+        business_id (str): ID of the business posting the event.
+        title (str): Event title (3-120 characters).
+        description (str): Event description (8-600 characters).
+        start_time (datetime): Event start time.
+        end_time (datetime): Event end time.
+        image_url (Optional[str]): Event image URL (max 500 characters).
+    """
     business_id: str
     title: str = Field(..., min_length=3, max_length=120)
     description: str = Field(..., min_length=8, max_length=600)
@@ -127,6 +228,19 @@ class OwnerEventCreate(BaseModel):
     image_url: Optional[str] = Field(None, max_length=500)
 
 class OwnerEvent(BaseModel):
+    """Full event model returned in API responses.
+
+    Attributes:
+        id (str): Unique event identifier.
+        business_id (str): ID of the hosting business.
+        title (str): Event title.
+        description (str): Event description.
+        start_time (datetime): Event start time.
+        end_time (datetime): Event end time.
+        created_at (datetime): When the event was posted.
+        image_url (Optional[str]): Event image URL.
+        business_name/category/image_url: Enriched business details.
+    """
     id: str
     business_id: str
     title: str
@@ -143,6 +257,17 @@ class OwnerEvent(BaseModel):
         from_attributes = True
 
 class BusinessActivityStatus(BaseModel):
+    """Summary of a business's recent activity levels.
+
+    Attributes:
+        business_id (str): Business ID.
+        is_active_today (bool): Whether there were check-ins today.
+        checkins_today (int): Today's check-in count.
+        checkins_this_week (int): This week's check-in count.
+        last_checkin_at (Optional[datetime]): Timestamp of the most recent check-in.
+        recent_activity_count (int): Recent activity count.
+        trending_score (float): Computed trending score.
+    """
     business_id: str
     is_active_today: bool = False
     checkins_today: int = 0

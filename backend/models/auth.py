@@ -1,3 +1,10 @@
+"""Authentication routes, utilities, and request models.
+
+Handles user registration, login, logout, Google OAuth sign-in, and JWT
+token management. Implements Redis-backed account lockout after repeated
+failed login attempts (with in-memory fallback for local development) and
+reCAPTCHA Enterprise verification for signup protection.
+"""
 import bcrypt
 import asyncio
 import json
@@ -31,6 +38,7 @@ LOCKOUT_WINDOW_MINUTES = 30
 
 
 async def _get_redis() -> Optional[redis.Redis]:
+    """Lazily initialize and return the Redis connection, or None if unavailable."""
     global _redis
     if _redis is None:
         try:
@@ -42,6 +50,7 @@ async def _get_redis() -> Optional[redis.Redis]:
 
 
 async def _redis_get(key: str) -> Optional[str]:
+    """Read a key from Redis. Returns None if Redis is unavailable."""
     r = await _get_redis()
     if r is None:
         return None
@@ -52,6 +61,7 @@ async def _redis_get(key: str) -> Optional[str]:
 
 
 async def _redis_setex(key: str, ttl_seconds: int, value: str) -> bool:
+    """Set a Redis key with a TTL. Returns False if Redis is unavailable."""
     r = await _get_redis()
     if r is None:
         return False
@@ -67,6 +77,15 @@ _inmem: Dict[str, Dict] = {}
 
 
 async def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
+    """Check whether an account is currently locked due to too many failed logins.
+
+    Args:
+        email (str): The account email address.
+
+    Returns:
+        tuple[bool, Optional[int]]: (is_locked, minutes_remaining) where
+            minutes_remaining is None when the account is not locked.
+    """
     email_lower = email.lower()
     lock_key = f"lockout:{email_lower}"
     locked_until_str = await _redis_get(lock_key)
@@ -95,6 +114,14 @@ async def is_account_locked(email: str) -> tuple[bool, Optional[int]]:
 
 
 async def record_failed_attempt(email: str) -> None:
+    """Record a failed login attempt and lock the account if the threshold is reached.
+
+    After ``LOCKOUT_THRESHOLD`` failures within ``LOCKOUT_WINDOW_MINUTES``,
+    the account is locked for ``LOCKOUT_DURATION_MINUTES``.
+
+    Args:
+        email (str): The account email address.
+    """
     email_lower = email.lower()
     now = datetime.utcnow()
 
@@ -139,6 +166,11 @@ async def record_failed_attempt(email: str) -> None:
 
 
 async def clear_failed_attempts(email: str) -> None:
+    """Clear all failed-attempt counters for an account (called after a successful login).
+
+    Args:
+        email (str): The account email address.
+    """
     email_lower = email.lower()
     if await _get_redis():
         try:
@@ -157,9 +189,21 @@ limiter = Limiter(key_func=get_remote_address)
 users_repository = SupabaseUsersRepository()
 
 class GoogleAuthRequest(BaseModel):
+    """Request body for Google OAuth sign-in, containing the ID token credential."""
+
     credential: str
 
 class RegisterRequest(BaseModel):
+    """Request body for user registration with reCAPTCHA protection.
+
+    Attributes:
+        name (str): Display name (2-100 characters).
+        email (EmailStr): User email address.
+        password (str): Password (minimum 8 characters, must pass strength validation).
+        role (UserRole): Requested user role (cannot be ADMIN).
+        recaptcha_token (str): reCAPTCHA Enterprise assessment token.
+        recaptcha_action (Optional[str]): Expected reCAPTCHA action name.
+    """
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=8)
@@ -183,18 +227,45 @@ class RegisterRequest(BaseModel):
         return v
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plaintext password against a bcrypt hash.
+
+    Args:
+        plain_password (str): The user-supplied plaintext password.
+        hashed_password (str): The stored bcrypt hash.
+
+    Returns:
+        bool: True if the password matches the hash.
+    """
     return bcrypt.checkpw(
         plain_password.encode('utf-8'),
         hashed_password.encode('utf-8')
     )
 
 def get_password_hash(password: str) -> str:
+    """Hash a password using bcrypt.
+
+    Args:
+        password (str): Plaintext password to hash.
+
+    Returns:
+        str: Bcrypt hash string.
+    """
     return bcrypt.hashpw(
         password.encode('utf-8'),
         bcrypt.gensalt()
     ).decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a signed JWT access token.
+
+    Args:
+        data (dict): Payload to encode (typically ``sub`` and ``user_id``).
+        expires_delta (Optional[timedelta]): Custom expiration duration.
+            Defaults to ``ACCESS_TOKEN_EXPIRE_MINUTES``.
+
+    Returns:
+        str: Encoded JWT string.
+    """
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -249,7 +320,17 @@ async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
 ) -> User:
-    """Resolve the authenticated user from a Bearer token or httpOnly cookie."""
+    """FastAPI dependency that resolves the authenticated user.
+
+    Reads the JWT from either an ``Authorization: Bearer`` header or the
+    ``access_token`` httpOnly cookie.
+
+    Returns:
+        User: The authenticated user.
+
+    Raises:
+        HTTPException: 401 if no valid token is found.
+    """
     token = credentials.credentials if credentials else request.cookies.get("access_token")
     if not token:
         raise HTTPException(
@@ -263,6 +344,14 @@ async def get_current_user_optional(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
 ) -> Optional[User]:
+    """FastAPI dependency that optionally resolves an authenticated user.
+
+    Returns None (instead of raising 401) when no valid token is present,
+    allowing unauthenticated access to endpoints that support both modes.
+
+    Returns:
+        Optional[User]: The authenticated user, or None.
+    """
     token = credentials.credentials if credentials else request.cookies.get("access_token")
     if not token:
         return None
@@ -328,6 +417,19 @@ def _request_recaptcha_assessment(token: str, expected_action: str) -> dict:
         return json.loads(body)
 
 async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -> None:
+    """Verify a reCAPTCHA Enterprise assessment token for signup.
+
+    Silently skips verification when reCAPTCHA is not configured.
+
+    Args:
+        token (str): The reCAPTCHA client-side token.
+        requested_action (Optional[str]): Expected action name.
+
+    Raises:
+        HTTPException: 503 if the reCAPTCHA service is unreachable.
+        HTTPException: 400 if the token is invalid or the score is below
+            ``RECAPTCHA_MIN_SCORE``.
+    """
     if not _is_recaptcha_configured():
         return  # reCAPTCHA not configured; skip server-side verification
 
@@ -359,6 +461,15 @@ async def verify_signup_recaptcha(token: str, requested_action: Optional[str]) -
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 async def register(request: Request, response: Response, user_data: RegisterRequest):
+    """Register a new user account (POST /api/auth/register).
+
+    Validates the reCAPTCHA token, hashes the password, creates the user,
+    issues a JWT, and sets it as an httpOnly cookie. Rate-limited to
+    5 requests per minute per IP.
+
+    Returns:
+        dict: ``{"message": "Registration successful"}``
+    """
     existing_user = await users_repository.get_by_email(user_data.email)
     if existing_user:
         raise HTTPException(
@@ -391,6 +502,19 @@ async def register(request: Request, response: Response, user_data: RegisterRequ
 @router.post("/login")
 @limiter.limit("10/minute")
 async def login(request: Request, response: Response, user_credentials: UserLogin):
+    """Authenticate a user with email and password (POST /api/auth/login).
+
+    Checks account lockout status, verifies the password, clears failed
+    attempt counters on success, and sets the JWT cookie. Rate-limited to
+    10 requests per minute per IP.
+
+    Returns:
+        dict: ``{"message": "Login successful"}``
+
+    Raises:
+        HTTPException: 423 if the account is locked.
+        HTTPException: 401 if credentials are invalid.
+    """
     # Check if account is locked
     is_locked, minutes_remaining = await is_account_locked(user_credentials.email)
     if is_locked:
@@ -452,6 +576,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
 
 @router.get("/me", response_model=User)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """Return the currently authenticated user's profile (GET /api/auth/me)."""
     return current_user
 
 @router.post("/logout")
@@ -463,6 +588,14 @@ async def logout(response: Response):
 @router.post("/google")
 @limiter.limit("10/minute")
 async def google_auth(request: Request, response: Response, auth_request: GoogleAuthRequest):
+    """Authenticate or register a user via Google OAuth (POST /api/auth/google).
+
+    Verifies the Google ID token, creates the user if they don't exist,
+    links the Google ID to existing accounts, and sets the JWT cookie.
+
+    Returns:
+        dict: ``{"message": "Login successful"}``
+    """
     try:
         idinfo = id_token.verify_oauth2_token(
             auth_request.credential,
