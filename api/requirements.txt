@@ -1,3 +1,5 @@
+# Python dependencies for the Vantage Vercel serverless function.
+# Vercel installs these automatically when deploying the api/ directory.
 annotated-types==0.7.0
 anyio==4.12.1
 bcrypt==5.0.0
