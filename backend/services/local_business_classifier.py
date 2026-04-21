@@ -1,3 +1,11 @@
+"""Local business classifier that filters chain/non-local businesses.
+
+Uses a scoring system based on Google Place types, business name pattern
+matching (against a comprehensive chain-name regex), website domain
+analysis, and address structure to classify businesses as local or
+non-local. Businesses that fail the threshold (0.60) are excluded from
+Vantage's discovery results.
+"""
 import re
 from typing import Tuple
 
@@ -227,6 +235,25 @@ _CHAIN_DOMAINS: frozenset[str] = frozenset({
 _STREET_NUM_RE = re.compile(r"^\d+")
 
 def classify_local_business(place: dict) -> Tuple[bool, float]:
+    """Classify a Google Place as local or non-local.
+
+    Scoring starts at 0.50 and is adjusted by:
+    - Disqualifying types (government, transit, places of worship) -> immediate rejection
+    - Local-favoring types (bakery, bar, beauty_salon, etc.) -> +0.20
+    - Chain-prone types (ATM, bank, supermarket, etc.) -> -0.20
+    - Chain name regex match -> immediate rejection
+    - Chain website domain -> immediate rejection
+    - Street number in address -> +0.10
+    - Short single-word name -> -0.10
+
+    Args:
+        place (dict): Google Place result with ``business_status``, ``name``,
+            ``types``, ``vicinity``, ``website`` fields.
+
+    Returns:
+        Tuple[bool, float]: (is_local, confidence) where confidence is
+            between 0.0 and 1.0. ``is_local`` is True when confidence >= 0.60.
+    """
     score = 0.50
 
     raw_status = (

@@ -1,3 +1,11 @@
+"""Google Place photo proxy with two-tier caching.
+
+Serves business photos by proxying requests to the Google Places Photo
+API. Uses an in-memory LRU cache (192 items, 7-day TTL) backed by a
+disk cache in ``/tmp/vantage_photos``. Falls back to scraping the
+business website's OG image, or generates an SVG placeholder with
+the business's first initial and category-specific colors.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -50,6 +58,15 @@ def _clamp_width(maxwidth: int) -> int:
     return max(120, min(int(maxwidth or 1200), 1600))
 
 def build_photo_proxy_url(place_id: str, maxwidth: int = 1200) -> str:
+    """Build the internal proxy URL for a business photo.
+
+    Args:
+        place_id (str): Google Places place ID.
+        maxwidth (int): Desired image width (clamped to 120-1600).
+
+    Returns:
+        str: Relative URL like ``/api/photos?place_id=...&maxwidth=...``.
+    """
     if not place_id:
         return ""
     return f"/api/photos?place_id={quote_plus(place_id)}&maxwidth={_clamp_width(maxwidth)}"
@@ -158,6 +175,16 @@ def _escape_svg_text(value: str) -> str:
     )
 
 def build_category_placeholder_bytes(category: str = "", label: str = "V") -> tuple[str, bytes]:
+    """Generate an SVG placeholder image with category-specific gradient colors.
+
+    Args:
+        category (str): Business category (mapped to a color palette).
+        label (str): Single character to display as a monogram.
+
+    Returns:
+        tuple[str, bytes]: (content_type, svg_bytes) where content_type is
+            ``image/svg+xml``.
+    """
     normalized = _normalize_category(category)
     start, end = _CATEGORY_COLORS.get(normalized, _CATEGORY_COLORS["default"])
     monogram = _escape_svg_text((label or "V").strip()[:1].upper())
@@ -294,6 +321,24 @@ async def get_photo_payload(
     place_id: str,
     maxwidth: int,
 ) -> tuple[str, bytes]:
+    """Resolve and cache a business photo payload.
+
+    Checks memory cache, then disk cache, then resolves from Google
+    Places / OG image / placeholder. Persists successful results to
+    both cache tiers.
+
+    Args:
+        businesses_collection: Database collection for looking up photo references.
+        place_id (str): Google Places place ID.
+        maxwidth (int): Desired image width in pixels.
+
+    Returns:
+        tuple[str, bytes]: (content_type, image_bytes).
+    """
+    businesses_collection,
+    place_id: str,
+    maxwidth: int,
+) -> tuple[str, bytes]:
     if not place_id:
         return build_category_placeholder_bytes(label="V")
 
@@ -366,6 +411,15 @@ async def get_photo_payload(
     return content_type, payload
 
 def build_stream(content_type: str, payload: bytes):
+    """Wrap image bytes in a BytesIO stream with cache-control headers.
+
+    Args:
+        content_type (str): MIME type of the image.
+        payload (bytes): Raw image bytes.
+
+    Returns:
+        tuple[BytesIO, dict]: Stream and HTTP headers.
+    """
     return io.BytesIO(payload), {
         "Cache-Control": f"public, max-age={PHOTO_PROXY_TTL_SECONDS}, immutable",
         "Content-Length": str(len(payload)),

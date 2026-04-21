@@ -1,3 +1,10 @@
+"""Business metadata normalization and enrichment.
+
+Generates and normalizes business ``short_description``, long ``description``,
+``known_for`` tags, and ``image_urls``. Uses category-to-singular mapping,
+Google Place type-to-tag mapping, and category fallback tags to produce
+consistent, well-formatted metadata even when source data is sparse.
+"""
 from __future__ import annotations
 
 from typing import Iterable, Optional
@@ -152,6 +159,26 @@ def generate_short_description(
     city: str = "",
     existing: str = "",
 ) -> str:
+    """Generate a short description (tagline) for a business.
+
+    Uses an existing description if provided and non-empty, otherwise
+    generates one from the category and area (e.g. "Popular local cafe
+    near Toronto").
+
+    Args:
+        category (str): Business category label.
+        address (str): Street address.
+        city (str): City name.
+        existing (str): Existing short description to prefer.
+
+    Returns:
+        str: A tagline of up to 160 characters.
+    """
+    category: str = "",
+    address: str = "",
+    city: str = "",
+    existing: str = "",
+) -> str:
     candidate = " ".join((existing or "").split()).strip()
     if candidate:
         return candidate[:160]
@@ -172,6 +199,36 @@ def _join_tags(tags: Iterable[str]) -> str:
     return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
 
 def generate_long_description(
+    category: str = "",
+    address: str = "",
+    city: str = "",
+    short_description: str = "",
+    existing: str = "",
+    known_for: Optional[Iterable[str]] = None,
+    business_type: str = "",
+    is_claimed: bool = False,
+    has_deals: bool = False,
+) -> str:
+    """Generate a long description for a business listing.
+
+    Combines the short description, known-for tags, and business status
+    (independent, claimed, or deals) into a flowing paragraph. Prefers
+    an existing description if it is at least 90 characters.
+
+    Args:
+        category (str): Business category.
+        address (str): Street address.
+        city (str): City name.
+        short_description (str): The tagline to build from.
+        existing (str): Existing long description to prefer if substantial.
+        known_for (Optional[Iterable[str]]): Feature tags.
+        business_type (str): ``independent`` or other.
+        is_claimed (bool): Whether the business is claimed.
+        has_deals (bool): Whether the business has active deals.
+
+    Returns:
+        str: A description of up to 360 characters.
+    """
     category: str = "",
     address: str = "",
     city: str = "",
@@ -210,6 +267,24 @@ def generate_long_description(
     return " ".join([summary, detail_line, status_line])[:360]
 
 def derive_known_for(
+    category: str = "",
+    google_types: Optional[Iterable[str]] = None,
+    existing: Optional[Iterable[str]] = None,
+) -> list[str]:
+    """Derive ``known_for`` tags from existing tags, Google Place types, and category fallbacks.
+
+    Priority order: existing tags, then Google type-to-tag mappings, then
+    category-specific fallback tags. Deduplicates case-insensitively and
+    caps at 6 tags.
+
+    Args:
+        category (str): Business category label.
+        google_types (Optional[Iterable[str]]): Google Place type strings.
+        existing (Optional[Iterable[str]]): Already-assigned tags.
+
+    Returns:
+        list[str]: Up to 6 unique, normalized tags.
+    """
     category: str = "",
     google_types: Optional[Iterable[str]] = None,
     existing: Optional[Iterable[str]] = None,
@@ -258,6 +333,15 @@ def derive_known_for(
     return tags[:6]
 
 def normalize_image_urls(image_urls: Optional[Iterable[str]], primary_image: str = "") -> list[str]:
+    """Deduplicate and order image URLs, placing the primary image first.
+
+    Args:
+        image_urls (Optional[Iterable[str]]): Existing image URL list.
+        primary_image (str): URL of the primary/hero image.
+
+    Returns:
+        list[str]: Deduplicated list with the primary image first.
+    """
     normalized: list[str] = []
     seen: set[str] = set()
 
@@ -271,6 +355,18 @@ def normalize_image_urls(image_urls: Optional[Iterable[str]], primary_image: str
     return normalized
 
 def normalize_business_metadata(doc: dict) -> dict:
+    """Normalize all metadata fields on a business document in place.
+
+    Regenerates ``known_for``, ``short_description``, ``description``,
+    and ``image_urls`` from the document's current fields. Also injects
+    a photo proxy URL when a ``place_id`` is present.
+
+    Args:
+        doc (dict): The business document to normalize.
+
+    Returns:
+        dict: The same document with updated metadata fields.
+    """
     if doc is None:
         return doc
 

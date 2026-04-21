@@ -1,3 +1,11 @@
+"""Demo dataset seeder for development and testing.
+
+When ``DEMO_MODE`` is enabled, this module seeds the document store with a
+curated cluster of six fictional Toronto businesses, complete with
+pre-computed visibility scores, known-for tags, and associated activity
+feed entries. Safe to call at startup; uses upserts so repeated calls
+are idempotent.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta

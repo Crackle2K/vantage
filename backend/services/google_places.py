@@ -1,3 +1,10 @@
+"""Google Places API integration for business discovery and enrichment.
+
+Searches for nearby businesses via the Google Places Nearby Search API,
+classifies them as local/non-local, enriches them with photo URLs and
+editorial summaries, and transforms them into the Vantage business
+document schema. API calls are logged for usage tracking.
+"""
 import math
 import asyncio
 from datetime import datetime
@@ -95,6 +102,18 @@ def _radius_bucket(radius_m: int) -> int:
     return 50000
 
 def geo_cell_key(lat: float, lng: float, radius_m: int) -> dict:
+    """Compute a geo-cache key by rounding coordinates and bucketing the radius.
+
+    Used to avoid redundant Google Places API calls for overlapping areas.
+
+    Args:
+        lat (float): Latitude.
+        lng (float): Longitude.
+        radius_m (int): Search radius in meters.
+
+    Returns:
+        dict: ``{"cell_lat": float, "cell_lng": float, "radius_bucket": int}``
+    """
     return {
         "cell_lat": round(lat, 2),
         "cell_lng": round(lng, 2),
@@ -279,6 +298,21 @@ async def enrich_business_photo_urls(
     business_docs: List[Dict],
     max_to_enrich: int = 24,
 ) -> Dict[str, str]:
+    """Fetch higher-quality photo URLs for businesses with missing or low-res images.
+
+    Concurrently queries the Google Places Details API for each business's
+    photo references, then builds direct photo URLs.
+
+    Args:
+        business_docs (List[Dict]): Business documents to enrich.
+        max_to_enrich (int): Maximum number of businesses to process.
+
+    Returns:
+        Dict[str, str]: Mapping of ``place_id`` to new photo URL.
+    """
+    business_docs: List[Dict],
+    max_to_enrich: int = 24,
+) -> Dict[str, str]:
     if not GOOGLE_API_KEY:
         return {}
 
@@ -395,6 +429,29 @@ async def _fetch_nearby_pages(client: httpx.AsyncClient, base_params: dict, labe
     return all_results
 
 async def search_google_places(
+    lat: float,
+    lng: float,
+    radius_m: int = 5000,
+    keyword: Optional[str] = None,
+    max_results: int = MAX_RETURN_RESULTS,
+) -> List[Dict]:
+    """Search Google Places for nearby businesses and return normalized documents.
+
+    Performs a nearby search and several type-specific searches (restaurant,
+    cafe, bar, store, beauty_salon), paginating through results. Each result
+    is classified as local/non-local, mapped to a Vantage category, and
+    enriched with editorial summaries.
+
+    Args:
+        lat (float): Search center latitude.
+        lng (float): Search center longitude.
+        radius_m (int): Search radius in meters.
+        keyword (Optional[str]): Optional keyword filter.
+        max_results (int): Maximum number of results to return.
+
+    Returns:
+        List[Dict]: Normalized business documents ready for database insertion.
+    """
     lat: float,
     lng: float,
     radius_m: int = 5000,
