@@ -1,15 +1,28 @@
+/**
+ * @fileoverview Root layout component that wraps every page with a shared
+ * header, footer, and minimum-height flex container.
+ */
+
 import type React from "react"
 import { Header } from "@/components/header"
 import { Link } from "react-router-dom"
 
+/**
+ * Renders the application shell: a sticky header at the top, the routed
+ * page content in a flex-growing main area, and a four-column footer
+ * with navigation links.
+ *
+ * @param {React.ReactNode} children - The page content to render.
+ * @returns {JSX.Element} The full layout with header, content, and footer.
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-[hsl(var(--background))]">
       <Header />
-      <main className="flex-1 pt-24">{children}</main>
+      <main className="flex-1 pt-20 sm:pt-24">{children}</main>
       <footer className="border-t border-border/50 bg-[hsl(var(--card))]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-6 sm:mb-8">
             <div className="col-span-2 md:col-span-1">
               <Link to="/" className="flex items-center gap-2.5 mb-3">
                 <img 

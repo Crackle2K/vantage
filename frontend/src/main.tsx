@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Application entry point. Mounts the React root with routing,
+ * authentication, theme, and Google OAuth providers.
+ */
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
@@ -22,6 +27,17 @@ import './index.css'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
+/**
+ * Renders the full application tree into the DOM root.
+ *
+ * Provider hierarchy (outer to inner):
+ * - StrictMode: development-only checks
+ * - GoogleOAuthProvider: Google Sign-In support
+ * - ThemeProvider: light/dark theme state
+ * - BrowserRouter: client-side routing
+ * - AuthProvider: current user session
+ * - RootLayout: shared header, footer, and page shell
+ */
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
