@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Settings page (route `/settings`). Tabbed interface
+ * with Profile (name, photo, bio), Appearance (light/dark theme),
+ * Discovery (preference editor modal), and Security (password change
+ * for email users, Google account info for OAuth users) sections.
+ */
+
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -64,7 +71,7 @@ export default function SettingsPage() {
   if (!isAuthenticated || !user) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
+        <div className="card-surface rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
           <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-brand/20">
             <User className="w-8 h-8 text-brand-on-primary" />
           </div>
@@ -178,7 +185,7 @@ export default function SettingsPage() {
           {/* Sidebar */}
           <aside className="md:w-52 flex-shrink-0">
             {/* User summary */}
-            <div className="glass-card rounded-2xl p-4 mb-4 flex items-center gap-3">
+            <div className="card-surface rounded-2xl p-4 mb-4 flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl flex-shrink-0 overflow-hidden shadow-md shadow-brand/20">
                 {user.profile_picture ? (
                   <img src={user.profile_picture} alt={user.name} className="w-full h-full object-cover" />
@@ -195,7 +202,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Tab nav */}
-            <nav className="glass-card rounded-2xl overflow-hidden">
+            <nav className="card-surface rounded-2xl overflow-hidden">
               {tabs.map((tab) => {
                 const Icon = tab.icon
                 return (
@@ -238,7 +245,7 @@ export default function SettingsPage() {
                     className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-caption font-medium whitespace-nowrap transition-colors ${
                       activeTab === tab.id
                         ? 'gradient-primary text-on-primary shadow-sm'
-                        : 'glass-card text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
+                        : 'card-surface text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
@@ -250,7 +257,7 @@ export default function SettingsPage() {
 
             {/* Profile tab */}
             {activeTab === 'profile' && (
-              <div className="glass-card rounded-2xl p-6 space-y-5">
+              <div className="card-surface rounded-2xl p-6 space-y-5">
                 <div>
                   <h2 className="font-semibold text-[hsl(var(--foreground))] mb-1">Profile Information</h2>
                   <p className="text-caption text-[hsl(var(--muted-foreground))]">Update your public name, photo, and bio</p>
@@ -371,7 +378,7 @@ export default function SettingsPage() {
 
             {/* Appearance tab */}
             {activeTab === 'appearance' && (
-              <div className="glass-card rounded-2xl p-6 space-y-5">
+              <div className="card-surface rounded-2xl p-6 space-y-5">
                 <div>
                   <h2 className="font-semibold text-[hsl(var(--foreground))] mb-1">Appearance</h2>
                   <p className="text-caption text-[hsl(var(--muted-foreground))]">Choose how Vantage looks for you</p>
@@ -414,7 +421,7 @@ export default function SettingsPage() {
 
             {/* Preferences tab */}
             {activeTab === 'preferences' && (
-              <div className="glass-card rounded-2xl p-6 space-y-5">
+              <div className="card-surface rounded-2xl p-6 space-y-5">
                 <div>
                   <h2 className="font-semibold text-[hsl(var(--foreground))] mb-1">Discovery Preferences</h2>
                   <p className="text-caption text-[hsl(var(--muted-foreground))]">
@@ -465,7 +472,7 @@ export default function SettingsPage() {
 
             {/* Security tab */}
             {activeTab === 'security' && (
-              <div className="glass-card rounded-2xl p-6 space-y-5">
+              <div className="card-surface rounded-2xl p-6 space-y-5">
                 <div>
                   <h2 className="font-semibold text-[hsl(var(--foreground))] mb-1">Security</h2>
                   <p className="text-caption text-[hsl(var(--muted-foreground))]">Manage your password and account security</p>

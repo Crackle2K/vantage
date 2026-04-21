@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Business owner dashboard page (route `/dashboard`).
+ * Shows claimed businesses with stats (rating, check-ins, trending
+ * score), recent reviews, subscription status, event creation form,
+ * active deals, and activity signals. Only accessible to
+ * business_owner users.
+ */
+
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
@@ -125,7 +133,7 @@ export default function DashboardPage() {
   if (!isAuthenticated || user?.role !== 'business_owner') {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
+        <div className="card-surface rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
           <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-brand/20">
             <Store className="w-8 h-8 text-brand-on-primary" />
           </div>
@@ -188,7 +196,7 @@ export default function DashboardPage() {
           <div className="space-y-6">
             {}
             {myClaims.length > 0 && (
-              <div className="glass-card rounded-2xl p-6 animate-fade-in-up">
+              <div className="card-surface rounded-2xl p-6 animate-fade-in-up">
                 <h3 className="text-body font-semibold text-[hsl(var(--foreground))] mb-4 font-heading flex items-center gap-2">
                   <Clock className="w-5 h-5 text-warning" />
                   Pending Claims
@@ -221,7 +229,7 @@ export default function DashboardPage() {
             )}
 
             {}
-            <div className="glass-card rounded-2xl p-10 text-center animate-fade-in-up">
+            <div className="card-surface rounded-2xl p-10 text-center animate-fade-in-up">
               <div className="w-20 h-20 rounded-2xl bg-[hsl(var(--secondary))] flex items-center justify-center mx-auto mb-6">
                 <Store className="w-10 h-10 text-[hsl(var(--muted-foreground))]" />
               </div>
@@ -253,7 +261,7 @@ export default function DashboardPage() {
                       className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-ui font-medium whitespace-nowrap transition-all ${
                         (biz.id || biz._id) === bizId
                           ? 'gradient-primary text-on-primary shadow-md shadow-brand/25'
-                          : 'glass-card text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]'
+                          : 'card-surface text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]'
                       }`}
                     >
                       <Store className="w-4 h-4" />
@@ -304,7 +312,7 @@ export default function DashboardPage() {
               <div className="lg:col-span-2 space-y-6">
                 {}
                 {selectedBiz && (
-                  <div className="glass-card rounded-2xl p-6 animate-fade-in-up">
+                  <div className="card-surface rounded-2xl p-6 animate-fade-in-up">
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <h3 className="text-subheading font-bold text-[hsl(var(--foreground))] font-heading flex items-center gap-2">
@@ -357,7 +365,7 @@ export default function DashboardPage() {
                 )}
 
                 {}
-                <div className="glass-card rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+                <div className="card-surface rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-body font-semibold text-[hsl(var(--foreground))] font-heading flex items-center gap-2">
                       <Star className="w-5 h-5 text-warning" />
@@ -398,7 +406,7 @@ export default function DashboardPage() {
               {}
               <div className="space-y-6">
                 {}
-                <div className="glass-card rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
+                <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
                   <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                     <Shield className="w-4 h-4 text-brand" />
                     Subscription
@@ -441,7 +449,7 @@ export default function DashboardPage() {
                 </div>
 
                 {}
-                <div className="glass-card rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '175ms' }}>
+                <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '175ms' }}>
                   <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                     <Plus className="w-4 h-4 text-brand" />
                     Create Event
@@ -517,7 +525,7 @@ export default function DashboardPage() {
                 </div>
 
                 {}
-                <div className="glass-card rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+                <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
                   <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                     <Tag className="w-4 h-4 text-brand" />
                     Active Deals
@@ -543,7 +551,7 @@ export default function DashboardPage() {
 
                 {}
                 {activityStatus && (
-                  <div className="glass-card rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '250ms' }}>
+                  <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '250ms' }}>
                     <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                       <Eye className="w-4 h-4 text-brand" />
                       Activity Signal
@@ -589,7 +597,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
   color: string
 }) {
   return (
-    <div className="glass-card rounded-2xl p-5">
+    <div className="card-surface rounded-2xl p-5">
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`w-5 h-5 ${color}`} />
         <span className="text-caption text-[hsl(var(--muted-foreground))] font-medium">{label}</span>

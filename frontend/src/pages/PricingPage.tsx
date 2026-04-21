@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Pricing page (route `/pricing`). Displays subscription
+ * tiers for business owners (Free, Basic, Standard, Premium) with
+ * monthly/yearly toggle, feature lists, and Stripe checkout. Community
+ * members always browse for free.
+ */
+
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -215,7 +222,7 @@ export default function PricingPage() {
             return (
               <div
                 key={tier.tier}
-                className={`relative glass-card rounded-2xl p-6 flex flex-col animate-fade-in-up ${
+                className={`relative card-surface rounded-2xl p-6 flex flex-col animate-fade-in-up ${
                   isHighlighted ? 'ring-2 ring-brand shadow-xl shadow-brand/10' : ''
                 }`}
                 style={{ animationDelay: `${index * 100}ms` }}

@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Explore/Businesses page (route `/businesses`). The main
+ * discovery view showing trust-ranked businesses in a masonry grid with
+ * category filters, search, radius control, and explore lanes (For You,
+ * Active, Hidden Gems, Trusted). Supports geolocation, session cache,
+ * preference onboarding, owner event cards, and business detail modals.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ChevronDown, Loader2, MapPin, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -775,7 +783,7 @@ export default function Businesses() {
       </div>
 
       {selectedLane && (
-        <div className="fixed inset-0 z-40 bg-[hsl(var(--background))/0.72] backdrop-blur-md">
+        <div className="fixed inset-0 z-40 bg-[hsl(var(--background))/0.72]">
           <div className="absolute inset-0" onClick={closeLane} />
           <div className="relative h-full w-full overflow-hidden bg-[hsl(var(--background))] sm:m-4 sm:h-[calc(100%-2rem)] sm:w-auto sm:rounded-[32px] sm:border sm:border-[hsl(var(--border))/0.8] sm:bg-[hsl(var(--card))]">
             <div className="flex h-full flex-col">

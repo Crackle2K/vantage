@@ -1,3 +1,11 @@
+/**
+ * @fileoverview "Decide for me" page (route `/decide`). Goal-based
+ * business picker where users select a primary intent (Dinner, Coffee,
+ * etc.), toggle constraints (Walkable, Open Now, etc.), and get three
+ * trust-ranked picks from the backend. Results include reason codes
+ * and intent explanations.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Loader2, MapPin, Navigation, Sparkles } from 'lucide-react';
 import { api } from '@/api';

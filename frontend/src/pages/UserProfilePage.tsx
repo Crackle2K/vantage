@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Public user profile page (route `/user/:userId`).
+ * Displays a user's name, profile picture, role badge, join date,
+ * and about-me bio. Fetches profile data by the userId URL parameter.
+ */
+
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { User, Shield, Calendar, ArrowLeft, Store } from 'lucide-react'
@@ -45,7 +51,7 @@ export default function UserProfilePage() {
   if (error || !user) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
+        <div className="card-surface rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
           <div className="w-16 h-16 rounded-2xl bg-error/10 flex items-center justify-center mx-auto mb-6">
             <User className="w-8 h-8 text-error" />
           </div>
@@ -85,7 +91,7 @@ export default function UserProfilePage() {
 
         <div className="animate-fade-in-up">
           {}
-          <div className="glass-card rounded-2xl p-8 mb-6">
+          <div className="card-surface rounded-2xl p-8 mb-6">
             <div className="flex items-start gap-5">
               {}
               <div className="w-24 h-24 rounded-2xl flex-shrink-0 overflow-hidden shadow-lg shadow-brand/20">
@@ -122,7 +128,7 @@ export default function UserProfilePage() {
 
           {}
           {user.about_me && (
-            <div className="glass-card rounded-2xl p-6 mb-6">
+            <div className="card-surface rounded-2xl p-6 mb-6">
               <h3 className="font-semibold text-[hsl(var(--foreground))] mb-3">About</h3>
               <p className="text-ui text-[hsl(var(--foreground))] leading-relaxed whitespace-pre-wrap">
                 {user.about_me}
@@ -131,7 +137,7 @@ export default function UserProfilePage() {
           )}
 
           {}
-          <div className="glass-card rounded-2xl p-6">
+          <div className="card-surface rounded-2xl p-6">
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Member Information</h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between py-2 border-b border-[hsl(var(--border))]">

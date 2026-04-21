@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Account page (route `/account`). Displays the current
+ * user's profile with inline editing, discovery preferences summary
+ * with an edit modal, quick navigation links, and a sign-out button.
+ * Redirects unauthenticated users to sign in.
+ */
+
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate, Link } from 'react-router-dom'
@@ -28,7 +35,7 @@ export default function AccountPage() {
   if (!isAuthenticated || !user) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
+        <div className="card-surface rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
           <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-brand/20">
             <User className="w-8 h-8 text-brand-on-primary" />
           </div>
@@ -104,7 +111,7 @@ export default function AccountPage() {
         </Link>
 
         <div className="animate-fade-in-up">
-          <div className="glass-card rounded-2xl p-8 mb-6">
+          <div className="card-surface rounded-2xl p-8 mb-6">
             <div className="flex items-start gap-5">
               <div className="w-20 h-20 rounded-2xl flex-shrink-0 overflow-hidden shadow-lg shadow-brand/20">
                 {user.profile_picture ? (
@@ -150,7 +157,7 @@ export default function AccountPage() {
           </div>
 
           {isEditing && (
-            <div className="glass-card rounded-2xl p-6 mb-6 animate-fade-in">
+            <div className="card-surface rounded-2xl p-6 mb-6 animate-fade-in">
               <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Edit Profile</h3>
               {error && (
                 <div className="mb-4 p-3 rounded-lg bg-error/10 border border-error/20 text-error text-ui">
@@ -233,7 +240,7 @@ export default function AccountPage() {
             </div>
           )}
 
-          <div className="glass-card rounded-2xl p-6 mb-6">
+          <div className="card-surface rounded-2xl p-6 mb-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="font-semibold text-[hsl(var(--foreground))]">Discovery Preferences</h3>
@@ -261,7 +268,7 @@ export default function AccountPage() {
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl p-6 mb-6">
+          <div className="card-surface rounded-2xl p-6 mb-6">
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Quick Links</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Link to="/businesses" className="flex items-center gap-3 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))] transition-colors">
@@ -285,7 +292,7 @@ export default function AccountPage() {
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl p-6">
+          <div className="card-surface rounded-2xl p-6">
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Session</h3>
             <button
               onClick={handleSignOut}

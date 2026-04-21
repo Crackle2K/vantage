@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Saved businesses page (route `/saved`). Lists the
+ * user's bookmarked businesses in a horizontal card layout with
+ * image, description, reason chips, and open/remove actions.
+ * Delegates to the useSavedBusinesses hook for data management.
+ */
+
 import { useRef, useState } from 'react';
 import { Bookmark, Loader2 } from 'lucide-react';
 import { BusinessModal } from '@/components/BusinessModal';

@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Claim business page (route `/claim`). Multi-step flow
+ * for business owners to search for and claim a business listing.
+ * Steps: search by name -> verify ownership details -> confirmation.
+ * Only accessible to authenticated business_owner users.
+ */
+
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams, Link } from 'react-router-dom'
@@ -91,7 +98,7 @@ export default function ClaimBusinessPage() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
+        <div className="card-surface rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
           <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-6 shadow-lg shadow-brand/20">
             <Store className="w-8 h-8 text-brand-on-primary" />
           </div>
@@ -115,7 +122,7 @@ export default function ClaimBusinessPage() {
   if (user?.role !== 'business_owner') {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
+        <div className="card-surface rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
           <div className="w-16 h-16 rounded-2xl bg-warning dark:bg-warning/20 flex items-center justify-center mx-auto mb-6">
             <AlertCircle className="w-8 h-8 text-warning" />
           </div>
@@ -207,7 +214,7 @@ export default function ClaimBusinessPage() {
               {businesses.map(biz => (
                 <div
                   key={biz.id || biz._id}
-                  className="glass-card rounded-xl p-4 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer"
+                  className="card-surface rounded-xl p-4 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer"
                   onClick={() => !biz.is_claimed && handleSelectBusiness(biz)}
                 >
                   <div className="flex items-center gap-3">
@@ -269,7 +276,7 @@ export default function ClaimBusinessPage() {
             </div>
 
             {}
-            <div className="glass-card rounded-xl p-4 mb-6 flex items-center gap-3">
+            <div className="card-surface rounded-xl p-4 mb-6 flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-dark to-brand flex items-center justify-center">
                 <Store className="w-6 h-6 text-brand-on-primary" />
               </div>
@@ -293,7 +300,7 @@ export default function ClaimBusinessPage() {
             )}
 
             {}
-            <div className="glass-card rounded-2xl p-6 space-y-5">
+            <div className="card-surface rounded-2xl p-6 space-y-5">
               <div>
                 <label className="flex items-center gap-2 text-ui font-medium text-[hsl(var(--foreground))] mb-2">
                   <User className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />

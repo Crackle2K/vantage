@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Sign-up page (route `/signup`). Registration form with
+ * email/password fields, role selection (Customer or Business Owner),
+ * Google OAuth sign-up, and reCAPTCHA Enterprise verification.
+ * Redirects authenticated users to the explore page.
+ */
+
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
@@ -145,7 +152,7 @@ export default function SignUpPage() {
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 gradient-mesh">
       <div className="w-full max-w-md relative animate-fade-in-up">
-        <div className="glass-card rounded-2xl p-8 shadow-xl">
+        <div className="card-surface rounded-2xl p-8 shadow-xl">
           {}
           <div className="text-center mb-8">
             <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-4 shadow-lg shadow-brand/25">
