@@ -1,4 +1,15 @@
+<div align="center">
+
 # Vantage
+
+[![Build](https://img.shields.io/badge/build-passing-brightgreen)](https://vercel.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas)
+
+</div>
 
 ## About the Business
 
@@ -27,8 +38,6 @@ The motivation is straightforward: local independent businesses are the backbone
 - **Network effects:** The platform grows more valuable as community activity increases. Every check-in, review, and owner event makes rankings more accurate for everyone in the neighborhood.
 - **Multiple revenue streams:** Subscription tiers for business owners (deals, enhanced profiles, analytics) alongside a consumer-side platform with strong engagement and retention signals.
 - **Mission-aligned growth:** The business model is aligned with user trust. We earn revenue when businesses earn real customer engagement — not when they pay for fake visibility.
-
----
 
 ## Setup
 
