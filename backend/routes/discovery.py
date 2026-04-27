@@ -175,34 +175,6 @@ def _latest_created_at(*docs: Optional[dict]) -> Optional[datetime]:
     timestamps = [doc["created_at"] for doc in docs if doc and doc.get("created_at")]
     return max(timestamps) if timestamps else None
 
-def _legacy_strategic_rank_score(business: dict) -> float:
-    lvs = float(business.get("live_visibility_score", 0.0))
-    local_conf = max(0.0, min(float(business.get("local_confidence", 0.0)), 1.0))
-    review_count = int(business.get("review_count", business.get("total_reviews", 0)) or 0)
-
-    freshness = max(0.0, 1.0 - min(review_count, 40) / 40.0)
-    return (
-        0.60 * lvs
-        + 0.25 * (local_conf * 100.0)
-        + 0.15 * (freshness * 100.0)
-    )
-
-def _legacy_sort_businesses(results: list, sort_by: Optional[str]) -> None:
-    if sort_by == "local_confidence":
-        results.sort(
-            key=lambda b: (_legacy_strategic_rank_score(b), b.get("local_confidence", 0)),
-            reverse=True,
-        )
-    elif sort_by == "rating":
-        results.sort(key=lambda b: b.get("rating_average", 0), reverse=True)
-    elif sort_by == "newest":
-        results.sort(key=lambda b: b.get("created_at", datetime.min), reverse=True)
-    else:
-        results.sort(
-            key=lambda b: (_legacy_strategic_rank_score(b), b.get("live_visibility_score", 0)),
-            reverse=True,
-        )
-
 def _safe_float(*values, default: float = 0.0) -> float:
     for value in values:
         if value is None:
@@ -869,14 +841,6 @@ async def decide_for_me(
     Returns:
         dict: ``{"items": [...], "intent_explanation": list[str]}``
     """
-    lat: float = Query(..., ge=-90, le=90),
-    lng: float = Query(..., ge=-180, le=180),
-    radius_km: float = Query(..., ge=0.1, le=50),
-    intent: str = Query(..., description="Primary decide intent"),
-    category: Optional[str] = None,
-    limit: int = Query(3, ge=1, le=12),
-    constraints: Optional[str] = Query(None, description="Optional comma-separated fit constraints"),
-):
     ranking_intents = {"TRENDING", "HIDDEN_GEM", "MOST_TRUSTED"}
     normalized_intent = _normalize_decide_intents([intent])[0]
     normalized_constraints = _normalize_decide_intents((constraints or "").split(","))
@@ -976,17 +940,6 @@ async def discover_businesses(
     Returns:
         list[dict]: Ranked business listings with ranking metadata.
     """
-    lat: float = Query(..., ge=-90, le=90),
-    lng: float = Query(..., ge=-180, le=180),
-    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
-    category: Optional[str] = None,
-    limit: int = Query(200, ge=1, le=300),
-    sort_mode: str = Query(
-        "canonical",
-        description="Sort: canonical | distance | newest | most_reviewed",
-    ),
-    refresh: bool = Query(False, description="Force bypass geo cache and refetch Places data"),
-):
     businesses = get_businesses_collection()
     geo_cache = get_geo_cache_collection()
     radius_meters = radius * 1000
@@ -1073,12 +1026,6 @@ async def get_explore_lanes(
     Returns:
         dict: ``{"lanes": [{"id": str, "title": str, "subtitle": str, "items": [...]}]}`
     """
-    lat: float = Query(..., ge=-90, le=90),
-    lng: float = Query(..., ge=-180, le=180),
-    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
-    limit: int = Query(120, ge=24, le=240),
-    current_user: Optional[User] = Depends(get_current_user_optional),
-):
     lane_cache_key = _lanes_cache_key(lat, lng, radius, limit, current_user)
     cached_payload = _get_lanes_cache(lane_cache_key)
     if cached_payload:
@@ -1184,10 +1131,6 @@ async def enrich_google_place_photos(
     Returns:
         dict: ``{"scanned": int, "updated": int, "message": str}``
     """
-    current_user: User = Depends(get_current_admin_user),
-    limit: int = Query(1200, ge=1, le=5000, description="Max businesses to scan"),
-    batch_size: int = Query(120, ge=10, le=300, description="Batch size per enrichment pass"),
-):
     businesses = get_businesses_collection()
     candidate_query = {
         "source": "google_places",
@@ -1277,11 +1220,6 @@ async def submit_visit(
     Returns:
         dict: ``{"status": "verified", "distance_meters": float}``
     """
-    business_id: str = Query(...),
-    lat: float = Query(..., ge=-90, le=90),
-    lng: float = Query(..., ge=-180, le=180),
-    current_user: User = Depends(get_current_user),
-):
     businesses = get_businesses_collection()
     visits = get_visits_collection()
 
