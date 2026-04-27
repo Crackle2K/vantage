@@ -39,6 +39,10 @@ jobs:
       actions: read
       contents: read
 
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +62,12 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Debug workspace
+      run: |
+        pwd
+        ls -la
+        echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
 
     # Add any setup steps before running the `github/codeql-action/init` action.
     # This includes steps like installing compilers or runtimes (`actions/setup-node`
