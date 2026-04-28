@@ -17,6 +17,10 @@ from pathlib import Path
 # preventing cold-start crashes from missing MongoDB/Supabase credentials.
 os.environ.setdefault("DEMO_MODE", "true")
 
+# Set a default SECRET_KEY for JWT signing in serverless demo mode.
+# In production, this should be set via environment variables.
+os.environ.setdefault("SECRET_KEY", "demo-secret-key-change-in-production")
+
 # Suppress slowapi's redis dependency warning when no REDIS_URL is set.
 # slowapi will still load, it just won't enforce rate limits without Redis.
 if not os.getenv("REDIS_URL"):
