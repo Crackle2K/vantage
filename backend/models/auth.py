@@ -9,6 +9,7 @@ import bcrypt
 import asyncio
 import json
 import math
+import time
 import redis.asyncio as redis
 from datetime import datetime, timedelta
 from typing import Optional, Dict
@@ -35,6 +36,8 @@ _redis: Optional[redis.Redis] = None
 LOCKOUT_THRESHOLD = 5
 LOCKOUT_DURATION_MINUTES = 15
 LOCKOUT_WINDOW_MINUTES = 30
+USER_CACHE_TTL_SECONDS = 60
+_user_cache: Dict[str, tuple[float, dict]] = {}
 
 
 async def _get_redis() -> Optional[redis.Redis]:
@@ -182,6 +185,16 @@ async def clear_failed_attempts(email: str) -> None:
     _inmem.pop(email_lower, None)
 
 
+async def close_auth_connections() -> None:
+    global _redis
+    if _redis is not None:
+        try:
+            await _redis.close()
+        except Exception:
+            pass
+        _redis = None
+
+
 optional_security = HTTPBearer(auto_error=False)
 
 router = APIRouter()
@@ -241,6 +254,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         hashed_password.encode('utf-8')
     )
 
+
+async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, verify_password, plain_password, hashed_password)
+
 def get_password_hash(password: str) -> str:
     """Hash a password using bcrypt.
 
@@ -254,6 +272,18 @@ def get_password_hash(password: str) -> str:
         password.encode('utf-8'),
         bcrypt.gensalt()
     ).decode('utf-8')
+
+
+async def get_password_hash_async(password: str) -> str:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, get_password_hash, password)
+
+
+def invalidate_cached_user(user_id: str | None = None) -> None:
+    if user_id is None:
+        _user_cache.clear()
+        return
+    _user_cache.pop(str(user_id), None)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create a signed JWT access token.
@@ -311,9 +341,17 @@ async def _get_user_from_token(token: str) -> User:
         token_data = TokenData(email=email, user_id=user_id)
     except jwt.PyJWTError:
         raise credentials_exception
-    user = await users_repository.get_by_email(token_data.email)
+    now = time.time()
+    cached = _user_cache.get(token_data.user_id)
+    if cached and cached[0] > now:
+        return User(**cached[1])
+
+    user = await users_repository.get_by_id(token_data.user_id)
+    if user is None and token_data.email is not None:
+        user = await users_repository.get_by_email(token_data.email)
     if user is None:
         raise credentials_exception
+    _user_cache[token_data.user_id] = (now + USER_CACHE_TTL_SECONDS, user)
     return User(**user)
 
 async def get_current_user(
@@ -478,7 +516,7 @@ async def register(request: Request, response: Response, user_data: RegisterRequ
         )
 
     await verify_signup_recaptcha(user_data.recaptcha_token, user_data.recaptcha_action)
-    hashed_password = get_password_hash(user_data.password)
+    hashed_password = await get_password_hash_async(user_data.password)
     user_dict = {
         "name": user_data.name,
         "email": user_data.email,
@@ -545,7 +583,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
             detail="This account uses Google sign-in. Please sign in with Google.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not verify_password(user_credentials.password, user["hashed_password"]):
+    if not await verify_password_async(user_credentials.password, user["hashed_password"]):
         await record_failed_attempt(user_credentials.email)
         log_failed_auth(
             ip_address=request.client.host if request.client else "unknown",
@@ -558,6 +596,7 @@ async def login(request: Request, response: Response, user_credentials: UserLogi
         )
 
     await clear_failed_attempts(user_credentials.email)
+    invalidate_cached_user(user.get("id"))
 
     user_id = user["id"]
     access_token = create_access_token(
@@ -621,6 +660,7 @@ async def google_auth(request: Request, response: Response, auth_request: Google
                 email,
                 {"google_id": google_id, "auth_provider": "google", "updated_at": datetime.utcnow().isoformat()},
             )
+            invalidate_cached_user(user.get("id"))
         user_id = user["id"]
     else:
         user_dict = {
