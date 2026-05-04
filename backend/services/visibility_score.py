@@ -52,13 +52,6 @@ def calculate_live_visibility_score(
     Returns:
         float: Visibility score between 0 and 100, rounded to 2 decimal places.
     """
-    verified_visit_count: int = 0,
-    review_count: int = 0,
-    credibility_weighted_review_count: Optional[float] = None,
-    last_activity_at: Optional[datetime] = None,
-    engagement_actions: int = 0,
-    total_potential_engagements: int = 1,
-) -> float:
     visit_score = min(max(verified_visit_count, 0) / 50, 1.0)
 
     weighted_reviews = (
