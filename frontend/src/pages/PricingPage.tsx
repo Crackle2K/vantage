@@ -55,10 +55,10 @@ export default function PricingPage() {
 
       if (isAuthenticated && user?.role === 'business_owner') {
         const [businesses, subs] = await Promise.all([
-          api.getBusinesses(),
+          api.getBusinesses(undefined, undefined, undefined, user.id),
           api.getMySubscriptions(),
         ])
-        const owned = businesses.filter(b => b.owner_id === user.id && b.is_claimed)
+        const owned = businesses.filter(b => b.is_claimed)
         setMyBusinesses(owned)
         setMySubscriptions(subs)
         if (owned.length > 0) setSelectedBusiness(owned[0].id || owned[0]._id || '')
