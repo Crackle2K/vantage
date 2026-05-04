@@ -5,7 +5,7 @@
  * with screenshots and descriptions.
  */
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Info, DollarSign, Star, ArrowRight } from "lucide-react"
@@ -20,6 +20,20 @@ import { Info, DollarSign, Star, ArrowRight } from "lucide-react"
 export function MissionSection() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState(0)
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    const node = sectionRef.current
+    if (!node) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      { threshold: 0.15 }
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   const tabFeatures = [
     {
@@ -49,17 +63,17 @@ export function MissionSection() {
   ]
 
   return (
-    <section className="relative py-32 md:py-48 overflow-hidden">
+    <section ref={sectionRef} className="relative py-32 md:py-48 overflow-hidden">
       {/* Refined gradient mesh background */}
       <div className="absolute inset-0 bg-gradient-to-br from-[hsl(var(--background))] via-[hsl(var(--card)/0.5)] to-[hsl(var(--background))]" />
 
       {/* Subtle animated gradient orbs */}
       <div
-        className="absolute top-1/4 left-1/4 w-96 h-96 bg-[hsl(var(--primary)/0.08)] rounded-full animate-pulse"
+        className={`absolute top-1/4 left-1/4 h-96 w-96 rounded-full bg-[hsl(var(--primary)/0.08)] will-change-transform ${isVisible ? 'animate-pulse' : ''}`}
         style={{ animationDuration: '8s' }}
       />
       <div
-        className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-[hsl(var(--accent)/0.12)] rounded-full animate-pulse"
+        className={`absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-[hsl(var(--accent)/0.12)] will-change-transform ${isVisible ? 'animate-pulse' : ''}`}
         style={{ animationDuration: '10s', animationDelay: '2s' }}
       />
 
@@ -68,7 +82,7 @@ export function MissionSection() {
         {/* Refined quote section with editorial typography */}
         <div className="text-center mb-20 md:mb-28">
           <div className="inline-flex items-center gap-3 mb-8 px-5 py-2.5 rounded-full bg-[hsl(var(--primary)/0.08)] border border-[hsl(var(--primary)/0.15)]">
-            <div className="w-2 h-2 rounded-full bg-[hsl(var(--primary))] animate-pulse" />
+            <div className={`h-2 w-2 rounded-full bg-[hsl(var(--primary))] ${isVisible ? 'animate-pulse' : ''}`} />
             <span className="text-ui font-medium text-[hsl(var(--primary))] tracking-wide">OUR MISSION</span>
           </div>
 
