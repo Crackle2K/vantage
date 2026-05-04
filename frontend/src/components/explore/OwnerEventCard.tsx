@@ -4,7 +4,7 @@
  * title, date/time, description, and a "View business" button.
  */
 
-import type { KeyboardEvent } from 'react';
+import { memo, type KeyboardEvent } from 'react';
 import { CalendarDays, Clock3, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BusinessImage } from './BusinessImage';
@@ -41,7 +41,7 @@ function eventDateLabel(start: string, end: string): string {
  * @param {() => void} onViewBusiness - Callback to navigate to the host business.
  * @returns {JSX.Element} The event card element.
  */
-export function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
+export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
   const dateLabel = eventDateLabel(event.start_time, event.end_time);
   const businessName = event.business_name || 'Claimed business';
   const category = event.business_category || 'Owner event';
@@ -110,4 +110,4 @@ export function OwnerEventCard({ event, onViewBusiness }: OwnerEventCardProps) {
       </div>
     </article>
   );
-}
+});
