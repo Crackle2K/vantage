@@ -5,7 +5,7 @@
  * variable aspect ratios for a masonry layout.
  */
 
-import type { KeyboardEvent } from 'react';
+import { memo, type KeyboardEvent } from 'react';
 import { Heart, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BusinessImage } from '@/components/explore/BusinessImage';
@@ -75,7 +75,7 @@ function collectImages(business: Business, proxyUrl?: string): string[] {
  * @param {() => void} [onViewDetails] - Optional callback to open detail view.
  * @returns {JSX.Element} The business card element.
  */
-export function BusinessCard({
+export const BusinessCard = memo(function BusinessCard({
   business,
   isFavorite,
   onToggleFavorite,
@@ -108,7 +108,7 @@ export function BusinessCard({
       className={cn(
         'group overflow-hidden transition-all duration-300 motion-reduce:transition-none',
         isClickable && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]',
-        'break-inside-avoid rounded-[22px] bg-transparent hover:-translate-y-1 hover:scale-[1.01] motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100'
+        'break-inside-avoid rounded-[22px] bg-transparent will-change-transform hover:-translate-y-1 hover:scale-[1.01] motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100'
       )}
     >
       <div
@@ -167,4 +167,4 @@ export function BusinessCard({
       </div>
     </article>
   );
-}
+});
