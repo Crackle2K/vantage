@@ -38,6 +38,7 @@ tests/
 # Documentation
 *.md
 !README.md
+!PERFORMANCE_CHECKLIST.md
 
 # Git
 .git/
@@ -48,3 +49,4 @@ tests/
 .prettierrc
 .prettierignore
 .eslintrc
+data/
