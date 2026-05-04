@@ -46,7 +46,7 @@ function useScrollReveal() {
  * @param {"checkin" | "trust" | "community"} type - The demo variant to render.
  * @returns {JSX.Element} The animated demo container.
  */
-function AnimatedDemo({ type }: { type: "checkin" | "trust" | "community" }) {
+function AnimatedDemo({ type, active }: { type: "checkin" | "trust" | "community"; active: boolean }) {
   const [step, setStep] = useState(0)
   const [hasCompleted, setHasCompleted] = useState(false)
 
@@ -80,14 +80,14 @@ function AnimatedDemo({ type }: { type: "checkin" | "trust" | "community" }) {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-[#00ff88] opacity-10 blur-[100px] rounded-full" />
 
       {/* Demo content based on type */}
-      {type === "checkin" && <CheckInDemo step={step} />}
+      {type === "checkin" && <CheckInDemo step={step} active={active} />}
       {type === "trust" && <TrustDemo step={step} />}
-      {type === "community" && <CommunityDemo step={step} />}
+      {type === "community" && <CommunityDemo step={step} active={active} />}
     </div>
   )
 }
 
-function CheckInDemo({ step }: { step: number }) {
+function CheckInDemo({ step, active }: { step: number; active: boolean }) {
   return (
     <div className="relative z-10 p-4 sm:p-6 md:p-8 h-full flex flex-col">
       {/* Header */}
@@ -129,8 +129,8 @@ function CheckInDemo({ step }: { step: number }) {
           {/* Pulse rings */}
           {step === 1 && (
             <>
-              <div className="absolute inset-0 rounded-full border-2 border-[#00ff88] animate-ping" />
-              <div className="absolute inset-0 rounded-full border-2 border-[#00ff88] animate-ping" style={{ animationDelay: '0.2s' }} />
+              <div className={`absolute inset-0 rounded-full border-2 border-[#00ff88] will-change-transform ${active ? 'animate-ping' : ''}`} />
+              <div className={`absolute inset-0 rounded-full border-2 border-[#00ff88] will-change-transform ${active ? 'animate-ping' : ''}`} style={{ animationDelay: '0.2s' }} />
             </>
           )}
         </div>
@@ -228,7 +228,7 @@ function TrustDemo({ step }: { step: number }) {
   )
 }
 
-function CommunityDemo({ step }: { step: number }) {
+function CommunityDemo({ step, active }: { step: number; active: boolean }) {
   const activities = [
     { type: 'checkin', user: 'Roy', business: 'Brew & Bites', time: '2m ago' },
     { type: 'review', user: 'Dinesh', business: 'Corner Store', time: '5m ago' },
@@ -241,7 +241,7 @@ function CommunityDemo({ step }: { step: number }) {
       <div className="flex items-center justify-between mb-4">
         <div className="text-white font-semibold">Activity Feed</div>
         <div className="flex items-center gap-1 text-[#00ff88]">
-          <div className="w-2 h-2 rounded-full bg-[#00ff88] animate-pulse" />
+          <div className={`h-2 w-2 rounded-full bg-[#00ff88] ${active ? 'animate-pulse' : ''}`} />
           <span className="text-xs">Live</span>
         </div>
       </div>
@@ -363,7 +363,7 @@ export function FeatureShowcase() {
               style={{ transitionDelay: `${i * 150}ms` }}
             >
               {/* Demo card */}
-              <AnimatedDemo type={feature.demoType} />
+              <AnimatedDemo type={feature.demoType} active={isVisible} />
 
               {/* Title and description below */}
               <div className="mt-6">
