@@ -147,10 +147,6 @@ async def create_checkin(
     Returns:
         dict: The created check-in record.
     """
-    request: Request,
-    data: CheckInCreate,
-    current_user: User = Depends(get_current_user),
-):
     checkins = get_checkins_collection()
     businesses = get_businesses_collection()
     activity_feed = get_activity_feed_collection()
@@ -252,9 +248,6 @@ async def confirm_checkin(
     Returns:
         dict: ``{"status": "confirmed"}``
     """
-    checkin_id: str,
-    current_user: User = Depends(get_current_user),
-):
     checkins = get_checkins_collection()
     checkin_key = _oid(checkin_id, "checkin ID")
     checkin = await checkins.find_one({"_id": checkin_key})
@@ -300,10 +293,6 @@ async def create_user_post(
     Returns:
         dict: The created activity feed item.
     """
-    request: Request,
-    data: UserPostCreate,
-    current_user: User = Depends(get_current_user),
-):
     activity_feed = get_activity_feed_collection()
     businesses = get_businesses_collection()
 
@@ -354,11 +343,6 @@ async def get_activity_feed(
     Returns:
         dict: ``{"items": [...], "total": int, "page": int, "page_size": int, "has_more": bool}``
     """
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=50),
-    city: Optional[str] = None,
-    activity_type: Optional[str] = None,
-):
     activity_feed = get_activity_feed_collection()
 
     query: dict = {}
@@ -398,11 +382,6 @@ async def get_activity_pulse(
     Returns:
         dict: ``{"items": [...]}`` with typed activity summaries.
     """
-    lat: float = Query(..., ge=-90, le=90),
-    lng: float = Query(..., ge=-180, le=180),
-    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
-    limit: int = Query(12, ge=3, le=24),
-):
     businesses = get_businesses_collection()
     checkins = get_checkins_collection()
     reviews = get_reviews_collection()
@@ -535,9 +514,6 @@ async def create_owner_event(
     Raises:
         HTTPException: 403 if the user is not the claimed owner.
     """
-    event_data: OwnerEventCreate,
-    current_user: User = Depends(get_current_user),
-):
     owner_posts = get_owner_posts_collection()
     activity_feed = get_activity_feed_collection()
     business = await _business_or_404(event_data.business_id)
@@ -597,13 +573,6 @@ async def get_owner_events(
     Returns:
         List[OwnerEvent]: Upcoming (or all) events.
     """
-    business_id: Optional[str] = None,
-    lat: Optional[float] = Query(None, ge=-90, le=90),
-    lng: Optional[float] = Query(None, ge=-180, le=180),
-    radius: float = Query(5, ge=0.1, le=50, description="Radius in km"),
-    include_past: bool = Query(False, description="Include ended events"),
-    limit: int = Query(20, ge=1, le=60),
-):
     owner_posts = get_owner_posts_collection()
     businesses = get_businesses_collection()
 
@@ -655,9 +624,6 @@ async def toggle_activity_like(
     Returns:
         dict: ``{"liked": bool, "likes": int, "comments": int}``
     """
-    activity_id: str,
-    current_user: User = Depends(get_current_user),
-):
     activity_feed = get_activity_feed_collection()
     target_id = _oid(activity_id, "activity ID")
 
@@ -741,11 +707,6 @@ async def add_activity_comment(
     Returns:
         dict: ``{"comment": dict, "comments": int}``
     """
-    request: Request,
-    activity_id: str,
-    payload: ActivityCommentCreate,
-    current_user: User = Depends(get_current_user),
-):
     activity_feed = get_activity_feed_collection()
     target_id = _oid(activity_id, "activity ID")
     comment_doc = {
