@@ -47,11 +47,11 @@ export default function DashboardPage() {
     try {
       setLoading(true)
       const [businesses, claims] = await Promise.all([
-        api.getBusinesses(),
+        api.getBusinesses(undefined, undefined, undefined, user?.id),
         api.getMyClaims(),
       ])
 
-      const owned = businesses.filter(b => b.owner_id === user?.id && b.is_claimed)
+      const owned = businesses.filter(b => b.is_claimed)
       setMyBusinesses(owned)
       setMyClaims(claims)
 
