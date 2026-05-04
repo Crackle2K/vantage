@@ -17,6 +17,7 @@ from backend.database.document_store import get_api_usage_log_collection
 from backend.services.business_metadata import (
     derive_known_for,
     generate_short_description,
+    normalize_business_metadata,
     normalize_image_urls,
 )
 from backend.services.local_business_classifier import classify_local_business
@@ -128,6 +129,24 @@ PHOTO_MAX_WIDTH = 1200
 PHOTO_ENRICHMENT_CONCURRENCY = 6
 SUMMARY_ENRICHMENT_CONCURRENCY = 4
 SUMMARY_ENRICHMENT_LIMIT = 16
+_google_places_client: httpx.AsyncClient | None = None
+
+
+async def _get_google_places_client() -> httpx.AsyncClient:
+    global _google_places_client
+    if _google_places_client is None:
+        _google_places_client = httpx.AsyncClient(
+            timeout=15,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return _google_places_client
+
+
+async def close_google_places_client() -> None:
+    global _google_places_client
+    if _google_places_client is not None:
+        await _google_places_client.aclose()
+        _google_places_client = None
 
 def _build_photo_url(photo_reference: str, max_width: int = PHOTO_MAX_WIDTH) -> str:
     if not photo_reference or not GOOGLE_API_KEY:
@@ -310,9 +329,6 @@ async def enrich_business_photo_urls(
     Returns:
         Dict[str, str]: Mapping of ``place_id`` to new photo URL.
     """
-    business_docs: List[Dict],
-    max_to_enrich: int = 24,
-) -> Dict[str, str]:
     if not GOOGLE_API_KEY:
         return {}
 
@@ -334,14 +350,15 @@ async def enrich_business_photo_urls(
     updates: Dict[str, str] = {}
     semaphore = asyncio.Semaphore(PHOTO_ENRICHMENT_CONCURRENCY)
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        async def enrich_one(place_id: str):
-            async with semaphore:
-                photo_ref = await _fetch_place_photo_reference(client, place_id)
-                if photo_ref:
-                    updates[place_id] = _build_photo_url(photo_ref)
+    client = await _get_google_places_client()
 
-        await asyncio.gather(*(enrich_one(pid) for pid in place_ids))
+    async def enrich_one(place_id: str):
+        async with semaphore:
+            photo_ref = await _fetch_place_photo_reference(client, place_id)
+            if photo_ref:
+                updates[place_id] = _build_photo_url(photo_ref)
+
+    await asyncio.gather(*(enrich_one(pid) for pid in place_ids))
 
     return updates
 
@@ -370,14 +387,15 @@ async def enrich_business_editorial_summaries(
     updates: Dict[str, str] = {}
     semaphore = asyncio.Semaphore(SUMMARY_ENRICHMENT_CONCURRENCY)
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        async def enrich_one(place_id: str):
-            async with semaphore:
-                summary = await _fetch_place_editorial_summary(client, place_id)
-                if summary:
-                    updates[place_id] = summary
+    client = await _get_google_places_client()
 
-        await asyncio.gather(*(enrich_one(pid) for pid in place_ids))
+    async def enrich_one(place_id: str):
+        async with semaphore:
+            summary = await _fetch_place_editorial_summary(client, place_id)
+            if summary:
+                updates[place_id] = summary
+
+    await asyncio.gather(*(enrich_one(pid) for pid in place_ids))
 
     return updates
 
@@ -452,12 +470,6 @@ async def search_google_places(
     Returns:
         List[Dict]: Normalized business documents ready for database insertion.
     """
-    lat: float,
-    lng: float,
-    radius_m: int = 5000,
-    keyword: Optional[str] = None,
-    max_results: int = MAX_RETURN_RESULTS,
-) -> List[Dict]:
     if not GOOGLE_API_KEY:
         # API key not configured - skip Google Places lookup
         return []
@@ -470,19 +482,24 @@ async def search_google_places(
     if keyword:
         base_params["keyword"] = keyword
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        all_results: list[dict] = []
-        all_results.extend(await _fetch_nearby_pages(client, dict(base_params), "nearbysearch"))
-
-        typed_queries = ["restaurant", "cafe", "bar", "store", "beauty_salon"]
-        for place_type in typed_queries:
-            query_params = dict(base_params)
-            query_params["type"] = place_type
-            all_results.extend(
-                await _fetch_nearby_pages(client, query_params, f"nearbysearch:{place_type}")
+    client = await _get_google_places_client()
+    base_results = await _fetch_nearby_pages(client, dict(base_params), "nearbysearch")
+    typed_queries = ["restaurant", "cafe", "bar", "store", "beauty_salon"]
+    typed_results = await asyncio.gather(
+        *(
+            _fetch_nearby_pages(
+                client,
+                {**base_params, "type": place_type},
+                f"nearbysearch:{place_type}",
             )
-            if len(all_results) >= max_results * 2:
-                break
+            for place_type in typed_queries
+        )
+    )
+    all_results: list[dict] = list(base_results)
+    for result_page in typed_results:
+        all_results.extend(result_page)
+        if len(all_results) >= max_results * 2:
+            break
 
     documents = []
     skipped_non_local = 0
@@ -559,6 +576,7 @@ async def search_google_places(
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
+        normalize_business_metadata(doc)
         documents.append(doc)
         if len(documents) >= max_results:
             break
