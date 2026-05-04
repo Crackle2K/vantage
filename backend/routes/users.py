@@ -10,8 +10,12 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from backend.models.user import User, UserUpdate, UserPreferencesUpdate, PasswordChange
-from backend.models.auth import verify_password, get_password_hash
-from backend.models.auth import get_current_user
+from backend.models.auth import (
+    get_current_user,
+    get_password_hash_async,
+    invalidate_cached_user,
+    verify_password_async,
+)
 from backend.database.document_store import (
     get_reviews_collection,
     get_checkins_collection,
@@ -90,9 +94,6 @@ async def update_user_profile(
         HTTPException: 400 if no fields are provided.
         HTTPException: 404 if the user is not found after update.
     """
-    user_update: UserUpdate,
-    current_user: User = Depends(get_current_user)
-):
     update_data = {}
     if user_update.name is not None:
         update_data["name"] = user_update.name
@@ -112,6 +113,7 @@ async def update_user_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
+    invalidate_cached_user(current_user.id)
     return _serialize_user(updated_user)
 
 @router.put("/me/password", status_code=200)
@@ -143,15 +145,16 @@ async def change_password(
             detail="Password change is not available for accounts signed in with Google"
         )
 
-    if not verify_password(password_change.current_password, user_in_db["hashed_password"]):
+    if not await verify_password_async(password_change.current_password, user_in_db["hashed_password"]):
         log_password_change(current_user.id, ip_address, success=False)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect"
         )
 
-    hashed = get_password_hash(password_change.new_password)
+    hashed = await get_password_hash_async(password_change.new_password)
     await users_repository.update_by_id(current_user.id, {"hashed_password": hashed, "updated_at": datetime.utcnow().isoformat()})
+    invalidate_cached_user(current_user.id)
     log_password_change(current_user.id, ip_address, success=True)
     return {"message": "Password updated successfully"}
 
@@ -168,9 +171,6 @@ async def update_user_preferences(
     Returns:
         User: The updated user profile with new preferences.
     """
-    preferences_update: UserPreferencesUpdate,
-    current_user: User = Depends(get_current_user)
-):
     update_data = {
         "preferred_categories": _normalize_text_list(preferences_update.preferred_categories, 8),
         "preferred_vibes": _normalize_text_list(preferences_update.preferred_vibes, 10),
@@ -188,6 +188,7 @@ async def update_user_preferences(
             detail="User not found"
         )
 
+    invalidate_cached_user(current_user.id)
     return _serialize_user(updated_user)
 
 @router.get("/me/export")
