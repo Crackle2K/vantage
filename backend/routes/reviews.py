@@ -45,10 +45,6 @@ async def create_review(
         HTTPException: 400 if the user has already reviewed this business.
         HTTPException: 404 if the business does not exist.
     """
-    request: Request,
-    review_data: ReviewCreate,
-    current_user: User = Depends(get_current_user)
-):
     reviews_collection = get_reviews_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(review_data.business_id):
@@ -98,10 +94,6 @@ async def get_business_reviews(
     Returns:
         List[ReviewWithUser]: Reviews with reviewer names attached.
     """
-    business_id: str,
-    skip: int = 0,
-    limit: int = 50
-):
     reviews_collection = get_reviews_collection()
     users_collection = get_users_collection()
     businesses_collection = get_businesses_collection()
@@ -156,10 +148,6 @@ async def update_review(
     Raises:
         HTTPException: 403 if the user is not the review author.
     """
-    review_id: str,
-    review_data: ReviewUpdate,
-    current_user: User = Depends(get_current_user)
-):
     reviews_collection = get_reviews_collection()
     if not ObjectId.is_valid(review_id):
         raise HTTPException(
@@ -205,9 +193,6 @@ async def delete_review(
     Raises:
         HTTPException: 403 if the user is not the review author.
     """
-    review_id: str,
-    current_user: User = Depends(get_current_user)
-):
     reviews_collection = get_reviews_collection()
     if not ObjectId.is_valid(review_id):
         raise HTTPException(
@@ -230,7 +215,7 @@ async def delete_review(
     await update_business_rating(business_id)
     return None
 
-@router.get("/reviews/user/me", response_model=List[Review])
+@router.get("/reviews/user/me")
 async def get_my_reviews(
     current_user: User = Depends(get_current_user),
     skip: int = 0,
@@ -239,18 +224,20 @@ async def get_my_reviews(
     """List the authenticated user's own reviews (GET /api/reviews/user/me).
 
     Returns:
-        List[Review]: The current user's reviews sorted newest first.
+        dict: Paginated reviews payload for the current user.
     """
-    current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 50
-):
     reviews_collection = get_reviews_collection()
-    cursor = reviews_collection.find(
-        {"user_id": current_user.id}
-    ).sort("created_at", -1).skip(skip).limit(limit)
+    query = {"user_id": current_user.id}
+    total = await reviews_collection.count_documents(query)
+    cursor = reviews_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
     reviews = await cursor.to_list(length=limit)
-    return [review_helper(review) for review in reviews]
+    return {
+        "items": [review_helper(review) for review in reviews],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + limit < total,
+    }
 
 async def update_business_rating(business_id: str):
     """Recalculate and persist a business's average rating and review count.
