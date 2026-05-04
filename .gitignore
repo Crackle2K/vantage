@@ -44,3 +44,7 @@ Thumbs.db
 
 # Claude local settings (machine-specific, not for version control)
 .claude/settings.local.json
+
+# Codex local config overrides (may contain tokens or machine-specific settings)
+# The .codex/config.toml is tracked, but local overrides should be ignored
+.codex/config.local.toml
