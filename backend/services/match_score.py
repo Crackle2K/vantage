@@ -41,10 +41,6 @@ def calculate_match_score(
     Returns:
         float: Match score between 0 and 5, rounded to 2 decimal places.
     """
-    business: dict,
-    user_category_preference: Optional[str] = None,
-    max_reviews: int = 500
-) -> float:
     rating = float(business.get("rating_average", 0.0)) * 0.4
     reviews = int(business.get("total_reviews", 0) or 0)
     popularity = min(reviews / max(max_reviews, 1), 1.0) * 5.0 * 0.3
