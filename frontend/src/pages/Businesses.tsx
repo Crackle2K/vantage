@@ -277,15 +277,15 @@ export default function Businesses() {
       let items: Business[] = [];
       let nextLanes: ExploreLane[] = [];
       if (requestedSortMode === 'canonical') {
-        items = await api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, 'canonical');
+        const [discovered, laneResponse] = await Promise.all([
+          api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, 'canonical'),
+          api.getExploreLanes(lat, lng, radiusValue, DISCOVERY_LIMIT).catch(() => null),
+        ]);
+        items = discovered;
         const canonicalLane = buildBrowseLane(items);
         nextLanes = [canonicalLane];
-
-        try {
-          const laneResponse = await api.getExploreLanes(lat, lng, radiusValue, DISCOVERY_LIMIT);
-          const personalizedLanes = (laneResponse.lanes ?? []).filter((lane) => lane.items.length > 0);
-          nextLanes = [canonicalLane, ...personalizedLanes];
-        } catch {}
+        const personalizedLanes = (laneResponse?.lanes ?? []).filter((lane) => lane.items.length > 0);
+        nextLanes = [canonicalLane, ...personalizedLanes];
       } else {
         items = await api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, requestedSortMode);
         nextLanes = [{ id: requestedSortMode, title: sortLane.title, subtitle: sortLane.subtitle, items }];
