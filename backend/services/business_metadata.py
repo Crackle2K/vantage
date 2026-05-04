@@ -174,11 +174,6 @@ def generate_short_description(
     Returns:
         str: A tagline of up to 160 characters.
     """
-    category: str = "",
-    address: str = "",
-    city: str = "",
-    existing: str = "",
-) -> str:
     candidate = " ".join((existing or "").split()).strip()
     if candidate:
         return candidate[:160]
@@ -229,16 +224,6 @@ def generate_long_description(
     Returns:
         str: A description of up to 360 characters.
     """
-    category: str = "",
-    address: str = "",
-    city: str = "",
-    short_description: str = "",
-    existing: str = "",
-    known_for: Optional[Iterable[str]] = None,
-    business_type: str = "",
-    is_claimed: bool = False,
-    has_deals: bool = False,
-) -> str:
     normalized_existing = " ".join((existing or "").split()).strip()
     normalized_address = " ".join((address or "").split()).strip()
     if normalized_existing and normalized_existing != normalized_address and len(normalized_existing) >= 90:
@@ -285,10 +270,6 @@ def derive_known_for(
     Returns:
         list[str]: Up to 6 unique, normalized tags.
     """
-    category: str = "",
-    google_types: Optional[Iterable[str]] = None,
-    existing: Optional[Iterable[str]] = None,
-) -> list[str]:
     tags: list[str] = []
     seen: set[str] = set()
 
