@@ -3,36 +3,43 @@
  * authentication, theme, and Google OAuth providers.
  */
 
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import RootLayout from './layout'
-import HomePage from './page'
-import Businesses from './pages/Businesses'
-import LoginPage from './pages/LoginPage'
-import SignUpPage from './pages/SignUpPage'
-import AccountPage from './pages/AccountPage'
-import SettingsPage from './pages/SettingsPage'
-import UserProfilePage from './pages/UserProfilePage'
-import PricingPage from './pages/PricingPage'
-import ActivityFeedPage from './pages/ActivityFeedPage'
-import DashboardPage from './pages/DashboardPage'
-import ClaimBusinessPage from './pages/ClaimBusinessPage'
-import DecidePage from './pages/DecidePage'
-import SavedPage from './pages/SavedPage'
 import './index.css'
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+const GoogleOAuthBoundary = lazy(() => import('./components/GoogleOAuthBoundary'))
+const HomePage = lazy(() => import('./page'))
+const Businesses = lazy(() => import('./pages/Businesses'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const SignUpPage = lazy(() => import('./pages/SignUpPage'))
+const AccountPage = lazy(() => import('./pages/AccountPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const UserProfilePage = lazy(() => import('./pages/UserProfilePage'))
+const PricingPage = lazy(() => import('./pages/PricingPage'))
+const ActivityFeedPage = lazy(() => import('./pages/ActivityFeedPage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const ClaimBusinessPage = lazy(() => import('./pages/ClaimBusinessPage'))
+const DecidePage = lazy(() => import('./pages/DecidePage'))
+const SavedPage = lazy(() => import('./pages/SavedPage'))
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[hsl(var(--primary))] border-t-transparent" />
+    </div>
+  )
+}
 
 /**
  * Renders the full application tree into the DOM root.
  *
  * Provider hierarchy (outer to inner):
  * - StrictMode: development-only checks
- * - GoogleOAuthProvider: Google Sign-In support
  * - ThemeProvider: light/dark theme state
  * - BrowserRouter: client-side routing
  * - AuthProvider: current user session
@@ -40,11 +47,11 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
  */
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <ThemeProvider>
-        <BrowserRouter>
-          <AuthProvider>
-            <RootLayout>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <RootLayout>
+            <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/businesses" element={<Businesses />} />
@@ -54,16 +61,30 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/claim" element={<ClaimBusinessPage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/signup" element={<SignUpPage />} />
+                <Route
+                  path="/login"
+                  element={
+                    <GoogleOAuthBoundary clientId={GOOGLE_CLIENT_ID}>
+                      <LoginPage />
+                    </GoogleOAuthBoundary>
+                  }
+                />
+                <Route
+                  path="/signup"
+                  element={
+                    <GoogleOAuthBoundary clientId={GOOGLE_CLIENT_ID}>
+                      <SignUpPage />
+                    </GoogleOAuthBoundary>
+                  }
+                />
                 <Route path="/account" element={<AccountPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/user/:userId" element={<UserProfilePage />} />
               </Routes>
-            </RootLayout>
-          </AuthProvider>
-        </BrowserRouter>
-      </ThemeProvider>
-    </GoogleOAuthProvider>
+            </Suspense>
+          </RootLayout>
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>,
 )
