@@ -13,7 +13,7 @@ Vantage is a trust-first local business discovery app that ranks businesses by v
 ```bash
 # Create and activate virtual environment
 python -m venv .venv
-source .venv/Scripts/activate  # Windows
+source .venv/Scripts/activate # Windows
 
 # Install dependencies
 pip install -r requirements.txt
@@ -48,41 +48,41 @@ npm run build
 
 ```
 /
-├── backend/         # FastAPI app (local dev / uvicorn)
-│   ├── main.py      # App factory, CORS, route mounting
-│   ├── config.py    # Settings from .env (JWT, MongoDB, Google APIs)
-│   ├── database/    # Motor async MongoDB connection + index setup
-│   ├── models/      # Pydantic request/response models
-│   ├── routes/      # FastAPI routers (one file per domain)
-│   └── services/    # Business logic (ranking, geo, Google Places, scoring)
+├── backend/          # FastAPI app (local dev / uvicorn)
+│   ├── main.py       # App factory, CORS, route mounting
+│   ├── config.py     # Settings from .env (JWT, MongoDB, Google APIs)
+│   ├── database/     # Motor async MongoDB connection + index setup
+│   ├── models/       # Pydantic request/response models
+│   ├── routes/       # FastAPI routers (one file per domain)
+│   └── services/     # Business logic (ranking, geo, Google Places, scoring)
 ├── api/
-│   └── index.py     # Thin Vercel serverless wrapper around backend app
+│   └── index.py      # Thin Vercel serverless wrapper around backend app
 ├── frontend/src/
-│   ├── main.tsx     # React root: GoogleOAuthProvider, Router, AuthContext, ThemeContext
-│   ├── api.ts       # Central fetch client; resolves base URL by environment
-│   ├── pages/       # One component per route
-│   ├── components/  # Shared UI and feature components
-│   ├── contexts/    # AuthContext (JWT + Google OAuth state), ThemeContext
-│   └── hooks/       # useSavedBusinesses and other custom hooks
-└── vercel.json      # Routes /api/* → serverless function; SPA fallback
+│   ├── main.tsx      # React root: GoogleOAuthProvider, Router, AuthContext, ThemeContext
+│   ├── api.ts        # Central fetch client; resolves base URL by environment
+│   ├── pages/        # One component per route
+│   ├── components/   # Shared UI and feature components
+│   ├── contexts/     # AuthContext (JWT + Google OAuth state), ThemeContext
+│   └── hooks/        # useSavedBusinesses and other custom hooks
+└── vercel.json       # Routes /api/* → serverless function; SPA fallback
 ```
 
 ### Backend API Routes
 
 Mounted under `/api/` prefix in `backend/main.py`:
 
-| Router module | Path prefix |
+| Router module  | Path prefix          |
 |---|---|
-| auth | `/api/auth` |
-| businesses | `/api/businesses` |
-| reviews | `/api/reviews` |
-| deals | `/api/deals` |
-| claims | `/api/claims` |
-| subscriptions | `/api/subscriptions` |
-| activity | `/api/activity` |
-| discovery | `/api/discovery` |
-| saved | `/api/saved` |
-| users | `/api/users` |
+| auth           | `/api/auth`          |
+| businesses     | `/api/businesses`    |
+| reviews        | `/api/reviews`       |
+| deals          | `/api/deals`         |
+| claims         | `/api/claims`        |
+| subscriptions  | `/api/subscriptions` |
+| activity       | `/api/activity`      |
+| discovery      | `/api/discovery`     |
+| saved          | `/api/saved`         |
+| users          | `/api/users`         |
 
 ### Key Architectural Decisions
 
