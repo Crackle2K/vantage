@@ -5,28 +5,31 @@
 
 import type React from "react"
 import { Header } from "@/components/header"
-import { Link } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 
 /**
- * Renders the application shell: a sticky header at the top, the routed
- * page content in a flex-growing main area, and a four-column footer
- * with navigation links.
+ * Renders the application shell. Non-landing routes receive the shared
+ * sticky header and footer; the landing route (`/`) renders its own
+ * dedicated navigation and footer.
  *
  * @param {React.ReactNode} children - The page content to render.
  * @returns {JSX.Element} The full layout with header, content, and footer.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const currentLocation = useLocation()
+  const isLandingPageRoute = currentLocation.pathname === "/"
+
   return (
     <div className="min-h-screen flex flex-col bg-[hsl(var(--background))]">
-      <Header />
-      <main className="flex-1 pt-20 sm:pt-24">{children}</main>
-      <footer className="border-t border-border/50 bg-[hsl(var(--card))]">
+      {!isLandingPageRoute && <Header />}
+      <main className={`flex-1 ${isLandingPageRoute ? "" : "pt-20 sm:pt-24"}`}>{children}</main>
+      {!isLandingPageRoute && <footer className="border-t border-border/50 bg-[hsl(var(--card))]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-6 sm:mb-8">
             <div className="col-span-2 md:col-span-1">
               <Link to="/" className="flex items-center gap-2.5 mb-3">
                 <img 
-                  src="/Images/Vantage.png" 
+                  src="/Images/Vantage.svg" 
                   alt="Vantage Logo" 
                   className="w-8 h-8 object-contain"
                 />
@@ -67,7 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </p>
           </div>
         </div>
-      </footer>
+      </footer>}
     </div>
   )
 }
