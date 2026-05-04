@@ -3,6 +3,7 @@
  * the explore page's horizontal chip rail.
  */
 
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
 
 interface CategoryChipProps {
@@ -22,7 +23,7 @@ interface CategoryChipProps {
  * @param {() => void} [onClick] - Click handler for toggling selection.
  * @returns {JSX.Element} The category chip button.
  */
-export function CategoryChip({ label, count, selected = false, onClick }: CategoryChipProps) {
+export const CategoryChip = memo(function CategoryChip({ label, count, selected = false, onClick }: CategoryChipProps) {
   return (
     <button
       type="button"
@@ -38,4 +39,4 @@ export function CategoryChip({ label, count, selected = false, onClick }: Catego
       {typeof count === 'number' && <span className="text-lg font-semibold text-[hsl(var(--muted-foreground))]">{count}</span>}
     </button>
   );
-}
+});
