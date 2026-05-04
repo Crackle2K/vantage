@@ -40,9 +40,6 @@ async def save_business(
     Raises:
         HTTPException: 404 if the business does not exist.
     """
-    business_id: str,
-    current_user: User = Depends(get_current_user),
-):
     read_repo = get_saved_read_repository()
     write_repos = get_saved_write_repositories()
 
@@ -65,9 +62,6 @@ async def remove_saved_business(
     Returns:
         SavedMutationResult: ``{"business_id": str, "saved": False}``
     """
-    business_id: str,
-    current_user: User = Depends(get_current_user),
-):
     write_repos = get_saved_write_repositories()
     for repo in write_repos:
         await repo.remove(current_user.id, business_id)
@@ -85,8 +79,6 @@ async def get_saved_businesses(
     Returns:
         dict: ``{"items": [...]}`` with enriched business listings.
     """
-    current_user: User = Depends(get_current_user),
-):
     read_repo = get_saved_read_repository()
 
     saved_docs = await read_repo.list_saved_records(current_user.id, limit=200)
