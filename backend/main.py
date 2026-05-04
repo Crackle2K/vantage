@@ -17,9 +17,11 @@ if __package__ in {None, ""}:
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -28,6 +30,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from backend.config import DEMO_MODE, ENVIRONMENT
 from backend.database.document_store import connect_to_mongo, close_mongo_connection
 from backend.database.document_store import DatabaseUnavailableError
+from backend.models.auth import close_auth_connections
 from backend.models.auth import router as auth_router
 from backend.routes.businesses import router as businesses_router
 from backend.routes.reviews import router as reviews_router
@@ -38,6 +41,8 @@ from backend.routes.activity import router as activity_router
 from backend.routes.discovery import router as discovery_router
 from backend.routes.saved import router as saved_router
 from backend.routes.users import router as users_router
+from backend.services.google_places import close_google_places_client
+from backend.services.photo_proxy import close_photo_proxy_http_client
 
 _shutdown_event = asyncio.Event()
 
@@ -53,6 +58,9 @@ async def _graceful_shutdown(app: FastAPI):
         await asyncio.wait_for(_shutdown_event.wait(), timeout=30)
     except asyncio.TimeoutError:
         print("Shutdown timeout reached, forcing exit.")
+    await close_google_places_client()
+    await close_photo_proxy_http_client()
+    await close_auth_connections()
     await close_mongo_connection()
 
 
@@ -65,8 +73,14 @@ async def lifespan(app: FastAPI):
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_graceful_shutdown(app)))
     await connect_to_mongo()
-    yield
-    _shutdown_event.set()
+    try:
+        yield
+    finally:
+        _shutdown_event.set()
+        await close_google_places_client()
+        await close_photo_proxy_http_client()
+        await close_auth_connections()
+        await close_mongo_connection()
 
 app = FastAPI(
     title="Vantage API",
@@ -76,7 +90,7 @@ app = FastAPI(
 )
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
     """Add security headers to all responses.
 
     Injects HSTS, X-Content-Type-Options, X-Frame-Options, XSS-Protection,
@@ -85,53 +99,57 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     docs pages so Swagger/ReDoc continue to work in production.
     """
 
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
+    def __init__(self, app: ASGIApp):
+        self.app = app
 
-        # Skip security headers for localhost development
-        if request.url.hostname in ["localhost", "127.0.0.1"]:
-            return response
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        # HSTS: Force HTTPS for 1 year, include subdomains
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        headers = {key.decode("latin-1"): value.decode("latin-1") for key, value in scope.get("headers", [])}
+        host = headers.get("host", "").split(":", 1)[0]
+        path = scope.get("path", "")
+        method = scope.get("method", "GET").upper()
 
-        # Prevent MIME type sniffing
-        response.headers["X-Content-Type-Options"] = "nosniff"
+        async def send_wrapper(message: Message):
+            if message["type"] == "http.response.start":
+                response_headers = MutableHeaders(scope=message)
+                content_type = response_headers.get("content-type", "")
 
-        # Prevent clickjacking
-        response.headers["X-Frame-Options"] = "DENY"
+                if host not in {"localhost", "127.0.0.1"}:
+                    response_headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+                    response_headers["X-Content-Type-Options"] = "nosniff"
+                    response_headers["X-Frame-Options"] = "DENY"
+                    response_headers["X-XSS-Protection"] = "1; mode=block"
+                    response_headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                    response_headers["Permissions-Policy"] = "geolocation=(self), microphone=(), camera=()"
 
-        # XSS protection (legacy browsers)
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+                    is_html_response = content_type.startswith("text/html")
+                    is_fastapi_docs_path = path in {"/docs", "/redoc", "/docs/oauth2-redirect"}
+                    if is_html_response and not is_fastapi_docs_path:
+                        response_headers["Content-Security-Policy"] = (
+                            "default-src 'self'; "
+                            "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
+                            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                            "img-src 'self' data: https: blob:; "
+                            "font-src 'self' https://fonts.gstatic.com; "
+                            "connect-src 'self' https://accounts.google.com; "
+                            "frame-ancestors 'none'"
+                        )
 
-        # Referrer policy
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                if (
+                    method == "GET"
+                    and content_type.startswith("application/json")
+                    and "cache-control" not in response_headers
+                    and path.startswith("/api/")
+                    and not path.startswith(("/api/auth", "/api/users", "/api/saved"))
+                ):
+                    response_headers["Cache-Control"] = "public, max-age=30, s-maxage=60, stale-while-revalidate=60"
 
-        # Apply CSP only to non-docs HTML responses so FastAPI's built-in
-        # Swagger/ReDoc pages keep working in production.
-        content_type = response.headers.get("content-type", "")
-        request_path = request.url.path
-        is_html_response = content_type.startswith("text/html")
-        is_fastapi_docs_path = request_path in ["/docs", "/redoc", "/docs/oauth2-redirect"]
+            await send(message)
 
-        if is_html_response and not is_fastapi_docs_path:
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
-                "style-src 'self' 'unsafe-inline'; "
-                "img-src 'self' data: https: blob:; "
-                "font-src 'self'; "
-                "connect-src 'self' https://accounts.google.com; "
-                "frame-ancestors 'none'"
-            )
-        # Permissions Policy (formerly Feature Policy)
-        response.headers["Permissions-Policy"] = (
-            "geolocation=(self), "
-            "microphone=(), "
-            "camera=()"
-        )
-
-        return response
+        await self.app(scope, receive, send_wrapper)
 
 
 # Rate limiting setup
@@ -139,6 +157,7 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
