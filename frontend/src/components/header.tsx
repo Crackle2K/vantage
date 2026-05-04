@@ -89,7 +89,7 @@ export function Header() {
 				<div className="relative flex h-14 sm:h-16 items-center justify-between px-4 sm:px-5">
 					{/* Left: Logo + Brand */}
 					<Link to="/" className="flex items-center gap-2">
-						<img className="h-8 w-8" src="/Images/Vantage.png" alt="Vantage Logo" />
+						<img className="h-8 w-8" src="/Images/Vantage.svg" alt="Vantage Logo" />
 						<span className="font-heading text-lg font-bold tracking-tight text-[hsl(var(--foreground))]">Vantage</span>
 					</Link>
 
