@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Enable demo mode in Vercel when no production database is configured,
 # preventing cold-start crashes from missing MongoDB/Supabase credentials.
-os.environ.setdefault("DEMO_MODE", "true")
+os.environ.setdefault("DEMO_MODE", "false")
 
 # Set a default SECRET_KEY for JWT signing in serverless demo mode.
 # In production, this should be set via environment variables.
