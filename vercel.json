@@ -2,11 +2,26 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": null,
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "memory": 2048
+    }
+  },
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/index.py" },
     { "source": "/:path*", "destination": "/index.html" }
   ],
   "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
     {
       "source": "/videos/(.*)",
       "headers": [
