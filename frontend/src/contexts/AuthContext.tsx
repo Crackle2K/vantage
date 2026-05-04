@@ -5,7 +5,7 @@
  * persistence; this context exposes the user object and auth actions.
  */
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '../api';
 import type { User } from '../types';
 
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchUser();
   }, [fetchUser]);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
       await api.login(email, password);
       await fetchUser();
@@ -87,9 +87,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Login failed' };
     }
-  };
+  }, [fetchUser]);
 
-  const signUp = async (
+  const signUp = useCallback(async (
     name: string,
     email: string,
     password: string,
@@ -104,9 +104,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Registration failed' };
     }
-  };
+  }, [fetchUser]);
 
-  const signInWithGoogle = async (credential: string) => {
+  const signInWithGoogle = useCallback(async (credential: string) => {
     try {
       await api.googleAuth(credential);
       await fetchUser();
@@ -114,29 +114,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Google sign-in failed' };
     }
-  };
+  }, [fetchUser]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     // Call backend logout endpoint to clear httpOnly cookie
     try {
       await api.logout();
     } catch {}
     setUser(null);
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    user,
+    loading,
+    signIn,
+    signUp,
+    signInWithGoogle,
+    signOut,
+    setUser,
+    isAuthenticated: !!user,
+  }), [user, loading, signIn, signUp, signInWithGoogle, signOut]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        signIn,
-        signUp,
-        signInWithGoogle,
-        signOut,
-        setUser,
-        isAuthenticated: !!user,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
