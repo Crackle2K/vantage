@@ -69,7 +69,7 @@ function CyclingVideo({ sources, posterSrc }: { sources: string[]; posterSrc: st
       autoPlay
       muted
       playsInline
-      preload="auto"
+      preload="metadata"
       onTimeUpdate={() => {
         const v = videoRef.current
         // Start fade 0.5s before video ends
