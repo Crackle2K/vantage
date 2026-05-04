@@ -33,6 +33,7 @@ PHOTO_PROXY_MEMORY_ITEMS = 192
 PHOTO_PROXY_DISK_DIR = Path("/tmp/vantage_photos")
 GOOGLE_PHOTO_URL = "https://maps.googleapis.com/maps/api/place/photo"
 GOOGLE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+HTTP_CLIENT_LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10)
 _META_TAG_RE = re.compile(
     r"""<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']""",
     re.IGNORECASE,
@@ -53,6 +54,21 @@ _CATEGORY_COLORS: dict[str, tuple[str, str]] = {
 
 _memory_cache: "OrderedDict[str, tuple[float, str, bytes]]" = OrderedDict()
 _memory_lock = Lock()
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+async def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(limits=HTTP_CLIENT_LIMITS)
+    return _http_client
+
+
+async def close_photo_proxy_http_client() -> None:
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
 
 def _clamp_width(maxwidth: int) -> int:
     return max(120, min(int(maxwidth or 1200), 1600))
@@ -206,11 +222,11 @@ def build_category_placeholder_bytes(category: str = "", label: str = "V") -> tu
     return "image/svg+xml", svg.encode("utf-8")
 
 async def _fetch_bytes(url: str, timeout_seconds: float = 4.0) -> tuple[str, bytes]:
-    async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
-        response = await client.get(url)
-        response.raise_for_status()
-        content_type = response.headers.get("content-type", "image/jpeg").split(";")[0]
-        return content_type, response.content
+    client = await _get_http_client()
+    response = await client.get(url, timeout=timeout_seconds, follow_redirects=True)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "image/jpeg").split(";")[0]
+    return content_type, response.content
 
 async def _fetch_google_photo_bytes(photo_reference: str, maxwidth: int) -> tuple[str, bytes]:
     if not GOOGLE_API_KEY:
@@ -229,17 +245,18 @@ async def _resolve_google_photo_references(place_id: str) -> list[str]:
         return []
 
     try:
-        async with httpx.AsyncClient(timeout=2.5) as client:
-            response = await client.get(
-                GOOGLE_DETAILS_URL,
-                params={
-                    "place_id": place_id,
-                    "fields": "photos",
-                    "key": GOOGLE_API_KEY,
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
+        client = await _get_http_client()
+        response = await client.get(
+            GOOGLE_DETAILS_URL,
+            params={
+                "place_id": place_id,
+                "fields": "photos",
+                "key": GOOGLE_API_KEY,
+            },
+            timeout=2.5,
+        )
+        response.raise_for_status()
+        payload = response.json()
     except Exception:
         return []
 
@@ -263,14 +280,14 @@ async def _resolve_og_image_url(website_url: str) -> str:
         return ""
 
     try:
-        async with httpx.AsyncClient(timeout=1.5, follow_redirects=True) as client:
-            response = await client.get(website_url)
-            response.raise_for_status()
-            html = response.text[:40000]
-            match = _META_TAG_RE.search(html)
-            if not match:
-                return ""
-            return urljoin(str(response.url), match.group(1).strip())
+        client = await _get_http_client()
+        response = await client.get(website_url, timeout=1.5, follow_redirects=True)
+        response.raise_for_status()
+        html = response.text[:40000]
+        match = _META_TAG_RE.search(html)
+        if not match:
+            return ""
+        return urljoin(str(response.url), match.group(1).strip())
     except Exception:
         return ""
 
@@ -335,10 +352,6 @@ async def get_photo_payload(
     Returns:
         tuple[str, bytes]: (content_type, image_bytes).
     """
-    businesses_collection,
-    place_id: str,
-    maxwidth: int,
-) -> tuple[str, bytes]:
     if not place_id:
         return build_category_placeholder_bytes(label="V")
 
