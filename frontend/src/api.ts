@@ -46,6 +46,9 @@ function resolveApiUrl(): string {
 }
 
 const API_URL = resolveApiUrl();
+const GET_CACHE_TTL_MS = 15_000;
+const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
+const inflightRequests = new Map<string, Promise<unknown>>();
 
 /**
  * Constructs a full API URL from a path, handling `/api` prefix
@@ -112,9 +115,44 @@ function getAuthHeaders(includeJson: boolean = false): HeadersInit {
  * @returns {Promise<T>} Parsed JSON response body.
  */
 async function request<T>(path: string, init: RequestInit | undefined, fallback: string): Promise<T> {
-  const response = await fetch(buildApiUrl(path), { ...init, credentials: 'include' });
-  if (!response.ok) await throwApiError(response, fallback);
-  return response.json() as Promise<T>;
+  const method = (init?.method || 'GET').toUpperCase();
+  const cacheKey = `${method}:${path}`;
+
+  if (method === 'GET') {
+    const cached = responseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data as T;
+    }
+
+    const inflight = inflightRequests.get(cacheKey);
+    if (inflight) {
+      return inflight as Promise<T>;
+    }
+  } else {
+    responseCache.clear();
+  }
+
+  const fetchPromise = (async () => {
+    const response = await fetch(buildApiUrl(path), { ...init, credentials: 'include' });
+    if (!response.ok) await throwApiError(response, fallback);
+    const data = await response.json() as T;
+    if (method === 'GET') {
+      responseCache.set(cacheKey, { expiresAt: Date.now() + GET_CACHE_TTL_MS, data });
+    }
+    return data;
+  })();
+
+  if (method === 'GET') {
+    inflightRequests.set(cacheKey, fetchPromise);
+  }
+
+  try {
+    return await fetchPromise;
+  } finally {
+    if (method === 'GET') {
+      inflightRequests.delete(cacheKey);
+    }
+  }
 }
 
 /**
@@ -195,11 +233,12 @@ export const api = {
     }, 'Failed to update profile');
   },
 
-  async getBusinesses(category?: string, sortBy?: string, search?: string): Promise<Business[]> {
+  async getBusinesses(category?: string, sortBy?: string, search?: string, ownerId?: string): Promise<Business[]> {
     const params = new URLSearchParams();
     if (category) params.append('category', category);
     if (sortBy) params.append('sort_by', sortBy);
     if (search) params.append('search', search);
+    if (ownerId) params.append('owner_id', ownerId);
     return request<Business[]>(`/businesses?${params}`, undefined, 'Failed to fetch businesses');
   },
 
@@ -251,7 +290,8 @@ export const api = {
   },
 
   async getBusinessDeals(businessId: string): Promise<Deal[]> {
-    return request<Deal[]>(`/deals/business/${businessId}`, undefined, 'Failed to fetch deals');
+    const data = await request<{ items?: Deal[] } | Deal[]>(`/deals/business/${businessId}`, undefined, 'Failed to fetch deals');
+    return Array.isArray(data) ? data : (data.items ?? []);
   },
 
   async submitClaim(claim: ClaimCreate): Promise<BusinessClaim> {
@@ -263,9 +303,10 @@ export const api = {
   },
 
   async getMyClaims(): Promise<BusinessClaim[]> {
-    return request<BusinessClaim[]>('/claims/my', {
+    const data = await request<{ items?: BusinessClaim[] } | BusinessClaim[]>('/claims/my', {
       headers: getAuthHeaders(),
     }, 'Failed to fetch claims');
+    return Array.isArray(data) ? data : (data.items ?? []);
   },
 
   async getSubscriptionTiers(): Promise<TierInfo[]> {
