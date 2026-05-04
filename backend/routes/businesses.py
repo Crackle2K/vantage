@@ -36,6 +36,40 @@ router = APIRouter()
 
 logger = logging.getLogger(__name__)
 
+BUSINESS_LIST_PROJECTION = {
+    "name": 1,
+    "category": 1,
+    "description": 1,
+    "address": 1,
+    "city": 1,
+    "location": 1,
+    "rating_average": 1,
+    "total_reviews": 1,
+    "has_deals": 1,
+    "owner_id": 1,
+    "place_id": 1,
+    "image": 1,
+    "image_url": 1,
+    "image_urls": 1,
+    "primary_image_url": 1,
+    "short_description": 1,
+    "known_for": 1,
+    "is_claimed": 1,
+    "claim_status": 1,
+    "is_seed": 1,
+    "credibility_score": 1,
+    "live_visibility_score": 1,
+    "local_confidence": 1,
+    "is_active_today": 1,
+    "checkins_today": 1,
+    "trending_score": 1,
+    "last_activity_at": 1,
+    "created_at": 1,
+    "phone": 1,
+    "email": 1,
+    "website": 1,
+}
+
 def _oid(raw_id: str) -> ObjectId:
     if not ObjectId.is_valid(raw_id):
         raise HTTPException(
@@ -61,7 +95,8 @@ def business_helper(business) -> dict:
             "primary_image_url",
             business.get("image_url") or ((business.get("image_urls") or [""])[0] if business.get("image_urls") else ""),
         )
-        normalize_business_metadata(business)
+        if not business.get("short_description") or not business.get("known_for") or not business.get("image_urls"):
+            normalize_business_metadata(business)
         business["id"] = str(business.pop("_id"))
         if "rating_average" in business:
             business["rating"] = business.pop("rating_average")
@@ -92,9 +127,6 @@ async def get_business_photo(
     Returns:
         StreamingResponse: The image payload with cache headers.
     """
-    place_id: str = Query(..., min_length=3),
-    maxwidth: int = Query(800, ge=120, le=1600),
-):
     try:
         businesses_collection = get_businesses_collection()
         content_type, payload = await get_photo_payload(businesses_collection, place_id.strip(), maxwidth)
@@ -111,6 +143,7 @@ async def get_businesses(
     category: Optional[CategoryEnum] = None,
     city: Optional[str] = None,
     search: Optional[str] = None,
+    owner_id: Optional[str] = None,
     min_rating: Optional[float] = Query(None, ge=0, le=5),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100)
@@ -123,17 +156,12 @@ async def get_businesses(
     Returns:
         List[Business]: Filtered and paginated business listings.
     """
-    category: Optional[CategoryEnum] = None,
-    city: Optional[str] = None,
-    search: Optional[str] = None,
-    min_rating: Optional[float] = Query(None, ge=0, le=5),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100)
-):
     businesses_collection = get_businesses_collection()
     query = {}
     if category:
         query["category"] = category
+    if owner_id:
+        query["owner_id"] = owner_id
     if city:
         query["city"] = {"$regex": re.escape(city), "$options": "i"}
     if min_rating is not None:
@@ -144,7 +172,7 @@ async def get_businesses(
             {"name": {"$regex": escaped_search, "$options": "i"}},
             {"description": {"$regex": escaped_search, "$options": "i"}}
         ]
-    cursor = businesses_collection.find(query).skip(skip).limit(limit)
+    cursor = businesses_collection.find(query, BUSINESS_LIST_PROJECTION).skip(skip).limit(limit)
     businesses = await cursor.to_list(length=limit)
     return [business_helper(business) for business in businesses]
 
@@ -163,12 +191,6 @@ async def get_businesses_feed(
     Returns:
         dict: ``{"businesses": [...], "total": int, "page": int, "page_size": int, "has_more": bool}``
     """
-    page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=50),
-    category: Optional[CategoryEnum] = None,
-    search: Optional[str] = None,
-    sort_by: Optional[str] = Query(None, description="Sort by: rating, reviews, newest"),
-):
     businesses_collection = get_businesses_collection()
 
     query = {}
@@ -194,16 +216,17 @@ async def get_businesses_feed(
         sort_dir = -1
 
     skip = (page - 1) * page_size
-    total = await businesses_collection.count_documents(query)
-    cursor = businesses_collection.find(query).sort(sort_field, sort_dir).skip(skip).limit(page_size)
-    businesses = await cursor.to_list(length=page_size)
+    cursor = businesses_collection.find(query, BUSINESS_LIST_PROJECTION).sort(sort_field, sort_dir).skip(skip).limit(page_size + 1)
+    page_items = await cursor.to_list(length=page_size + 1)
+    has_more = len(page_items) > page_size
+    businesses = page_items[:page_size]
 
     return {
         "businesses": [business_helper(b) for b in businesses],
-        "total": total,
+        "total": skip + len(businesses) + (1 if has_more else 0),
         "page": page,
         "page_size": page_size,
-        "has_more": skip + page_size < total,
+        "has_more": has_more,
     }
 
 @router.get("/businesses/nearby", response_model=List[Business])
@@ -223,13 +246,6 @@ async def get_nearby_businesses(
     Returns:
         List[Business]: Businesses sorted by canonical ranking within the radius.
     """
-    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
-    lng: float = Query(..., ge=-180, le=180, description="Longitude"),
-    radius: float = Query(10, ge=1, le=100, description="Search radius in kilometers"),
-    category: Optional[CategoryEnum] = None,
-    min_rating: Optional[float] = Query(None, ge=0, le=5),
-    limit: int = Query(50, ge=1, le=100)
-):
     businesses = await discover_businesses(
         lat=lat,
         lng=lng,
@@ -305,6 +321,7 @@ async def create_business(
         ),
         "created_at": datetime.utcnow()
     }
+    normalize_business_metadata(business_dict)
     result = await businesses_collection.insert_one(business_dict)
     created_business = await businesses_collection.find_one({"_id": result.inserted_id})
     return business_helper(created_business)
@@ -327,10 +344,6 @@ async def update_business(
         HTTPException: 403 if the user is not the business owner.
         HTTPException: 404 if the business does not exist.
     """
-    business_id: str,
-    business_data: BusinessUpdate,
-    current_user: User = Depends(get_current_user)
-):
     businesses_collection = get_businesses_collection()
     business_key = _oid(business_id)
     business = await businesses_collection.find_one({"_id": business_key})
@@ -369,6 +382,11 @@ async def update_business(
                 update_data.get("description", business.get("short_description") or business.get("description", "")),
             ),
         )
+    normalized_business = {**business, **update_data}
+    normalize_business_metadata(normalized_business)
+    for key in ("description", "short_description", "known_for", "image_url", "image_urls", "primary_image_url"):
+        if key in normalized_business:
+            update_data[key] = normalized_business[key]
     await businesses_collection.update_one(
         {"_id": business_key},
         {"$set": update_data}
@@ -393,10 +411,6 @@ async def update_business_profile(
     Raises:
         HTTPException: 403 if the user is not the claimed owner.
     """
-    business_id: str,
-    profile_data: BusinessProfileUpdate,
-    current_user: User = Depends(get_current_user)
-):
     businesses_collection = get_businesses_collection()
     business_key = _oid(business_id)
     business = await businesses_collection.find_one({"_id": business_key})
@@ -434,6 +448,11 @@ async def update_business_profile(
         )
 
     update_data["updated_at"] = datetime.utcnow()
+    normalized_business = {**business, **update_data}
+    normalize_business_metadata(normalized_business)
+    update_data["short_description"] = normalized_business.get("short_description")
+    update_data["known_for"] = normalized_business.get("known_for", [])
+    update_data["description"] = normalized_business.get("description", business.get("description", ""))
 
     await businesses_collection.update_one(
         {"_id": business_key},
