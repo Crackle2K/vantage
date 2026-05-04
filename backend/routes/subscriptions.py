@@ -73,9 +73,6 @@ async def create_subscription(
     Returns:
         dict: Subscription details or ``{"checkout_url": str, "status": "checkout_required"}``.
     """
-    data: SubscriptionCreate,
-    current_user: User = Depends(get_current_user),
-):
     write_repos = get_subscriptions_write_repositories()
 
     if current_user.role != "business_owner":
@@ -175,9 +172,6 @@ async def get_business_subscription(
     Returns:
         dict: Subscription record with ``features`` key, or the FREE tier default.
     """
-    business_id: str,
-    current_user: User = Depends(get_current_user),
-):
     read_repo = get_subscriptions_read_repository()
 
     sub = await read_repo.get_active_for_business_user(business_id, current_user.id)
@@ -207,10 +201,6 @@ async def update_subscription(
     Returns:
         dict: The updated subscription record.
     """
-    sub_id: str,
-    data: SubscriptionUpdate,
-    current_user: User = Depends(get_current_user),
-):
     read_repo = get_subscriptions_read_repository()
     write_repos = get_subscriptions_write_repositories()
 
@@ -248,9 +238,6 @@ async def cancel_subscription(
     Returns:
         dict: ``{"status": "cancelling", "message": str}``
     """
-    sub_id: str,
-    current_user: User = Depends(get_current_user),
-):
     read_repo = get_subscriptions_read_repository()
     write_repos = get_subscriptions_write_repositories()
 
