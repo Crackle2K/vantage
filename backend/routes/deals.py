@@ -38,9 +38,6 @@ async def create_deal(
         HTTPException: 403 if the user is not the business owner.
         HTTPException: 400 if the expiration date has already passed.
     """
-    deal_data: DealCreate,
-    current_user: User = Depends(get_current_user)
-):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(deal_data.business_id):
@@ -77,23 +74,21 @@ async def create_deal(
     created_deal = await deals_collection.find_one({"_id": result.inserted_id})
     return deal_helper(created_deal)
 
-@router.get("/deals/business/{business_id}", response_model=List[Deal])
+@router.get("/deals/business/{business_id}")
 async def get_business_deals(
     business_id: str,
     active_only: bool = Query(True, description="Return only active deals"),
-    include_expired: bool = Query(False, description="Include expired deals")
+    include_expired: bool = Query(False, description="Include expired deals"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
 ):
     """List deals for a specific business (GET /api/deals/business/{business_id}).
 
     By default returns only active, non-expired deals.
 
     Returns:
-        List[Deal]: Deals for the specified business.
+        dict: Paginated deals payload for the specified business.
     """
-    business_id: str,
-    active_only: bool = Query(True, description="Return only active deals"),
-    include_expired: bool = Query(False, description="Include expired deals")
-):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(business_id):
@@ -112,9 +107,16 @@ async def get_business_deals(
         query["active"] = True
     if not include_expired:
         query["expires_at"] = {"$gt": datetime.utcnow()}
-    cursor = deals_collection.find(query).sort("created_at", -1)
-    deals = await cursor.to_list(length=None)
-    return [deal_helper(deal) for deal in deals]
+    total = await deals_collection.count_documents(query)
+    cursor = deals_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    deals = await cursor.to_list(length=limit)
+    return {
+        "items": [deal_helper(deal) for deal in deals],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + limit < total,
+    }
 
 @router.get("/deals", response_model=List[DealWithBusiness])
 async def get_all_deals(
@@ -130,11 +132,6 @@ async def get_all_deals(
     Returns:
         List[DealWithBusiness]: Deals enriched with business details.
     """
-    active_only: bool = Query(True, description="Return only active deals"),
-    include_expired: bool = Query(False, description="Include expired deals"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100)
-):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     query = {}
@@ -144,10 +141,22 @@ async def get_all_deals(
         query["expires_at"] = {"$gt": datetime.utcnow()}
     cursor = deals_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
     deals = await cursor.to_list(length=limit)
+    business_ids = [
+        ObjectId(deal["business_id"])
+        for deal in deals
+        if ObjectId.is_valid(deal.get("business_id"))
+    ]
+    business_map = {}
+    if business_ids:
+        businesses = await businesses_collection.find(
+            {"_id": {"$in": business_ids}},
+            {"name": 1, "category": 1},
+        ).to_list(length=len(business_ids))
+        business_map = {str(business["_id"]): business for business in businesses}
     enriched_deals = []
     for deal in deals:
         deal_dict = deal_helper(deal)
-        business = await businesses_collection.find_one({"_id": ObjectId(deal["business_id"])})
+        business = business_map.get(str(deal.get("business_id")))
         if business:
             deal_dict["business_name"] = business.get("name", "Unknown")
             deal_dict["business_category"] = business.get("category", "other")
@@ -174,10 +183,6 @@ async def update_deal(
         HTTPException: 403 if the user is not the business owner.
         HTTPException: 400 if the new expiration date is in the past.
     """
-    deal_id: str,
-    deal_data: DealUpdate,
-    current_user: User = Depends(get_current_user)
-):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(deal_id):
@@ -227,9 +232,6 @@ async def delete_deal(
     Raises:
         HTTPException: 403 if the user is not the business owner.
     """
-    deal_id: str,
-    current_user: User = Depends(get_current_user)
-):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(deal_id):
@@ -264,9 +266,6 @@ async def toggle_deal_active(
     Returns:
         Deal: The deal with its updated active status.
     """
-    deal_id: str,
-    current_user: User = Depends(get_current_user)
-):
     deals_collection = get_deals_collection()
     businesses_collection = get_businesses_collection()
     if not ObjectId.is_valid(deal_id):
