@@ -43,9 +43,6 @@ async def submit_claim(
         HTTPException: 403 if the user is not a business owner.
         HTTPException: 400 if an active/pending claim already exists.
     """
-    claim_data: ClaimCreate,
-    current_user: User = Depends(get_current_user),
-):
     claims_collection = get_claims_collection()
     businesses_collection = get_businesses_collection()
 
@@ -102,17 +99,29 @@ async def submit_claim(
     created = await claims_collection.find_one({"_id": result.inserted_id})
     return claim_helper(created)
 
-@router.get("/claims/my", response_model=List[BusinessClaim])
-async def get_my_claims(current_user: User = Depends(get_current_user)):
+@router.get("/claims/my")
+async def get_my_claims(
+    current_user: User = Depends(get_current_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+):
     """List the authenticated user's claims (GET /api/claims/my).
 
     Returns:
         List[BusinessClaim]: Claims submitted by the current user, newest first.
     """
     claims_collection = get_claims_collection()
-    cursor = claims_collection.find({"user_id": current_user.id}).sort("created_at", -1)
-    claims = await cursor.to_list(length=50)
-    return [claim_helper(c) for c in claims]
+    query = {"user_id": current_user.id}
+    total = await claims_collection.count_documents(query)
+    cursor = claims_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
+    claims = await cursor.to_list(length=limit)
+    return {
+        "items": [claim_helper(c) for c in claims],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": skip + limit < total,
+    }
 
 @router.get("/claims/business/{business_id}")
 async def get_business_claim_status(business_id: str):
@@ -158,10 +167,6 @@ async def review_claim(
         HTTPException: 400 if the claim has already been reviewed.
         HTTPException: 403 if the user is not an admin.
     """
-    claim_id: str,
-    review_data: ClaimReview,
-    current_user: User = Depends(get_current_admin_user),
-):
     claims_collection = get_claims_collection()
     businesses_collection = get_businesses_collection()
     activity_collection = get_activity_feed_collection()
