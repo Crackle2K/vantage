@@ -18,7 +18,7 @@ pycparser==3.0
 pydantic==2.12.5
 pydantic-settings==2.13.0
 pydantic_core==2.41.5
-pymongo==4.9.2
+bson==0.5.10
 python-dotenv==1.2.2
 PyJWT==2.12.1
 python-multipart==0.0.26
@@ -35,6 +35,5 @@ httpx==0.27.0
 slowapi==0.1.9
 redis==5.0.0
 bleach==6.1.0
-watchfiles==1.1.1
 supabase==2.7.4
 stripe>=11.0.0,<12.0.0
