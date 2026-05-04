@@ -14,8 +14,8 @@ listings.
 import asyncio
 import math
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
-from copy import deepcopy
 from typing import Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, status, Depends, Query
@@ -65,7 +65,7 @@ DECIDE_INTENTS = {
 LANE_ITEM_LIMIT = 12
 LANE_CACHE_TTL_SECONDS = 60
 LANE_CACHE_MAX_ENTRIES = 48
-_lanes_cache: dict[str, tuple[float, dict]] = {}
+_lanes_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
 
 
 @dataclass
@@ -113,13 +113,14 @@ def _get_lanes_cache(cache_key: str) -> Optional[dict]:
         _lanes_cache.pop(cache_key, None)
         return None
 
-    return deepcopy(payload)
+    _lanes_cache.move_to_end(cache_key)
+    return payload
 
 def _set_lanes_cache(cache_key: str, payload: dict) -> None:
-    _lanes_cache[cache_key] = (time.time() + LANE_CACHE_TTL_SECONDS, deepcopy(payload))
+    _lanes_cache[cache_key] = (time.time() + LANE_CACHE_TTL_SECONDS, payload)
+    _lanes_cache.move_to_end(cache_key)
     if len(_lanes_cache) > LANE_CACHE_MAX_ENTRIES:
-        oldest_key = min(_lanes_cache.items(), key=lambda item: item[1][0])[0]
-        _lanes_cache.pop(oldest_key, None)
+        _lanes_cache.popitem(last=False)
 
 def _normalize_sort_mode(sort_mode: str) -> str:
     mode = (sort_mode or "canonical").strip().lower()
@@ -817,7 +818,8 @@ def business_helper(doc: dict) -> dict:
     doc.setdefault("has_deals", False)
     doc.setdefault("image_url", doc.pop("image", ""))
     _with_primary_image(doc)
-    normalize_business_metadata(doc)
+    if not doc.get("short_description") or not doc.get("known_for") or not doc.get("image_urls"):
+        normalize_business_metadata(doc)
     if "owner_id" in doc and doc["owner_id"]:
         doc["owner_id"] = str(doc["owner_id"])
     return doc
