@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.database.supabase import get_supabase_client
+from backend.database.supabase import get_supabase_client, run_supabase
 from backend.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 
@@ -45,7 +45,7 @@ class SupabaseUsersRepository:
         Returns:
             dict[str, Any] | None: The user record, or None if not found.
         """
-        result = self._table().select("*").eq("email", email).limit(1).execute()
+        result = await run_supabase(lambda: self._table().select("*").eq("email", email).limit(1).execute())
         if not result.data:
             return None
         return self._normalize_user(result.data[0])
@@ -59,7 +59,7 @@ class SupabaseUsersRepository:
         Returns:
             dict[str, Any] | None: The user record, or None if not found.
         """
-        result = self._table().select("*").eq("id", user_id).limit(1).execute()
+        result = await run_supabase(lambda: self._table().select("*").eq("id", user_id).limit(1).execute())
         if not result.data:
             return None
         return self._normalize_user(result.data[0])
@@ -76,19 +76,19 @@ class SupabaseUsersRepository:
         Raises:
             RuntimeError: If the insert returns no data.
         """
-        result = self._table().insert(payload).execute()
+        result = await run_supabase(lambda: self._table().insert(payload).execute())
         if not result.data:
             raise RuntimeError("Failed to create user")
         return self._normalize_user(result.data[0])
 
     async def update_by_email(self, email: str, update: dict[str, Any]) -> dict[str, Any] | None:
-        result = self._table().update(update).eq("email", email).execute()
+        result = await run_supabase(lambda: self._table().update(update).eq("email", email).execute())
         if not result.data:
             return None
         return self._normalize_user(result.data[0])
 
     async def update_by_id(self, user_id: str, update: dict[str, Any]) -> dict[str, Any] | None:
-        result = self._table().update(update).eq("id", user_id).execute()
+        result = await run_supabase(lambda: self._table().update(update).eq("id", user_id).execute())
         if not result.data:
             return None
         return self._normalize_user(result.data[0])
@@ -99,4 +99,4 @@ class SupabaseUsersRepository:
         Args:
             user_id (str): The user's unique identifier.
         """
-        self._table().delete().eq("id", user_id).execute()
+        await run_supabase(lambda: self._table().delete().eq("id", user_id).execute())
