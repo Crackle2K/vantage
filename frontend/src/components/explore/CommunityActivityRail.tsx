@@ -49,7 +49,7 @@ export function CommunityActivityRail({ items }: CommunityActivityRailProps) {
         {items.map((item) => (
           <article
             key={item.id}
-            className="min-w-[240px] max-w-[240px] overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_8px_20px_-16px_hsl(var(--shadow-soft)/0.6)]"
+            className="min-w-[240px] max-w-[240px] overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)]"
           >
             <div className="relative h-20 overflow-hidden bg-[hsl(var(--secondary))]">
               <BusinessImage
@@ -58,7 +58,7 @@ export function CommunityActivityRail({ items }: CommunityActivityRailProps) {
                 alt={item.name}
                 className="h-full w-full object-cover"
               />
-              <button className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--border))/0.7] bg-[hsl(var(--card))/0.75] text-[hsl(var(--foreground))]">
+              <button className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md border border-[hsl(var(--border))/0.7] bg-[hsl(var(--card))/0.75] text-[hsl(var(--foreground))]">
                 <Heart className="h-3.5 w-3.5" />
               </button>
             </div>
