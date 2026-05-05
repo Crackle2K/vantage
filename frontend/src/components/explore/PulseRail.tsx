@@ -66,7 +66,7 @@ export function PulseRail({ items, onView }: PulseRailProps) {
         {items.map((item) => (
           <article
             key={item.id}
-            className="min-w-[270px] max-w-[270px] overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_8px_20px_-16px_hsl(var(--shadow-soft)/0.6)]"
+            className="min-w-[270px] max-w-[270px] overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)]"
           >
             <div className="relative h-24 overflow-hidden bg-[hsl(var(--secondary))]">
               <BusinessImage
@@ -75,8 +75,8 @@ export function PulseRail({ items, onView }: PulseRailProps) {
                 alt={item.business.name}
                 className="h-full w-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-              <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-caption text-white">
+              <div className="absolute inset-0 bg-black/38" />
+              <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-md border border-white/20 bg-black/35 px-2.5 py-1 text-caption text-white">
                 <PulseIcon type={item.type} />
                 <span>{item.type === 'verified_visit' ? 'Verified visit' : item.type === 'review' ? 'Review' : 'Owner update'}</span>
               </div>
@@ -96,7 +96,7 @@ export function PulseRail({ items, onView }: PulseRailProps) {
                   <p className="truncate text-ui font-medium text-[hsl(var(--foreground))]">{item.business.name}</p>
                   <p className="truncate text-caption text-[hsl(var(--muted-foreground))]">{item.business.category}</p>
                 </div>
-                <Button type="button" variant="outline" onClick={() => onView(item)} className="rounded-full px-4">
+                <Button type="button" variant="outline" onClick={() => onView(item)} className="rounded-md px-4">
                   View
                 </Button>
               </div>
