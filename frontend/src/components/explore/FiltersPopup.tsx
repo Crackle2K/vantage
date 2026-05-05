@@ -31,10 +31,10 @@ export function FiltersButton({ isOpen, onToggle }: FiltersButtonProps) {
         onToggle();
       }}
       className={cn(
-        'inline-flex h-16 shrink-0 items-center gap-2 px-6 py-2 text-ui font-medium transition-colors duration-200 whitespace-nowrap',
+        'inline-flex h-12 shrink-0 items-center gap-2 rounded-md border px-5 py-2 text-ui font-medium transition-colors duration-200 whitespace-nowrap',
         isOpen
-          ? 'bg-[hsl(var(--primary))/0.16] text-[hsl(var(--foreground))] dark:bg-[hsl(var(--primary))/0.24]'
-          : 'bg-[hsl(var(--background))/0.45] text-[hsl(var(--foreground))]/90 hover:bg-[hsl(var(--background))/0.65] dark:bg-[hsl(var(--card))/0.45]'
+          ? 'border-[hsl(var(--foreground))/0.18] bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]'
+          : 'border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))]/90 hover:bg-[hsl(var(--secondary))]'
       )}
       aria-label="Open filters"
       aria-expanded={isOpen}
@@ -109,7 +109,7 @@ export function FiltersModal({
     >
       <div
         ref={popupRef}
-        className="relative z-[70] w-full max-w-[420px] max-h-[90vh] overflow-y-auto rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-2xl animate-in fade-in-0 zoom-in-95"
+        className="relative z-[70] w-full max-w-[420px] max-h-[90vh] overflow-y-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.04)] animate-in fade-in-0 zoom-in-95"
         role="dialog"
         aria-label="Filter options"
         onClick={(e) => e.stopPropagation()}
