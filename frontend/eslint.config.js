@@ -23,6 +23,7 @@ export default defineConfig([
       // Disable stricter react-hooks rules for intentional patterns
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/purity': 'warn',
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])
