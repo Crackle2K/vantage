@@ -59,7 +59,7 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
       role="button"
       tabIndex={0}
       aria-label={`View ${businessName}`}
-      className="overflow-hidden rounded-[26px] border border-[hsl(var(--border))/0.85] bg-[hsl(var(--card))] shadow-[0_14px_34px_-24px_hsl(var(--shadow-soft)/0.65)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.68)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.045)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-[hsl(var(--secondary))]">
         <BusinessImage
@@ -68,8 +68,8 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
           alt={event.title}
           className="h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-        <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 py-1 text-caption text-white">
+        <div className="absolute inset-0 bg-black/42" />
+        <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-md border border-white/20 bg-black/35 px-3 py-1 text-caption text-white">
           <Sparkles className="h-3.5 w-3.5" />
           Owner event
         </div>
@@ -80,14 +80,14 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
       </div>
 
       <div className="space-y-3 p-4 sm:p-5">
-        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[hsl(var(--primary))/0.18] bg-[hsl(var(--primary))]/0.08 px-3 py-1 text-caption text-[hsl(var(--foreground))]">
+        <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--accent))] px-3 py-1 text-caption text-[hsl(var(--foreground))]">
           <CalendarDays className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
           <span className="truncate">{dateLabel}</span>
         </div>
 
         <p className="line-clamp-3 text-ui text-[hsl(var(--foreground))/0.9]">{event.description}</p>
 
-        <div className="rounded-2xl border border-[hsl(var(--border))/0.8] bg-[hsl(var(--background))/0.55] p-3">
+        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))/0.55] p-3">
           <p className="text-caption uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">Hosted by</p>
           <p className="text-ui font-semibold text-[hsl(var(--foreground))]">{businessName}</p>
           <div className="mt-1 flex items-center gap-1.5 text-caption text-[hsl(var(--muted-foreground))]">
@@ -103,7 +103,7 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
             eventTrigger.stopPropagation();
             onViewBusiness();
           }}
-          className="w-full rounded-full focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--card))]"
+          className="w-full rounded-md focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--card))]"
         >
           View business
         </Button>
