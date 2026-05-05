@@ -1,8 +1,8 @@
 /**
- * @fileoverview Lazy-loaded business image with category-based gradient
+ * @fileoverview Lazy-loaded business image with category-based pastel
  * fallback. Uses IntersectionObserver for deferred loading, cycles
  * through fallback image candidates on error, and animates the
- * gradient-to-image transition on load.
+ * placeholder-to-image transition on load.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -16,17 +16,17 @@ interface BusinessImageProps {
   className?: string;
 }
 
-const categoryGradients: Record<string, string> = {
-  restaurants: 'from-[#b6633a] via-[#d18d52] to-[#e2bc6d]',
-  cafes: 'from-[#6f4e37] via-[#9a7157] to-[#d0a38a]',
-  bars: 'from-[#31456b] via-[#5d63a4] to-[#8b6fcb]',
-  shopping: 'from-[#355c7d] via-[#4d7ea8] to-[#88b6d7]',
-  beauty: 'from-[#a64d79] via-[#c66e99] to-[#e2a4c3]',
-  fitness: 'from-[#2d6a4f] via-[#40916c] to-[#74c69d]',
-  health: 'from-[#347a9a] via-[#5ba6c6] to-[#9fd3ea]',
-  hotels: 'from-[#425466] via-[#64788c] to-[#a6b6c7]',
-  grocery: 'from-[#4f772d] via-[#6a994e] to-[#a7c957]',
-  default: 'from-[#566573] via-[#768391] to-[#b3bdc7]',
+const categorySurfaces: Record<string, string> = {
+  restaurants: 'bg-[#FBF3DB]',
+  cafes: 'bg-[#EDF3EC]',
+  bars: 'bg-[#E1F3FE]',
+  shopping: 'bg-[#F7F6F3]',
+  beauty: 'bg-[#FDEBEC]',
+  fitness: 'bg-[#EDF3EC]',
+  health: 'bg-[#E1F3FE]',
+  hotels: 'bg-[#F7F6F3]',
+  grocery: 'bg-[#EDF3EC]',
+  default: 'bg-[#F7F6F3]',
 };
 
 function normalizeCategory(category?: string): string {
@@ -47,7 +47,7 @@ function normalizeCategory(category?: string): string {
 }
 
 /**
- * Renders a business image with lazy loading and a category-based gradient
+ * Renders a business image with lazy loading and a category-based pastel
  * placeholder. Falls back through candidate images on load error.
  *
  * @param {string} [primaryImage] - Preferred image URL.
@@ -106,7 +106,7 @@ export function BusinessImage({ primaryImage, imageCandidates, category, alt, cl
   }, [activeImage, shouldLoad]);
 
   const normalizedCategory = normalizeCategory(category);
-  const gradientClass = categoryGradients[normalizedCategory] || categoryGradients.default;
+  const surfaceClass = categorySurfaces[normalizedCategory] || categorySurfaces.default;
   const canRenderImage = shouldLoad && !!activeImage && !hasError;
 
   return (
@@ -118,9 +118,8 @@ export function BusinessImage({ primaryImage, imageCandidates, category, alt, cl
           isLoaded ? 'scale-105 opacity-0' : 'scale-100 opacity-100'
         )}
       >
-        <div className={cn('absolute inset-0 bg-gradient-to-br', gradientClass)} />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.16),transparent_42%),linear-gradient(180deg,rgba(12,12,14,0.08),rgba(12,12,14,0.36))]" />
-        <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/50 to-transparent" />
+        <div className={cn('absolute inset-0', surfaceClass)} />
+        <div className="absolute inset-6 border border-[hsl(var(--border))]" />
       </div>
 
       {canRenderImage && (
@@ -128,8 +127,8 @@ export function BusinessImage({ primaryImage, imageCandidates, category, alt, cl
           src={activeImage}
           alt={alt}
           className={cn(
-            'relative h-full w-full object-cover object-center saturate-[1.04] contrast-[1.02] transition-all duration-500 will-change-transform',
-            isLoaded ? 'scale-100 opacity-100 blur-0 group-hover:scale-[1.04] motion-reduce:group-hover:scale-100' : 'scale-[1.03] opacity-0 blur-xl'
+            'relative h-full w-full object-cover object-center saturate-[0.82] contrast-[1.02] transition-opacity duration-500',
+            isLoaded ? 'opacity-100 blur-0' : 'opacity-0 blur-xl'
           )}
           loading="lazy"
           decoding="async"
