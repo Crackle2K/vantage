@@ -1,5 +1,5 @@
 /**
- * @fileoverview Floating pill navigation header and slide-out side menu.
+ * @fileoverview Minimal navigation header and slide-out side menu.
  * Displays the Vantage logo, nav links, theme toggle, and auth-aware
  * user controls (sign-in button for guests, profile + hamburger for
  * logged-in users).
@@ -13,7 +13,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 
 /**
- * Top navigation bar rendered as a floating pill. Shows logo and auth
+ * Top navigation bar rendered as a compact editorial bar. Shows logo and auth
  * controls; logged-in users get a hamburger that opens a right-side
  * drawer with nav links, theme toggle, dashboard/claim links (for
  * business owners), and sign-out.
@@ -67,29 +67,12 @@ export function Header() {
 
 	return (
 		<>
-			{/* Floating pill navbar */}
-			<header
-				className="fixed top-3 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1.5rem)] sm:w-[calc(100%-2rem)] max-w-xl"
-				style={{
-					background: `linear-gradient(135deg,
-						hsl(var(--background)) 0%,
-						hsl(var(--card)) 45%,
-						hsl(var(--background)) 100%)`,
-					borderRadius: '1rem',
-					boxShadow: `
-						0 0 0 1px hsl(var(--border) / 0.25),
-						0 2px 16px -2px hsl(var(--shadow-soft) / 0.2),
-						0 8px 32px -8px hsl(var(--primary) / 0.12),
-						0 16px 48px -16px hsl(var(--shadow-soft) / 0.15),
-						inset 0 1px 0 0 hsl(var(--foreground) / 0.06),
-						inset 0 -1px 0 0 hsl(var(--shadow-soft) / 0.05)
-					`,
-				}}
-			>
+			{/* Minimal navbar */}
+			<header className="fixed top-3 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1.5rem)] sm:w-[calc(100%-2rem)] max-w-xl rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))/0.94] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)] backdrop-blur-md">
 				<div className="relative flex h-14 sm:h-16 items-center justify-between px-4 sm:px-5">
 					{/* Left: Logo + Brand */}
 					<Link to="/" className="flex items-center gap-2">
-						<img className="h-8 w-8" src="/Images/Vantage.svg" alt="Vantage Logo" />
+						<img className="h-8 w-8" src="/Images/Vantage.png" alt="Vantage Logo" />
 						<span className="font-heading text-lg font-bold tracking-tight text-[hsl(var(--foreground))]">Vantage</span>
 					</Link>
 
@@ -100,7 +83,7 @@ export function Header() {
 								{/* Hamburger menu button */}
 								<button
 									onClick={() => setSideMenuOpen(true)}
-									className="flex h-9 w-9 items-center justify-center rounded-xl text-[hsl(var(--muted-foreground))] transition-all duration-200 hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))] hover:scale-105 active:scale-95"
+									className="flex h-9 w-9 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] transition-colors duration-200 hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))] active:scale-[0.98]"
 									aria-label="Open menu"
 								>
 									<Menu className="h-5 w-5" />
@@ -109,7 +92,7 @@ export function Header() {
 								{/* Profile picture */}
 								<Link
 									to={`/user/${user.id}`}
-									className="flex h-9 w-9 items-center justify-center rounded-full overflow-hidden ring-2 ring-[hsl(var(--border)/0.5)] transition-all duration-300 hover:ring-[hsl(var(--primary)/0.7)] hover:scale-105 hover:shadow-[0_0_12px_hsl(var(--primary)/0.3)]"
+									className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border border-[hsl(var(--border))] transition-colors duration-200 hover:bg-[hsl(var(--secondary))]"
 								>
 									{user.profile_picture ? (
 										<img
@@ -129,7 +112,7 @@ export function Header() {
 								{/* Theme toggle */}
 								<button
 									onClick={toggleTheme}
-									className="flex h-9 w-9 items-center justify-center rounded-xl text-[hsl(var(--muted-foreground))] transition-all duration-200 hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))] hover:scale-105 active:scale-95"
+									className="flex h-9 w-9 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] transition-colors duration-200 hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))] active:scale-[0.98]"
 									aria-label="Toggle theme"
 								>
 									{isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -138,7 +121,7 @@ export function Header() {
 								{/* Sign In */}
 								<Link
 									to="/login"
-									className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[13px] font-semibold text-primary-foreground transition-all duration-200 hover:bg-primary/90 hover:scale-105 hover:shadow-[0_4px_12px_hsl(var(--primary)/0.35)] active:scale-95"
+									className="flex h-9 items-center gap-2 rounded-md border border-primary bg-primary px-4 text-[13px] font-semibold text-primary-foreground transition-colors duration-200 hover:bg-primary/85 active:scale-[0.98]"
 								>
 									<LogIn className="h-4 w-4" />
 									Sign In
@@ -165,7 +148,7 @@ export function Header() {
 					{/* Panel */}
 					<aside
 						className={cn(
-							'fixed top-0 right-0 z-70 h-full w-72 bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-[-8px_0_32px_-8px_hsl(var(--shadow-soft)/0.4)] transition-transform duration-300 ease-out',
+							'fixed top-0 right-0 z-70 h-full w-72 bg-[hsl(var(--card))] border-l border-[hsl(var(--border))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.04)] transition-transform duration-300 ease-out',
 							sideMenuOpen ? 'translate-x-0' : 'translate-x-full'
 						)}
 						role="dialog"
