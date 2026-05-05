@@ -40,7 +40,9 @@ function resolveApiUrl(): string {
     if (!frontendIsLocal && configuredIsLocal) {
       return '/api';
     }
-  } catch {}
+  } catch {
+    // Ignore malformed configured URLs and fall back to the normalized API base.
+  }
 
   return apiBase;
 }
@@ -83,7 +85,9 @@ async function throwApiError(response: Response, fallback: string): Promise<neve
     if (data?.detail && typeof data.detail === 'string') {
       message = data.detail;
     }
-  } catch {}
+  } catch {
+    // Ignore non-JSON error bodies and use the HTTP fallback message.
+  }
   throw new Error(message);
 }
 
