@@ -122,7 +122,7 @@ export default function ActivityFeedPage() {
       setLoading(false)
       setLoadingMore(false)
     }
-  }, [user?.id])
+  }, [user])
 
   useEffect(() => {
     loadFeed(1)
@@ -240,7 +240,7 @@ export default function ActivityFeedPage() {
     } finally {
       setPostPending(false)
     }
-  }, [postDraft, isAuthenticated, postPending, user?.id])
+  }, [postDraft, isAuthenticated, postPending, user])
 
   useEffect(() => {
     if (isAuthenticated) {
