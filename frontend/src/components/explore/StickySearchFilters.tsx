@@ -42,7 +42,7 @@ export function StickySearchFilters({
   onFiltersToggle,
 }: StickySearchFiltersProps) {
   return (
-    <section className="sticky top-16 z-40 border-b border-[hsl(var(--border))/0.7] bg-[hsl(var(--background))] px-6 py-3 sm:px-10">
+    <section className="sticky top-16 z-40 border-b border-[hsl(var(--border))/0.7] bg-[hsl(var(--background))/0.96] px-6 py-3 backdrop-blur-sm sm:px-10">
       <div className="space-y-3">
         {}
         <div className="relative">
@@ -51,7 +51,7 @@ export function StickySearchFilters({
             value={searchQuery}
             onChange={(event) => onSearchQueryChange(event.target.value)}
             placeholder="Search businesses..."
-            className="h-12 rounded-full border-[hsl(var(--primary))/0.22] bg-[hsl(var(--background))/0.55] pl-11"
+            className="h-12 rounded-md border-[hsl(var(--border))] bg-[hsl(var(--card))] pl-11"
           />
         </div>
 
