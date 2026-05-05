@@ -5,7 +5,7 @@
  * Redirects authenticated users to the explore page.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
@@ -51,7 +51,7 @@ export default function SignUpPage() {
   const [error, setError] = useState('');
   const [widgetId, setWidgetId] = useState<number | null>(null);
   const [recaptchaToken, setRecaptchaToken] = useState('');
-  const recaptchaRef = { current: null as HTMLDivElement | null };
+  const recaptchaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!RECAPTCHA_SITE_KEY || widgetId !== null) return;
