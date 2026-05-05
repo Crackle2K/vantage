@@ -2,7 +2,7 @@
 # https://developers.openai.com/codex/config-reference
 
 # ── Model ──────────────────────────────────────────────
-# model = "o3"                       # Override if you have access to a specific model
+# model = "5.4"                       # Override if you have access to a specific model
 # model_reasoning_effort = "medium"   # minimal | low | medium | high | xhigh
 
 # ── Permissions ────────────────────────────────────────
