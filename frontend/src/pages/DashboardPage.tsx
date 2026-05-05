@@ -43,6 +43,27 @@ export default function DashboardPage() {
   const [isCreatingEvent, setIsCreatingEvent] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const selectBusiness = useCallback(async (biz: Business) => {
+    setSelectedBiz(biz)
+    const bizId = biz.id || biz._id || ''
+    try {
+      const [bizReviews, bizDeals, bizEvents, bizSub, bizActivity] = await Promise.all([
+        api.getBusinessReviews(bizId),
+        api.getBusinessDeals(bizId),
+        api.getOwnerEvents({ businessId: bizId, includePast: true, limit: 12 }),
+        api.getBusinessSubscription(bizId),
+        api.getBusinessActivity(bizId).catch(() => null),
+      ])
+      setReviews(bizReviews)
+      setDeals(bizDeals)
+      setOwnerEvents(bizEvents)
+      setSubscription(bizSub)
+      setActivityStatus(bizActivity)
+    } catch (err) {
+      console.error('Failed to load business data:', err)
+    }
+  }, [])
+
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true)
@@ -63,33 +84,12 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [selectBusiness, user])
 
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'business_owner') return
     loadDashboard()
   }, [isAuthenticated, user, loadDashboard])
-
-  const selectBusiness = async (biz: Business) => {
-    setSelectedBiz(biz)
-    const bizId = biz.id || biz._id || ''
-    try {
-      const [bizReviews, bizDeals, bizEvents, bizSub, bizActivity] = await Promise.all([
-        api.getBusinessReviews(bizId),
-        api.getBusinessDeals(bizId),
-        api.getOwnerEvents({ businessId: bizId, includePast: true, limit: 12 }),
-        api.getBusinessSubscription(bizId),
-        api.getBusinessActivity(bizId).catch(() => null),
-      ])
-      setReviews(bizReviews)
-      setDeals(bizDeals)
-      setOwnerEvents(bizEvents)
-      setSubscription(bizSub)
-      setActivityStatus(bizActivity)
-    } catch (err) {
-      console.error('Failed to load business data:', err)
-    }
-  }
 
   const handleCreateEvent = async () => {
     if (!selectedBiz) return
