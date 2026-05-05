@@ -69,7 +69,9 @@ function getCached(key: string): CacheEntry | null {
 function setCache(key: string, businesses: Business[], lanes: ExploreLane[]) {
   try {
     sessionStorage.setItem(key, JSON.stringify({ businesses, lanes, ts: Date.now() }));
-  } catch {}
+  } catch {
+    // Session storage may be unavailable; cache writes are optional.
+  }
 }
 
 function getBusinessId(business: Business) {
@@ -511,7 +513,9 @@ export default function Businesses() {
     try {
       const fetched = await api.getBusiness(event.business_id);
       openBusiness(fetched);
-    } catch {}
+    } catch {
+      // If the related business cannot be fetched, keep the current grid state.
+    }
   };
 
   const handlePreferencesSaved = (updatedUser: User) => {
