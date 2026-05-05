@@ -120,7 +120,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Call backend logout endpoint to clear httpOnly cookie
     try {
       await api.logout();
-    } catch {}
+    } catch {
+      // Continue local sign-out even if the network request fails.
+    }
     setUser(null);
   }, []);
 
