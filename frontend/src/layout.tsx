@@ -29,14 +29,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="col-span-2 md:col-span-1">
               <Link to="/" className="flex items-center gap-2.5 mb-3">
                 <img 
-                  src="/Images/Vantage.svg" 
+                  src="/Images/Vantage.png" 
                   alt="Vantage Logo" 
                   className="w-8 h-8 object-contain"
                 />
                 <span className="font-bold text-body text-[hsl(var(--foreground))] font-heading">Vantage</span>
               </Link>
               <p className="text-ui text-[hsl(var(--muted-foreground))] leading-relaxed">
-                Discover and support amazing local businesses in your community.
+                Local discovery ranked by fresh, credible community activity.
               </p>
             </div>
             <div>
