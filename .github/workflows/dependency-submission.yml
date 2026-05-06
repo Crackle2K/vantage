@@ -25,7 +25,6 @@ jobs:
         uses: advanced-security/component-detection-dependency-submission-action@v0.1.3
         with:
           filePath: backend
-          detectorsFilter: Pip
           detector-name: python-backend-dependency-submission
           detector-version: 1.0.0
           detector-url: https://github.com/advanced-security/component-detection-dependency-submission-action
