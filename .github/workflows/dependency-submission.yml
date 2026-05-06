@@ -32,4 +32,4 @@ jobs:
           detectorsFilter: Pip
           detector-name: python-backend-dependency-submission
           detector-version: 1.0.0
-          detector-url: https://github.com/actions/component-detection-dependency-submission-action
+          detector-url: https://github.com/advanced-security/component-detection-dependency-submission-action
