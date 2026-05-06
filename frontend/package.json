@@ -20,7 +20,7 @@
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "react-router-dom": "^7.14.2",
+    "react-router-dom": "^7.15.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.3"
   },
@@ -35,9 +35,9 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
-    "postcss": "^8.5.13",
+    "postcss": "^8.5.14",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.59.1",
+    "typescript-eslint": "^8.59.2",
     "vite": "^8.0.10",
     "vite-plugin-compression": "^0.5.1"
   }
