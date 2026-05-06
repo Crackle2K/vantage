@@ -1,0 +1,35 @@
+name: Dependency Submission
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  submit-python-backend-dependencies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: Submit backend dependency graph
+        uses: actions/component-detection-dependency-submission-action@374343effede691df3a5ffaf36b4e7acab919590
+        with:
+          filePath: backend
+          detectorsFilter: Pip
+          detector-name: python-backend-dependency-submission
+          detector-version: 1.0.0
+          detector-url: https://github.com/actions/component-detection-dependency-submission-action
