@@ -21,10 +21,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install backend dependencies
-        working-directory: backend
-        run: pip install -r requirements.txt
-
       - name: Submit backend dependency graph
         uses: advanced-security/component-detection-dependency-submission-action@v0.1.3
         with:
