@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function LoginPage() {
   const navigate = useNavigate();
   const { signIn, signInWithGoogle, isAuthenticated } = useAuth();
+  const hasGoogleOAuth = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,8 +24,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   if (isAuthenticated) {
-    navigate('/businesses');
-    return null;
+    return <Navigate to="/businesses" replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,26 +140,28 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {}
-          <div className="flex items-center gap-4 my-6">
-            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
-            <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
-            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
-          </div>
+          {hasGoogleOAuth && (
+            <>
+              <div className="flex items-center gap-4 my-6">
+                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+                <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
+                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+              </div>
 
-          {}
-          <div className="flex justify-center google-btn-override">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              useOneTap
-              theme="outline"
-              size="large"
-              text="signin_with"
-              shape="rectangular"
-              width="100%"
-            />
-          </div>
+              <div className="flex justify-center google-btn-override">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  useOneTap
+                  theme="outline"
+                  size="large"
+                  text="signin_with"
+                  shape="rectangular"
+                  width="100%"
+                />
+              </div>
+            </>
+          )}
 
           {}
           <div className="mt-6 text-center">

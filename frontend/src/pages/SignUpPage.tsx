@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +41,8 @@ declare global {
 export default function SignUpPage() {
   const navigate = useNavigate();
   const { signUp, signInWithGoogle, isAuthenticated } = useAuth();
+  const hasGoogleOAuth = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
+  const recaptchaEnabled = Boolean(RECAPTCHA_SITE_KEY);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,7 +56,7 @@ export default function SignUpPage() {
   const recaptchaRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!RECAPTCHA_SITE_KEY || widgetId !== null) return;
+    if (!recaptchaEnabled || widgetId !== null) return;
 
     let pollId: number | null = null;
     const tryRender = () => {
@@ -86,11 +88,10 @@ export default function SignUpPage() {
     return () => {
       if (pollId !== null) window.clearInterval(pollId);
     };
-  }, [widgetId]);
+  }, [recaptchaEnabled, widgetId]);
 
   if (isAuthenticated) {
-    navigate('/businesses');
-    return null;
+    return <Navigate to="/businesses" replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,13 +107,20 @@ export default function SignUpPage() {
       return;
     }
 
-    if (!recaptchaToken) {
+    if (recaptchaEnabled && !recaptchaToken) {
       setError('Please complete the CAPTCHA verification');
       return;
     }
 
     setLoading(true);
-    const { error: err } = await signUp(name, email, password, role, recaptchaToken, RECAPTCHA_SIGNUP_ACTION);
+    const { error: err } = await signUp(
+      name,
+      email,
+      password,
+      role,
+      recaptchaEnabled ? recaptchaToken : 'recaptcha-not-configured',
+      RECAPTCHA_SIGNUP_ACTION
+    );
 
     if (err) {
       setError(err);
@@ -252,16 +260,25 @@ export default function SignUpPage() {
                 autoComplete="new-password" className="h-11 rounded-xl bg-[hsl(var(--background))]" disabled={loading} minLength={6} />
             </div>
 
-            <div
-              ref={recaptchaRef}
-              className="g-recaptcha min-h-20"
-              data-sitekey={RECAPTCHA_SITE_KEY}
-              data-action={RECAPTCHA_SIGNUP_ACTION}
-            />
+            {recaptchaEnabled && (
+              <div
+                ref={recaptchaRef}
+                className="g-recaptcha min-h-20"
+                data-sitekey={RECAPTCHA_SITE_KEY}
+                data-action={RECAPTCHA_SIGNUP_ACTION}
+              />
+            )}
 
             <Button
               type="submit"
-              disabled={loading || !name || !email || !password || !confirmPassword || !recaptchaToken}
+              disabled={
+                loading ||
+                !name ||
+                !email ||
+                !password ||
+                !confirmPassword ||
+                (recaptchaEnabled && !recaptchaToken)
+              }
               className="w-full h-11 gradient-primary text-on-primary border-0 rounded-xl shadow-md shadow-brand/20 hover:shadow-lg transition-all font-medium"
             >
               {loading ? (
@@ -272,25 +289,27 @@ export default function SignUpPage() {
             </Button>
           </form>
 
-          {}
-          <div className="flex items-center gap-4 my-6">
-            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
-            <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
-            <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
-          </div>
+          {hasGoogleOAuth && (
+            <>
+              <div className="flex items-center gap-4 my-6">
+                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+                <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
+                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+              </div>
 
-          {}
-          <div className="flex justify-center google-btn-override">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-              theme="outline"
-              size="large"
-              text="signup_with"
-              shape="rectangular"
-              width="100%"
-            />
-          </div>
+              <div className="flex justify-center google-btn-override">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={handleGoogleError}
+                  theme="outline"
+                  size="large"
+                  text="signup_with"
+                  shape="rectangular"
+                  width="100%"
+                />
+              </div>
+            </>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-ui text-[hsl(var(--muted-foreground))]">
