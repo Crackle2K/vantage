@@ -366,8 +366,8 @@ async def _fetch_place_profile_details(client: httpx.AsyncClient, place_id: str)
             "photo_references": photo_refs,
             "image_urls": photo_urls,
         }
-    except Exception as e:
-        print(f"Google Details profile lookup failed for {place_id}: {type(e).__name__}")
+    except Exception:
+        logger.exception("Google Details profile lookup failed")
         return {}
 
 async def enrich_business_profile_details(business_docs: List[Dict]) -> dict[str, dict]:
