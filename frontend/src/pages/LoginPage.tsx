@@ -10,8 +10,23 @@ import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertCircle, Loader2, LogIn, Eye, EyeOff, Store } from 'lucide-react';
+import { AlertCircle, Loader2, LogIn, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+
+const loginSignals = [
+  {
+    label: 'Recent movement',
+    detail: 'See which rooms are active now, not which ones peaked years ago.'
+  },
+  {
+    label: 'Credible trust',
+    detail: 'Weighted reviews and return visits keep noisy rankings in check.'
+  },
+  {
+    label: 'Live updates',
+    detail: 'Hours, events, and local momentum stay current across the map.'
+  }
+]
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -66,30 +81,63 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 gradient-mesh">
-      <div className="w-full max-w-md relative animate-fade-in-up">
-        <div className="card-surface rounded-2xl p-8 shadow-xl">
-          {}
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-4 shadow-lg shadow-brand/25">
-              <Store className="w-7 h-7 text-brand-on-primary" />
-            </div>
-            <h1 className="text-subheading font-bold text-[hsl(var(--foreground))] mb-1 font-heading">Welcome <span className="font-serif">back</span></h1>
-            <p className="text-[hsl(var(--muted-foreground))] text-ui font-sub">Sign in to your Vantage account</p>
+    <div className="auth-editorial">
+      <div className="auth-editorial__shell animate-fade-in-up">
+        <section className="auth-editorial__story">
+          <div className="auth-editorial__media" aria-hidden="true">
+            <img
+              src="/Images/Activity.png"
+              alt=""
+            />
+            <span className="auth-editorial__wordmark">VANTAGE</span>
           </div>
 
-          {}
+          <div className="auth-editorial__story-body">
+            <p className="min-kicker">Return to the neighborhood</p>
+            <h1 className="auth-editorial__headline">
+              Fresh local signal, not stale ranking tables.
+            </h1>
+            <p className="auth-editorial__lede">
+              Sign back in to explore businesses ranked by recent activity,
+              credibility-weighted reviews, and current owner updates.
+            </p>
+
+            <div className="auth-editorial__story-grid">
+              {loginSignals.map((signal) => (
+                <article key={signal.label} className="auth-editorial__story-card">
+                  <span>{signal.label}</span>
+                  <strong>{signal.detail}</strong>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="auth-editorial__panel">
+          <div className="auth-editorial__panel-badge">
+            <LogIn className="h-4 w-4" />
+            Member Access
+          </div>
+
+          <div className="auth-editorial__panel-copy">
+            <h2>Welcome back</h2>
+            <p>
+              Sign in to keep tracking trusted local movement around you.
+            </p>
+          </div>
+
           {error && (
-            <div className="mb-6 p-3.5 rounded-xl bg-error dark:bg-error/30 border border-error dark:border-error/50 flex items-start gap-3 animate-scale-in">
-              <AlertCircle className="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
-              <p className="text-ui text-error dark:text-error">{error}</p>
+            <div className="auth-editorial__error animate-scale-in">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <p>{error}</p>
             </div>
           )}
 
-          {}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-ui font-medium text-[hsl(var(--foreground))]">Email</Label>
+          <form onSubmit={handleSubmit} className="auth-editorial__form">
+            <div className="auth-editorial__field">
+              <Label htmlFor="email" className="auth-editorial__label">
+                Email
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -98,13 +146,15 @@ export default function LoginPage() {
                 placeholder="you@example.com"
                 required
                 autoComplete="email"
-                className="h-11 rounded-xl bg-[hsl(var(--background))]"
+                className="auth-editorial__input"
                 disabled={loading}
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-ui font-medium text-[hsl(var(--foreground))]">Password</Label>
+            <div className="auth-editorial__field">
+              <Label htmlFor="password" className="auth-editorial__label">
+                Password
+              </Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -114,15 +164,15 @@ export default function LoginPage() {
                   placeholder="Enter your password"
                   required
                   autoComplete="current-password"
-                  className="h-11 rounded-xl pr-10 bg-[hsl(var(--background))]"
+                  className="auth-editorial__input pr-12"
                   disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+                  className="auth-editorial__toggle"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
@@ -130,25 +180,23 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading || !email || !password}
-              className="w-full h-11 gradient-primary text-on-primary border-0 rounded-xl shadow-md shadow-brand/20 hover:shadow-lg transition-all font-medium"
+              className="auth-editorial__submit min-primary-button min-primary-button--large"
             >
               {loading ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Signing in...</>
+                <><Loader2 className="h-4 w-4 animate-spin" /> Signing in...</>
               ) : (
-                <><LogIn className="w-4 h-4 mr-2" /> Sign In</>
+                <><LogIn className="h-4 w-4" /> Sign In</>
               )}
             </Button>
           </form>
 
           {hasGoogleOAuth && (
             <>
-              <div className="flex items-center gap-4 my-6">
-                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
-                <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
-                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+              <div className="auth-editorial__divider">
+                <span>or continue</span>
               </div>
 
-              <div className="flex justify-center google-btn-override">
+              <div className="google-btn-override flex justify-center">
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
                   onError={handleGoogleError}
@@ -163,16 +211,13 @@ export default function LoginPage() {
             </>
           )}
 
-          {}
-          <div className="mt-6 text-center">
-            <p className="text-ui text-[hsl(var(--muted-foreground))]">
-              Don't have an account?{' '}
-              <Link to="/signup" className="font-medium text-[hsl(var(--primary))] hover:underline">
-                Create one
-              </Link>
-            </p>
-          </div>
-        </div>
+          <p className="auth-editorial__switch">
+            Don't have an account?{' '}
+            <Link to="/signup">
+              Create one
+            </Link>
+          </p>
+        </section>
       </div>
     </div>
   );

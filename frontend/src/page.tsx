@@ -250,7 +250,6 @@ const heroImageUrl = 'https://picsum.photos/seed/vantage-neighborhood-restaurant
 function HomePage() {
   const [newsletterEmailValue, setNewsletterEmailValue] = useState('');
   const [openFaqIndex, setOpenFaqIndex] = useState(0);
-  const [isPastHero, setIsPastHero] = useState(false);
   const landingRootRef = useRef<HTMLElement | null>(null);
   const marqueeTrackRef = useRef<HTMLDivElement | null>(null);
   const heroSectionRef = useRef<HTMLElement | null>(null);
@@ -523,25 +522,6 @@ function HomePage() {
     };
   }, [marqueeLoopItems.length]);
 
-  useEffect(() => {
-    const heroSection = heroSectionRef.current;
-    if (!heroSection) return;
-
-    const updateHeroBoundary = (): void => {
-      const { bottom } = heroSection.getBoundingClientRect();
-      setIsPastHero(bottom <= 0);
-    };
-
-    updateHeroBoundary();
-    window.addEventListener('scroll', updateHeroBoundary, { passive: true });
-    window.addEventListener('resize', updateHeroBoundary);
-
-    return () => {
-      window.removeEventListener('scroll', updateHeroBoundary);
-      window.removeEventListener('resize', updateHeroBoundary);
-    };
-  }, []);
-
   const handleNewsletterFormSubmit = (formEvent: FormEvent<HTMLFormElement>): void => {
     formEvent.preventDefault();
     setNewsletterEmailValue('');
@@ -553,18 +533,6 @@ function HomePage() {
 
   return (
     <main className="min-landing" ref={landingRootRef}>
-      <header className={`min-nav ${isPastHero ? 'min-nav--transparent' : ''}`}>
-        <Link to="/" className="min-nav__brand" aria-label="Vantage homepage">
-          <img src="/Images/Vantage.png" alt="Vantage logo" className="min-nav__logo" />
-          <span>VANTAGE</span>
-        </Link>
-
-        <div className="min-nav__actions">
-          <Link to="/login" className="min-secondary-button min-nav__button">SIGN IN</Link>
-          <Link to="/login" className="min-primary-button min-nav__button">LOG IN</Link>
-        </div>
-      </header>
-
       <section className="min-hero min-hero--image" ref={heroSectionRef}>
         <div className="min-hero-shell">
           <div className="min-hero-visual min-reveal" ref={heroFrameRef} aria-label="Neighborhood restaurant at night">

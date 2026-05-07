@@ -17,6 +17,20 @@ import { cn } from '@/lib/utils';
 
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 const RECAPTCHA_SIGNUP_ACTION = 'SIGNUP';
+const signUpSignals = [
+  {
+    label: 'Earned visibility',
+    detail: 'Ranking comes from recent local activity, never from claiming a listing.'
+  },
+  {
+    label: 'Trust first',
+    detail: 'Credibility-weighted reviews and return behavior surface durable local picks.'
+  },
+  {
+    label: 'Live operator rhythm',
+    detail: 'Owners can publish current events and availability without buying placement.'
+  }
+]
 
 type RecaptchaEnterprise = {
   ready: (cb: () => void) => void;
@@ -158,106 +172,180 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4 gradient-mesh">
-      <div className="w-full max-w-md relative animate-fade-in-up">
-        <div className="card-surface rounded-2xl p-8 shadow-xl">
-          {}
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center mx-auto mb-4 shadow-lg shadow-brand/25">
-              <UserPlus className="w-7 h-7 text-brand-on-primary" />
-            </div>
-            <h1 className="text-subheading font-bold text-[hsl(var(--foreground))] mb-1 font-heading">Create <span className="font-serif">account</span></h1>
-            <p className="text-[hsl(var(--muted-foreground))] text-ui font-sub">Join Vantage to discover local businesses</p>
+    <div className="auth-editorial">
+      <div className="auth-editorial__shell animate-fade-in-up">
+        <section className="auth-editorial__story">
+          <div className="auth-editorial__media" aria-hidden="true">
+            <img
+              src="/Images/Explore.png"
+              alt=""
+            />
+            <span className="auth-editorial__wordmark">VANTAGE</span>
           </div>
 
-          {}
+          <div className="auth-editorial__story-body">
+            <p className="min-kicker">Trust-ranked discovery</p>
+            <h1 className="auth-editorial__headline">
+              Build local presence without buying rank.
+            </h1>
+            <p className="auth-editorial__lede">
+              Create an account to save places, leave trusted reviews, or
+              manage business updates while Vantage keeps ranking earned
+              through real neighborhood activity.
+            </p>
+
+            <div className="auth-editorial__story-grid">
+              {signUpSignals.map((signal) => (
+                <article key={signal.label} className="auth-editorial__story-card">
+                  <span>{signal.label}</span>
+                  <strong>{signal.detail}</strong>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="auth-editorial__panel">
+          <div className="auth-editorial__panel-badge">
+            <UserPlus className="h-4 w-4" />
+            New Account
+          </div>
+
+          <div className="auth-editorial__panel-copy">
+            <h2>Create account</h2>
+            <p>
+              Join as a customer or business owner and keep your local signal
+              current from day one.
+            </p>
+          </div>
+
           {error && (
-            <div className="mb-6 p-3.5 rounded-xl bg-error dark:bg-error/30 border border-error dark:border-error/50 flex items-start gap-3 animate-scale-in">
-              <AlertCircle className="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
-              <p className="text-ui text-error dark:text-error">{error}</p>
+            <div className="auth-editorial__error animate-scale-in">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <p>{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {}
-            <div className="space-y-1.5">
-              <Label className="text-ui font-medium text-[hsl(var(--foreground))]">Account type</Label>
-              <div className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSubmit} className="auth-editorial__form">
+            <div className="auth-editorial__field">
+              <Label className="auth-editorial__label">Account type</Label>
+              <div className="auth-editorial__role-grid">
                 <button
                   type="button"
                   onClick={() => setRole('customer')}
                   className={cn(
-                    "flex items-center gap-2.5 p-3 rounded-xl border-2 transition-all duration-200 text-left",
-                    role === 'customer'
-                      ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/5"
-                      : "border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/40"
+                    'auth-editorial__role-card',
+                    role === 'customer' && 'auth-editorial__role-card--active'
                   )}
                 >
-                  <div className={cn(
-                    "w-9 h-9 rounded-lg flex items-center justify-center",
-                    role === 'customer' ? "gradient-primary text-brand-on-primary" : "bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]"
-                  )}>
-                    <User className="w-4 h-4" />
+                  <div className="auth-editorial__role-icon">
+                    <User className="h-4 w-4" />
                   </div>
                   <div>
-                    <div className="text-ui font-semibold text-[hsl(var(--foreground))]">Customer</div>
-                    <div className="text-caption text-[hsl(var(--muted-foreground))]">Discover & review</div>
+                    <div className="auth-editorial__role-title">Customer</div>
+                    <div className="auth-editorial__role-detail">
+                      Discover, save, and review places with credible local context.
+                    </div>
                   </div>
                 </button>
                 <button
                   type="button"
                   onClick={() => setRole('business_owner')}
                   className={cn(
-                    "flex items-center gap-2.5 p-3 rounded-xl border-2 transition-all duration-200 text-left",
-                    role === 'business_owner'
-                      ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/5"
-                      : "border-[hsl(var(--border))] hover:border-[hsl(var(--primary))]/40"
+                    'auth-editorial__role-card',
+                    role === 'business_owner' && 'auth-editorial__role-card--active'
                   )}
                 >
-                  <div className={cn(
-                    "w-9 h-9 rounded-lg flex items-center justify-center",
-                    role === 'business_owner' ? "gradient-primary text-brand-on-primary" : "bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]"
-                  )}>
-                    <Store className="w-4 h-4" />
+                  <div className="auth-editorial__role-icon">
+                    <Store className="h-4 w-4" />
                   </div>
                   <div>
-                    <div className="text-ui font-semibold text-[hsl(var(--foreground))]">Business</div>
-                    <div className="text-caption text-[hsl(var(--muted-foreground))]">List & manage</div>
+                    <div className="auth-editorial__role-title">Business Owner</div>
+                    <div className="auth-editorial__role-detail">
+                      Manage listing details, events, and live updates without a rank boost.
+                    </div>
                   </div>
                 </button>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="name" className="text-ui font-medium text-[hsl(var(--foreground))]">Full Name</Label>
-              <Input id="name" type="text" value={name} onChange={e => setName(e.target.value)}
-                placeholder="John Doe" required autoComplete="name" className="h-11 rounded-xl bg-[hsl(var(--background))]" disabled={loading} />
+            <div className="auth-editorial__field">
+              <Label htmlFor="name" className="auth-editorial__label">
+                Full Name
+              </Label>
+              <Input
+                id="name"
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="John Doe"
+                required
+                autoComplete="name"
+                className="auth-editorial__input"
+                disabled={loading}
+              />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-ui font-medium text-[hsl(var(--foreground))]">Email</Label>
-              <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="you@example.com" required autoComplete="email" className="h-11 rounded-xl bg-[hsl(var(--background))]" disabled={loading} />
+            <div className="auth-editorial__field">
+              <Label htmlFor="email" className="auth-editorial__label">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+                className="auth-editorial__input"
+                disabled={loading}
+              />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-ui font-medium text-[hsl(var(--foreground))]">Password</Label>
+            <div className="auth-editorial__field">
+              <Label htmlFor="password" className="auth-editorial__label">
+                Password
+              </Label>
               <div className="relative">
-                <Input id="password" type={showPassword ? 'text' : 'password'} value={password}
-                  onChange={e => setPassword(e.target.value)} placeholder="Min 6 characters" required
-                  autoComplete="new-password" className="h-11 rounded-xl pr-10 bg-[hsl(var(--background))]" disabled={loading} minLength={6} />
-                <button type="button" onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  required
+                  autoComplete="new-password"
+                  className="auth-editorial__input pr-12"
+                  disabled={loading}
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="auth-editorial__toggle"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="confirmPassword" className="text-ui font-medium text-[hsl(var(--foreground))]">Confirm Password</Label>
-              <Input id="confirmPassword" type="password" value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)} placeholder="Re-enter password" required
-                autoComplete="new-password" className="h-11 rounded-xl bg-[hsl(var(--background))]" disabled={loading} minLength={6} />
+            <div className="auth-editorial__field">
+              <Label htmlFor="confirmPassword" className="auth-editorial__label">
+                Confirm Password
+              </Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                required
+                autoComplete="new-password"
+                className="auth-editorial__input"
+                disabled={loading}
+                minLength={6}
+              />
             </div>
 
             {recaptchaEnabled && (
@@ -279,25 +367,23 @@ export default function SignUpPage() {
                 !confirmPassword ||
                 (recaptchaEnabled && !recaptchaToken)
               }
-              className="w-full h-11 gradient-primary text-on-primary border-0 rounded-xl shadow-md shadow-brand/20 hover:shadow-lg transition-all font-medium"
+              className="auth-editorial__submit min-primary-button min-primary-button--large"
             >
               {loading ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating account...</>
+                <><Loader2 className="h-4 w-4 animate-spin" /> Creating account...</>
               ) : (
-                <><UserPlus className="w-4 h-4 mr-2" /> Create Account</>
+                <><UserPlus className="h-4 w-4" /> Create Account</>
               )}
             </Button>
           </form>
 
           {hasGoogleOAuth && (
             <>
-              <div className="flex items-center gap-4 my-6">
-                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
-                <span className="text-ui text-[hsl(var(--muted-foreground))]">or</span>
-                <div className="flex-1 h-px bg-[hsl(var(--border))]"></div>
+              <div className="auth-editorial__divider">
+                <span>or continue</span>
               </div>
 
-              <div className="flex justify-center google-btn-override">
+              <div className="google-btn-override flex justify-center">
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
                   onError={handleGoogleError}
@@ -311,15 +397,13 @@ export default function SignUpPage() {
             </>
           )}
 
-          <div className="mt-6 text-center">
-            <p className="text-ui text-[hsl(var(--muted-foreground))]">
-              Already have an account?{' '}
-              <Link to="/login" className="font-medium text-[hsl(var(--primary))] hover:underline">
-                Sign in
-              </Link>
-            </p>
-          </div>
-        </div>
+          <p className="auth-editorial__switch">
+            Already have an account?{' '}
+            <Link to="/login">
+              Sign in
+            </Link>
+          </p>
+        </section>
       </div>
     </div>
   );
