@@ -68,6 +68,9 @@ class SupabaseCursor:
         return self
 
     async def to_list(self, length: int | None = None):
+        if self._limit == 0 or length == 0:
+            return []
+
         server_limit = None if self._sort else (self._limit if self._limit is not None else length)
         server_offset = 0 if self._sort else self._skip
         docs = await self.collection._find_docs(self.query, limit=server_limit, offset=server_offset)
@@ -218,6 +221,8 @@ class SupabaseCollection:
                 return [{"doc_id": doc["_id"], "data": doc} for doc in docs], total_count
 
             if limit is not None:
+                if limit <= 0:
+                    return [], 0 if include_count else None
                 builder = builder.range(offset, offset + max(limit - 1, 0))
                 result = await run_supabase(lambda: builder.execute())
                 return result.data or [], getattr(result, "count", None)
@@ -584,10 +589,18 @@ def _matches_query(doc: dict, query: dict) -> bool:
             for operator, expected in condition.items():
                 normalized = _normalize_value(expected)
                 if operator == "$in":
-                    if value not in [_normalize_value(item) for item in expected]:
+                    expected_values = [_normalize_value(item) for item in expected]
+                    if isinstance(value, list):
+                        if not any(item in expected_values for item in value):
+                            return False
+                    elif value not in expected_values:
                         return False
                 elif operator == "$nin":
-                    if value in [_normalize_value(item) for item in expected]:
+                    expected_values = [_normalize_value(item) for item in expected]
+                    if isinstance(value, list):
+                        if any(item in expected_values for item in value):
+                            return False
+                    elif value in expected_values:
                         return False
                 elif operator == "$ne":
                     if value == normalized:
@@ -666,6 +679,17 @@ def _set_nested(obj: dict, path: str, value: Any):
     current[parts[-1]] = value
 
 
+def _unset_nested(obj: dict, path: str):
+    parts = path.split(".")
+    current = obj
+    for piece in parts[:-1]:
+        if not isinstance(current, dict) or piece not in current:
+            return
+        current = current[piece]
+    if isinstance(current, dict):
+        current.pop(parts[-1], None)
+
+
 def _apply_update(doc: dict, update: dict):
     for operator, payload in update.items():
         if operator == "$set":
@@ -675,6 +699,9 @@ def _apply_update(doc: dict, update: dict):
             for key, value in payload.items():
                 previous = _get_nested(doc, key) or 0
                 _set_nested(doc, key, previous + value)
+        elif operator == "$unset":
+            for key in payload.keys():
+                _unset_nested(doc, key)
         elif operator == "$push":
             for key, value in payload.items():
                 current = _get_nested(doc, key)
@@ -721,7 +748,10 @@ async def connect_to_mongo():
         if DEMO_MODE:
             from backend.services.demo_seed import seed_demo_dataset
 
-            await seed_demo_dataset(get_database(), DEMO_LAT, DEMO_LNG)
+            seeded = await seed_demo_dataset(get_database(), DEMO_LAT, DEMO_LNG)
+            print(f"Demo mode enabled; demo seed inserted={seeded}")
+        else:
+            print("Demo mode disabled; startup seeding skipped")
     except Exception as exc:
         _CONNECTED = False
         print(f"Supabase connection warning: {exc}")

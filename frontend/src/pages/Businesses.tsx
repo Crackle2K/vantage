@@ -233,7 +233,6 @@ export default function Businesses() {
   const radiusDebounceRef = useRef<number | null>(null);
   const businessModalScrollRef = useRef(0);
   const laneOverlayScrollRef = useRef(0);
-  const didAutoLocateRef = useRef(false);
 
   useEffect(() => {
     setShowPreferenceOnboarding(!!user && !user.preferences_completed);
@@ -275,6 +274,23 @@ export default function Businesses() {
       setLanes(nextLanes);
       setCache(key, items, nextLanes);
     };
+    const buildFallbackLanes = (fallbackItems: Business[]) => (
+      requestedSortMode === 'canonical'
+        ? [buildBrowseLane(fallbackItems)]
+        : [{ id: requestedSortMode, title: sortLane.title, subtitle: sortLane.subtitle, items: fallbackItems }]
+    );
+    const loadFallbackBusinesses = async () => {
+      const fallbackItems = await api.getBusinesses();
+      if (fallbackItems.length > 0) {
+        console.warn('Explore discovery returned no usable businesses; using /api/businesses fallback', {
+          lat,
+          lng,
+          radius: radiusValue,
+          count: fallbackItems.length,
+        });
+      }
+      return fallbackItems;
+    };
     try {
       let items: Business[] = [];
       let nextLanes: ExploreLane[] = [];
@@ -292,14 +308,25 @@ export default function Businesses() {
         items = await api.discoverBusinesses(lat, lng, radiusValue, undefined, DISCOVERY_LIMIT, forceRefresh, requestedSortMode);
         nextLanes = [{ id: requestedSortMode, title: sortLane.title, subtitle: sortLane.subtitle, items }];
       }
+      if (items.length === 0) {
+        const fallback = await loadFallbackBusinesses();
+        if (fallback.length > 0) {
+          storeResults(fallback, buildFallbackLanes(fallback));
+          return;
+        }
+      }
       storeResults(items, nextLanes);
-    } catch {
+    } catch (discoveryError) {
+      console.error('Explore discovery failed before fallback', {
+        endpoint: '/api/discover',
+        lat,
+        lng,
+        radius: radiusValue,
+        error: discoveryError,
+      });
       try {
-        const fallback = await api.getNearbyBusinesses(lat, lng, radiusValue);
-        const fallbackLanes = requestedSortMode === 'canonical'
-          ? [buildBrowseLane(fallback)]
-          : [{ id: requestedSortMode, title: sortLane.title, subtitle: sortLane.subtitle, items: fallback }];
-        storeResults(fallback, fallbackLanes);
+        const fallback = await loadFallbackBusinesses();
+        storeResults(fallback, buildFallbackLanes(fallback));
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : 'Failed to load nearby businesses');
         setBusinesses([]);
@@ -323,32 +350,6 @@ export default function Businesses() {
   useEffect(() => {
     fetchExploreData(DEFAULT_LAT, DEFAULT_LNG, DEFAULT_RADIUS, false, 'canonical');
   }, [fetchExploreData]);
-
-  useEffect(() => {
-    if (didAutoLocateRef.current || typeof window === 'undefined') {
-      return;
-    }
-    if (!navigator.geolocation) {
-      didAutoLocateRef.current = true;
-      return;
-    }
-    didAutoLocateRef.current = true;
-    setLocationLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        applyLocation(
-          { latitude: position.coords.latitude, longitude: position.coords.longitude },
-          radius,
-          'canonical',
-          true
-        );
-        setLocationLoading(false);
-      },
-      () => {
-        setLocationLoading(false);
-      }
-    );
-  }, [applyLocation, radius]);
 
   const requestLocation = () => {
     setError(null);

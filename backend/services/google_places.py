@@ -7,6 +7,7 @@ document schema. API calls are logged for usage tracking.
 """
 import math
 import asyncio
+import logging
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -21,6 +22,8 @@ from backend.services.business_metadata import (
     normalize_image_urls,
 )
 from backend.services.local_business_classifier import classify_local_business
+
+logger = logging.getLogger(__name__)
 
 _TYPE_MAP: Dict[str, str] = {
     "restaurant": "Restaurants",
@@ -96,6 +99,34 @@ def _map_category(types: list[str]) -> str:
             return _TYPE_MAP[t]
     return "Other"
 
+def _parse_city_from_address_components(components: list[dict]) -> str:
+    preferred_types = (
+        "locality",
+        "postal_town",
+        "administrative_area_level_3",
+        "administrative_area_level_2",
+    )
+    for preferred_type in preferred_types:
+        for component in components or []:
+            if preferred_type in (component.get("types") or []):
+                return str(component.get("long_name") or component.get("short_name") or "").strip()
+    return ""
+
+def _parse_city_from_address_text(address: str) -> str:
+    parts = [part.strip() for part in (address or "").split(",") if part.strip()]
+    if len(parts) >= 2:
+        candidate = parts[-1]
+        if any(char.isdigit() for char in candidate) and len(parts) >= 3:
+            candidate = parts[-2]
+        return candidate.strip()
+    return ""
+
+def _parse_city_from_place(place: dict) -> str:
+    return (
+        _parse_city_from_address_components(place.get("address_components") or [])
+        or _parse_city_from_address_text(place.get("formatted_address") or place.get("vicinity") or "")
+    )
+
 def _radius_bucket(radius_m: int) -> int:
     for bucket in (1000, 3000, 5000, 10000, 25000, 50000):
         if radius_m <= bucket:
@@ -129,6 +160,7 @@ PHOTO_MAX_WIDTH = 1200
 PHOTO_ENRICHMENT_CONCURRENCY = 6
 SUMMARY_ENRICHMENT_CONCURRENCY = 4
 SUMMARY_ENRICHMENT_LIMIT = 16
+PROFILE_DETAILS_CONCURRENCY = 6
 _google_places_client: httpx.AsyncClient | None = None
 
 
@@ -299,6 +331,74 @@ async def _fetch_place_editorial_summary(client: httpx.AsyncClient, place_id: st
     except Exception as e:
         print(f"Google Details summary lookup failed: {type(e).__name__}")
         return ""
+
+async def _fetch_place_profile_details(client: httpx.AsyncClient, place_id: str) -> dict:
+    try:
+        params = {
+            "place_id": place_id,
+            "fields": "website,formatted_phone_number,international_phone_number,opening_hours,editorial_summary,photos,url,address_components,formatted_address",
+            "key": GOOGLE_API_KEY,
+        }
+        resp = await client.get(GOOGLE_DETAILS_URL, params=params)
+        data = resp.json()
+        status = data.get("status")
+        result = data.get("result", {}) if isinstance(data.get("result"), dict) else {}
+        await _log_api_call("place_details:profile", {"place_id": place_id}, status, 1 if result else 0)
+
+        if status != "OK":
+            return {}
+
+        opening_hours = result.get("opening_hours") or {}
+        photos = result.get("photos") or []
+        photo_refs = _extract_photo_references(photos)
+        photo_urls = _build_photo_urls(photos)
+        return {
+            "website": (result.get("website") or "").strip(),
+            "phone": (
+                result.get("formatted_phone_number")
+                or result.get("international_phone_number")
+                or ""
+            ).strip(),
+            "hours": opening_hours.get("weekday_text") or [],
+            "google_maps_url": (result.get("url") or "").strip(),
+            "city": _parse_city_from_place(result),
+            "editorial_summary": _extract_editorial_summary(result),
+            "photo_references": photo_refs,
+            "image_urls": photo_urls,
+        }
+    except Exception as e:
+        print(f"Google Details profile lookup failed for {place_id}: {type(e).__name__}")
+        return {}
+
+async def enrich_business_profile_details(business_docs: List[Dict]) -> dict[str, dict]:
+    """Fetch Place Details profile fields for normalized Google businesses."""
+    if not GOOGLE_API_KEY:
+        return {}
+
+    place_ids: list[str] = []
+    seen: set[str] = set()
+    for doc in business_docs:
+        place_id = (doc.get("place_id") or "").strip()
+        if not place_id or place_id in seen:
+            continue
+        seen.add(place_id)
+        place_ids.append(place_id)
+
+    if not place_ids:
+        return {}
+
+    client = await _get_google_places_client()
+    semaphore = asyncio.Semaphore(PROFILE_DETAILS_CONCURRENCY)
+    details_by_place_id: dict[str, dict] = {}
+
+    async def enrich_one(place_id: str):
+        async with semaphore:
+            details = await _fetch_place_profile_details(client, place_id)
+            if details:
+                details_by_place_id[place_id] = details
+
+    await asyncio.gather(*(enrich_one(place_id) for place_id in place_ids))
+    return details_by_place_id
 
 def _needs_photo_enrichment(doc: dict) -> bool:
     if not doc.get("place_id"):
@@ -471,7 +571,13 @@ async def search_google_places(
         List[Dict]: Normalized business documents ready for database insertion.
     """
     if not GOOGLE_API_KEY:
-        # API key not configured - skip Google Places lookup
+        logger.warning(
+            "Google Places disabled: GOOGLE_API_KEY is not configured "
+            "(lat=%.4f, lng=%.4f, radius_m=%s)",
+            lat,
+            lng,
+            radius_m,
+        )
         return []
 
     base_params = {
@@ -528,9 +634,11 @@ async def search_google_places(
         image_url = photo_urls[0] if photo_urls else ""
         category = _map_category(place.get("types", []))
         editorial_summary = _extract_editorial_summary(place)
+        parsed_city = _parse_city_from_place(place) or "Toronto"
         short_description = generate_short_description(
             category=category,
             address=place.get("vicinity", ""),
+            city=parsed_city,
             existing=editorial_summary,
         )
         known_for = derive_known_for(
@@ -545,6 +653,7 @@ async def search_google_places(
             "google_types": place.get("types", []),
             "description": place.get("vicinity", ""),
             "address": place.get("vicinity", ""),
+            "city": parsed_city,
             "editorial_summary": editorial_summary,
             "short_description": short_description,
             "known_for": known_for,
@@ -581,17 +690,35 @@ async def search_google_places(
         if len(documents) >= max_results:
             break
 
-    summary_updates = await enrich_business_editorial_summaries(documents)
+    profile_updates = await enrich_business_profile_details(documents)
     for doc in documents:
         place_id = doc.get("place_id")
-        if not place_id or place_id not in summary_updates:
+        if not place_id or place_id not in profile_updates:
             continue
-        doc["editorial_summary"] = summary_updates[place_id]
-        doc["short_description"] = generate_short_description(
-            category=doc.get("category", ""),
-            address=doc.get("address", ""),
-            existing=summary_updates[place_id],
-        )
+        details = profile_updates[place_id]
+        if details.get("website"):
+            doc["website"] = details["website"]
+        if details.get("phone"):
+            doc["phone"] = details["phone"]
+        if details.get("city"):
+            doc["city"] = details["city"]
+        if details.get("hours"):
+            doc["hours"] = details["hours"]
+        if details.get("google_maps_url"):
+            doc["google_maps_url"] = details["google_maps_url"]
+        if details.get("image_urls"):
+            doc["image_urls"] = normalize_image_urls(details["image_urls"], primary_image=details["image_urls"][0])
+            doc["image_url"] = doc["image_urls"][0]
+        if details.get("photo_references"):
+            doc["photo_references"] = details["photo_references"]
+            doc["photo_reference"] = details["photo_references"][0]
+        if details.get("editorial_summary"):
+            doc["editorial_summary"] = details["editorial_summary"]
+            doc["short_description"] = generate_short_description(
+                category=doc.get("category", ""),
+                address=doc.get("address", ""),
+                existing=details["editorial_summary"],
+            )
 
     if skipped_non_local:
         print(f"Local classifier: kept {len(documents)}, skipped {skipped_non_local} non-local/chain results")
