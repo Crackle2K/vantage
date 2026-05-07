@@ -672,7 +672,6 @@ async def search_google_places(
             "email": "",
             "website": "",
             "hours": [],
-            "is_seed": False,
             "is_claimed": False,
             "owner_id": None,
             "credibility_score": 0.0,

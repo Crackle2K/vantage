@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Iterable
 
 from bson import ObjectId
 
-from backend.config import DEMO_LAT, DEMO_LNG, DEMO_MODE, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
+from backend.config import SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL
 from backend.database.supabase import get_supabase_client, run_supabase
 
 _CONNECTED = False
@@ -745,13 +745,6 @@ async def connect_to_mongo():
         await run_supabase(lambda: get_supabase_client().table("documents").select("doc_id").limit(1).execute())
         _CONNECTED = True
         print("Connected to Supabase document store")
-        if DEMO_MODE:
-            from backend.services.demo_seed import seed_demo_dataset
-
-            seeded = await seed_demo_dataset(get_database(), DEMO_LAT, DEMO_LNG)
-            print(f"Demo mode enabled; demo seed inserted={seeded}")
-        else:
-            print("Demo mode disabled; startup seeding skipped")
     except Exception as exc:
         _CONNECTED = False
         print(f"Supabase connection warning: {exc}")

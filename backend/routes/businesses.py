@@ -56,7 +56,6 @@ BUSINESS_LIST_PROJECTION = {
     "known_for": 1,
     "is_claimed": 1,
     "claim_status": 1,
-    "is_seed": 1,
     "credibility_score": 1,
     "live_visibility_score": 1,
     "local_confidence": 1,

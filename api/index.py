@@ -13,11 +13,7 @@ import os
 import sys
 from pathlib import Path
 
-# Default to demo mode unless the deployment explicitly disables it. This
-# keeps local/serverless previews able to seed a usable Toronto dataset.
-os.environ.setdefault("DEMO_MODE", "true")
-
-# Set a default SECRET_KEY for JWT signing in serverless demo mode.
+# Set a default SECRET_KEY for JWT signing in serverless deployments.
 # In production, this should be set via environment variables.
 os.environ.setdefault("SECRET_KEY", "demo-secret-key-change-in-production")
 

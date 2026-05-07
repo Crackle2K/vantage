@@ -158,7 +158,6 @@ class Business(BusinessBase):
         known_for (List[str]): Feature tags.
         is_claimed (bool): Whether the business has been claimed by an owner.
         claim_status (Optional[str]): Current claim status.
-        is_seed (bool): Whether this is a seeded/demo record.
         credibility_score (float): Computed credibility score.
         live_visibility_score (float): Computed live visibility score.
         local_confidence (float): Confidence that this is a local business.
@@ -185,7 +184,6 @@ class Business(BusinessBase):
 
     is_claimed: bool = False
     claim_status: Optional[str] = None
-    is_seed: bool = True
 
     credibility_score: float = 0.0
     live_visibility_score: float = 0.0

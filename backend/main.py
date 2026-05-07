@@ -28,7 +28,6 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from backend.config import (
-    DEMO_MODE,
     ENVIRONMENT,
     GOOGLE_API_KEY,
     SUPABASE_SERVICE_ROLE_KEY,
@@ -83,7 +82,6 @@ async def lifespan(app: FastAPI):
         "Startup configuration: "
         f"environment={ENVIRONMENT}, "
         f"supabase_configured={bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)}, "
-        f"demo_mode={DEMO_MODE}, "
         f"google_api_key_present={bool(GOOGLE_API_KEY)}"
     )
     await connect_to_mongo()
@@ -246,7 +244,6 @@ async def root():
         "message": "Vantage API running",
         "status": "active",
         "version": "1.0.0",
-        "demo_mode": DEMO_MODE,
     }
 
 @app.get("/health")
@@ -270,6 +267,5 @@ async def health_check():
     return {
         "status": overall,
         "version": app.version,
-        "demo_mode": DEMO_MODE,
         "checks": checks,
     }

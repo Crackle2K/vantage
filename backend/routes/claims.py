@@ -201,7 +201,6 @@ async def review_claim(
                 "$set": {
                     "owner_id": claim["user_id"],
                     "is_claimed": True,
-                    "is_seed": False,
                     "claim_status": "verified",
                 }
             },
