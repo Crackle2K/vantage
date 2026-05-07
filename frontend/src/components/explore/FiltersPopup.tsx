@@ -27,7 +27,6 @@ export function FiltersButton({ isOpen, onToggle }: FiltersButtonProps) {
     <button
       type="button"
       onClick={() => {
-        console.log('Filters button clicked, isOpen:', isOpen);
         onToggle();
       }}
       className={cn(
@@ -98,8 +97,6 @@ export function FiltersModal({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
-
-  console.log('FiltersModal rendering, isOpen:', isOpen);
 
   return (
     <div 

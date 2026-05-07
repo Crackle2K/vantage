@@ -80,14 +80,21 @@ export function buildApiUrl(path: string): string {
  */
 async function throwApiError(response: Response, fallback: string): Promise<never> {
   let message = `${fallback} (HTTP ${response.status})`;
+  let responseBody = '';
   try {
-    const data = await response.json();
+    responseBody = await response.text();
+    const data = responseBody ? JSON.parse(responseBody) : null;
     if (data?.detail && typeof data.detail === 'string') {
       message = data.detail;
     }
   } catch {
     // Ignore non-JSON error bodies and use the HTTP fallback message.
   }
+  console.error('API request failed', {
+    endpoint: response.url,
+    status: response.status,
+    body: responseBody,
+  });
   throw new Error(message);
 }
 

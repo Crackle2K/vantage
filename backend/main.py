@@ -27,7 +27,13 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from backend.config import DEMO_MODE, ENVIRONMENT
+from backend.config import (
+    DEMO_MODE,
+    ENVIRONMENT,
+    GOOGLE_API_KEY,
+    SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_URL,
+)
 from backend.database.document_store import connect_to_mongo, close_mongo_connection
 from backend.database.document_store import DatabaseUnavailableError
 from backend.models.auth import close_auth_connections
@@ -67,11 +73,19 @@ async def _graceful_shutdown(app: FastAPI):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Only register signal handlers when NOT running in the Vercel serverless
-    # runtime, which does not support signal.SIGTERM/SIGINT registration.
-    if not is_vercel:
+    # runtime or on Windows, where asyncio does not implement
+    # loop.add_signal_handler.
+    if not is_vercel and sys.platform != "win32":
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_graceful_shutdown(app)))
+    print(
+        "Startup configuration: "
+        f"environment={ENVIRONMENT}, "
+        f"supabase_configured={bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)}, "
+        f"demo_mode={DEMO_MODE}, "
+        f"google_api_key_present={bool(GOOGLE_API_KEY)}"
+    )
     await connect_to_mongo()
     try:
         yield

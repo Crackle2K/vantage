@@ -12,6 +12,7 @@ credibility-weighted reviews, recency, engagement), ``local_confidence``
 listings.
 """
 import asyncio
+import logging
 import math
 import time
 from collections import OrderedDict
@@ -24,6 +25,7 @@ from bson import ObjectId
 from backend.models.user import User
 from backend.models.auth import get_current_user, get_current_user_optional, get_current_admin_user
 from backend.database.document_store import (
+    get_database,
     get_businesses_collection,
     get_visits_collection,
     get_reviews_collection,
@@ -31,6 +33,7 @@ from backend.database.document_store import (
     get_credibility_collection,
     get_geo_cache_collection,
 )
+from backend.config import DEMO_LAT, DEMO_LNG, DEMO_MODE, GOOGLE_API_KEY
 from backend.services.google_places import (
     search_google_places,
     geo_cell_key,
@@ -44,6 +47,7 @@ from backend.services.local_business_classifier import classify_local_business
 from backend.services.business_metadata import normalize_business_metadata
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 MIN_RESULTS = 80
 CACHE_TTL_HOURS = 24
@@ -139,6 +143,96 @@ def _as_object_id(raw_id: str, label: str) -> ObjectId:
 async def _load_discovery_candidates(businesses_collection, geo_filter: dict, limit: int) -> list[dict]:
     cursor = businesses_collection.find(geo_filter).limit(limit)
     return await cursor.to_list(length=limit)
+
+async def _ensure_demo_seed_if_needed(businesses_collection) -> None:
+    if not DEMO_MODE:
+        return
+
+    total = await businesses_collection.count_documents({})
+    seeded = await businesses_collection.count_documents({"is_seed": True})
+    if total > 0 and seeded > 0:
+        return
+
+    from backend.services.demo_seed import seed_demo_dataset
+
+    inserted = await seed_demo_dataset(get_database(), DEMO_LAT, DEMO_LNG)
+    logger.info(
+        "Demo mode discovery seed check: total_businesses=%s seeded_businesses=%s inserted=%s",
+        total,
+        seeded,
+        inserted,
+    )
+
+async def _log_empty_discovery(
+    businesses_collection,
+    *,
+    lat: float,
+    lng: float,
+    radius: float,
+    category: Optional[str],
+    initial_result_count: int,
+    google_places_count: int,
+    google_places_error: Optional[str],
+    cache_hit: bool,
+) -> None:
+    reasons: list[str] = []
+    total_businesses = await businesses_collection.count_documents({})
+    if total_businesses == 0:
+        reasons.append("no Supabase documents where collection='businesses'")
+    elif initial_result_count == 0:
+        reasons.append("location/radius filter excluded existing business records")
+
+    if not GOOGLE_API_KEY:
+        reasons.append("Google Places disabled: GOOGLE_API_KEY missing")
+    if google_places_error:
+        reasons.append(f"external API error: {google_places_error}")
+    elif google_places_count == 0 and GOOGLE_API_KEY and not cache_hit:
+        reasons.append("Google Places returned 0 usable local businesses")
+    if cache_hit:
+        reasons.append("fresh geo cache skipped Google Places refresh")
+    if category:
+        reasons.append(f"category filter applied: {category}")
+
+    logger.warning(
+        "discover returned 0 businesses lat=%.4f lng=%.4f radius_km=%.1f "
+        "total_businesses=%s initial_geo_matches=%s google_places_count=%s reasons=%s",
+        lat,
+        lng,
+        radius,
+        total_businesses,
+        initial_result_count,
+        google_places_count,
+        "; ".join(reasons) or "unknown",
+    )
+
+async def _finalize_and_log_discovery(
+    businesses_collection,
+    results: list[dict],
+    sort_mode: str,
+    limit: int,
+    lat: float,
+    lng: float,
+    radius: float,
+    category: Optional[str],
+    initial_result_count: int,
+    google_places_count: int = 0,
+    google_places_error: Optional[str] = None,
+    cache_hit: bool = False,
+) -> list[dict]:
+    payload = await _finalize_discovery_payload(businesses_collection, results, sort_mode, limit, lat, lng)
+    if not payload:
+        await _log_empty_discovery(
+            businesses_collection,
+            lat=lat,
+            lng=lng,
+            radius=radius,
+            category=category,
+            initial_result_count=initial_result_count,
+            google_places_count=google_places_count,
+            google_places_error=google_places_error,
+            cache_hit=cache_hit,
+        )
+    return payload
 
 async def _finalize_discovery_payload(
     businesses_collection,
@@ -944,6 +1038,7 @@ async def discover_businesses(
     """
     businesses = get_businesses_collection()
     geo_cache = get_geo_cache_collection()
+    await _ensure_demo_seed_if_needed(businesses)
     radius_meters = radius * 1000
     candidate_limit = min(max(limit * 2, limit), 300)
     normalized_sort_mode = _normalize_sort_mode(sort_mode)
@@ -960,9 +1055,20 @@ async def discover_businesses(
         geo_filter["category"] = category
 
     results = await _load_discovery_candidates(businesses, geo_filter, candidate_limit)
+    initial_result_count = len(results)
 
     if len(results) >= MIN_RESULTS:
-        return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
+        return await _finalize_and_log_discovery(
+            businesses,
+            results,
+            normalized_sort_mode,
+            limit,
+            lat,
+            lng,
+            radius,
+            category,
+            initial_result_count,
+        )
 
     cell = geo_cell_key(lat, lng, int(radius_meters))
     cache_cutoff = (datetime.utcnow() - timedelta(hours=CACHE_TTL_HOURS)).isoformat()
@@ -973,14 +1079,37 @@ async def discover_businesses(
     })
 
     if cached and not refresh:
-        return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
+        return await _finalize_and_log_discovery(
+            businesses,
+            results,
+            normalized_sort_mode,
+            limit,
+            lat,
+            lng,
+            radius,
+            category,
+            initial_result_count,
+            cache_hit=True,
+        )
 
-    new_places = await search_google_places(
-        lat,
-        lng,
-        int(radius_meters),
-        max_results=candidate_limit,
-    )
+    google_places_error: Optional[str] = None
+    try:
+        new_places = await search_google_places(
+            lat,
+            lng,
+            int(radius_meters),
+            max_results=candidate_limit,
+        )
+    except Exception as exc:
+        google_places_error = type(exc).__name__
+        logger.warning(
+            "Google Places discovery failed lat=%.4f lng=%.4f radius_m=%s error=%s",
+            lat,
+            lng,
+            int(radius_meters),
+            google_places_error,
+        )
+        new_places = []
 
     if new_places:
         incoming_place_ids = [p["place_id"] for p in new_places]
@@ -995,20 +1124,34 @@ async def discover_businesses(
             await businesses.insert_many(to_insert, ordered=False)
             print(f"Backfilled {len(to_insert)} businesses from Google Places")
 
-    cache_payload = {
-        **cell,
-        "fetched_at": datetime.utcnow().isoformat(),
-        "result_count": len(new_places),
-    }
-    cache_update = await geo_cache.update_one(
-        cell,
-        {"$set": cache_payload},
-    )
-    if cache_update.modified_count == 0:
-        await geo_cache.insert_one(cache_payload)
+    should_cache_geo_fetch = bool(GOOGLE_API_KEY) and google_places_error is None
+    if should_cache_geo_fetch:
+        cache_payload = {
+            **cell,
+            "fetched_at": datetime.utcnow().isoformat(),
+            "result_count": len(new_places),
+        }
+        cache_update = await geo_cache.update_one(
+            cell,
+            {"$set": cache_payload},
+        )
+        if cache_update.modified_count == 0:
+            await geo_cache.insert_one(cache_payload)
 
     results = await _load_discovery_candidates(businesses, geo_filter, candidate_limit)
-    return await _finalize_discovery_payload(businesses, results, normalized_sort_mode, limit, lat, lng)
+    return await _finalize_and_log_discovery(
+        businesses,
+        results,
+        normalized_sort_mode,
+        limit,
+        lat,
+        lng,
+        radius,
+        category,
+        initial_result_count,
+        google_places_count=len(new_places),
+        google_places_error=google_places_error,
+    )
 
 @router.get("/explore/lanes")
 async def get_explore_lanes(
