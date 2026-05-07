@@ -6,7 +6,7 @@ cffi==2.0.0
 click==8.3.3
 cryptography==46.0.7
 dnspython==2.8.0
-email_validator==2.2.0
+email_validator==2.3.0
 fastapi==0.136.1
 h11==0.16.0
 httptools==0.7.1
