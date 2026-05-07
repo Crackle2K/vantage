@@ -33,7 +33,7 @@ from backend.database.document_store import (
     get_credibility_collection,
     get_geo_cache_collection,
 )
-from backend.config import DEMO_LAT, DEMO_LNG, DEMO_MODE, GOOGLE_API_KEY
+from backend.config import GOOGLE_API_KEY
 from backend.services.google_places import (
     search_google_places,
     geo_cell_key,
@@ -143,25 +143,6 @@ def _as_object_id(raw_id: str, label: str) -> ObjectId:
 async def _load_discovery_candidates(businesses_collection, geo_filter: dict, limit: int) -> list[dict]:
     cursor = businesses_collection.find(geo_filter).limit(limit)
     return await cursor.to_list(length=limit)
-
-async def _ensure_demo_seed_if_needed(businesses_collection) -> None:
-    if not DEMO_MODE:
-        return
-
-    total = await businesses_collection.count_documents({})
-    seeded = await businesses_collection.count_documents({"is_seed": True})
-    if total > 0 and seeded > 0:
-        return
-
-    from backend.services.demo_seed import seed_demo_dataset
-
-    inserted = await seed_demo_dataset(get_database(), DEMO_LAT, DEMO_LNG)
-    logger.info(
-        "Demo mode discovery seed check: total_businesses=%s seeded_businesses=%s inserted=%s",
-        total,
-        seeded,
-        inserted,
-    )
 
 async def _log_empty_discovery(
     businesses_collection,
@@ -1038,7 +1019,6 @@ async def discover_businesses(
     """
     businesses = get_businesses_collection()
     geo_cache = get_geo_cache_collection()
-    await _ensure_demo_seed_if_needed(businesses)
     radius_meters = radius * 1000
     candidate_limit = min(max(limit * 2, limit), 300)
     normalized_sort_mode = _normalize_sort_mode(sort_mode)

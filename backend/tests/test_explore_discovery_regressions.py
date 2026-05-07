@@ -65,11 +65,6 @@ class FakeCollection:
 
 
 class ExploreDiscoveryStaticTests(TestCase):
-    def test_serverless_entry_defaults_demo_mode_to_true(self):
-        entrypoint = (REPO_ROOT / "api" / "index.py").read_text(encoding="utf-8")
-
-        self.assertIn('os.environ.setdefault("DEMO_MODE", "true")', entrypoint)
-
     def test_explore_page_fallback_uses_non_discovery_business_list(self):
         source = (REPO_ROOT / "frontend" / "src" / "pages" / "Businesses.tsx").read_text(encoding="utf-8")
         fallback_block = source[source.index("const fallback") : source.index("} catch (fetchError)")]
@@ -85,32 +80,6 @@ class ExploreDiscoveryStaticTests(TestCase):
 
 
 class GooglePlacesRegressionTests(IsolatedAsyncioTestCase):
-    async def test_discover_returns_demo_businesses_when_demo_mode_enabled(self):
-        from backend.routes import discovery
-
-        businesses = FakeCollection()
-        geo_cache = FakeCollection()
-        fake_db = {"businesses": businesses}
-
-        with (
-            patch.object(discovery, "DEMO_MODE", True),
-            patch.object(discovery, "get_database", return_value=fake_db),
-            patch.object(discovery, "get_businesses_collection", return_value=businesses),
-            patch.object(discovery, "get_geo_cache_collection", return_value=geo_cache),
-            patch.object(discovery, "search_google_places", new=AsyncMock(return_value=[])),
-        ):
-            results = await discovery.discover_businesses(
-                lat=43.6532,
-                lng=-79.3832,
-                radius=8,
-                limit=20,
-                sort_mode="canonical",
-                refresh=True,
-            )
-
-        self.assertGreater(len(results), 0)
-        self.assertTrue(all(item["city"] == "Toronto" for item in results))
-
     async def test_missing_google_api_key_logs_warning_and_returns_empty_list(self):
         from backend.services import google_places
 

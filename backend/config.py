@@ -17,8 +17,6 @@ Attributes:
     FRONTEND_URL (str): Frontend base URL (used for CORS and redirect URLs).
     ENVIRONMENT (str): Deployment environment (``development`` | ``production``).
     REDIS_URL (str): Redis connection URL for rate limiting and account lockout.
-    DEMO_MODE (bool): When True, seeds demo data on startup.
-    DEMO_LAT / DEMO_LNG (float): Center coordinates for the demo cluster.
     SUPABASE_URL (str): Supabase project URL.
     SUPABASE_SERVICE_ROLE_KEY (str): Supabase service-role key.
     SUPABASE_JWT_SECRET (str): Supabase JWT verification secret.
@@ -84,10 +82,6 @@ FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-DEMO_MODE: bool = _get_bool("DEMO_MODE", False)
-DEMO_LAT: float = float(os.getenv("DEMO_LAT", "43.6532"))
-DEMO_LNG: float = float(os.getenv("DEMO_LNG", "-79.3832"))
 
 # Supabase configuration
 SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
