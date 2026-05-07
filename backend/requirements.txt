@@ -16,7 +16,7 @@ pycparser==3.0
 pydantic==2.12.5
 pydantic-settings==2.13.0
 pydantic_core==2.46.4
-pymongo==4.9.2
+pymongo==4.17.0
 python-dotenv==1.2.2
 PyJWT==2.12.1
 python-multipart==0.0.27
