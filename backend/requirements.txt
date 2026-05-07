@@ -33,4 +33,4 @@ slowapi==0.1.9
 redis==5.0.0
 bleach==6.1.0
 supabase==2.7.4
-stripe>=11.0.0,<12.0.0
+stripe>=15.1.0,<16.0.0
