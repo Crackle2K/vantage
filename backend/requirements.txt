@@ -30,7 +30,7 @@ watchfiles==1.1.1
 google-auth==2.35.0
 httpx==0.28.1
 slowapi==0.1.9
-redis==5.0.0
+redis==7.4.0
 bleach==6.3.0
 supabase==2.30.0
 stripe>=15.1.0,<16.0.0
