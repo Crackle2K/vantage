@@ -22,7 +22,7 @@ PyJWT==2.12.1
 python-multipart==0.0.27
 rsa==4.9.1
 six==1.17.0
-starlette==0.50.0
+starlette==1.0.0
 typing_extensions==4.15.0
 urllib3==2.7.0
 uvicorn==0.32.0
