@@ -15,6 +15,14 @@ is_vercel = os.getenv("VERCEL") == "1"
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Serverless / demo defaults — set before config.py reads them.
+# In Vercel deployments there's no .env file, so these fill the gaps.
+if is_vercel:
+    os.environ.setdefault("DEMO_MODE", "true")
+    os.environ.setdefault("SECRET_KEY", "demo-secret-key-change-in-production")
+# slowapi requires REDIS_URL even when Redis is absent; provide a no-op default.
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware

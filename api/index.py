@@ -1,28 +1,7 @@
-"""Vercel serverless function entry point for Vantage.
-
-Adds the ``backend/`` directory to ``sys.path`` so that the FastAPI
-application can be imported without a full package installation, then
-exposes the ``app`` object for Vercel's Python runtime.
-
-Vercel routes all ``/api/*`` requests (configured in ``vercel.json``)
-to this module. The ASGI app handles request routing, middleware, and
-response generation.
-"""
-
-import os
+"""Vercel serverless entry point — adds backend/ to sys.path and re-exports app."""
 import sys
 from pathlib import Path
 
-# Set a default SECRET_KEY for JWT signing in serverless deployments.
-# In production, this should be set via environment variables.
-os.environ.setdefault("SECRET_KEY", "demo-secret-key-change-in-production")
+sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-# Suppress slowapi's redis dependency warning when no REDIS_URL is set.
-# slowapi will still load, it just won't enforce rate limits without Redis.
-if not os.getenv("REDIS_URL"):
-    os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-
-backend_path = Path(__file__).parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
-
-from main import app
+from main import app  # noqa: F401  (Vercel imports `app` from this module)
