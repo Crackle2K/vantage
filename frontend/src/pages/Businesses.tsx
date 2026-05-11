@@ -11,7 +11,11 @@ import { AlertCircle, ChevronDown, Loader2, MapPin, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BusinessCard } from '@/components/business-card';
 import { BusinessModal } from '@/components/BusinessModal';
-import { StickySearchFilters } from '@/components/explore/StickySearchFilters';
+import {
+  StickySearchFilters,
+  type FilterCategory,
+  type SearchSuggestion
+} from '@/components/explore/StickySearchFilters';
 import { FiltersModal } from '@/components/explore/FiltersPopup';
 import { OwnerEventCard } from '@/components/explore/OwnerEventCard';
 import { PreferenceOnboardingModal } from '@/components/preferences/PreferenceOnboardingModal';
@@ -32,6 +36,17 @@ const LANE_PREVIEW_COUNT = 16;
 const INITIAL_VISIBLE_COUNT = 36;
 const LOAD_MORE_COUNT = 12;
 
+const EXPLORE_NAV_CATEGORY_SPECS = [
+  { label: 'All', value: 'All Categories', aliases: ['All Categories'] },
+  { label: 'Restaurants', aliases: ['Restaurants', 'food'] },
+  { label: 'Hotels', aliases: ['Hotels & Travel', 'Hotels', 'Travel'] },
+  { label: 'Things to do', aliases: ['Entertainment', 'Active Life'] },
+  { label: 'Coffee', aliases: ['Cafes & Coffee', 'Cafes', 'Coffee'] },
+  { label: 'Bars', aliases: ['Bars & Nightlife', 'Bars'] },
+  { label: 'Shopping', aliases: ['Shopping', 'retail'] },
+  { label: 'Beauty', aliases: ['Beauty & Spas', 'Beauty'] },
+] as const;
+
 interface CacheEntry {
   businesses: Business[];
   lanes: ExploreLane[];
@@ -41,7 +56,12 @@ interface CacheEntry {
 interface UserLocation {
   latitude: number;
   longitude: number;
+  city?: string;
+  region?: string;
+  label?: string;
 }
+
+const DEFAULT_LOCATION_LABEL = 'Toronto, Ontario';
 
 function cacheKey(lat: number, lng: number, radius: number, sortMode: ExploreSortMode) {
   return `vantage:explore:${CACHE_VERSION}:${lat.toFixed(2)}:${lng.toFixed(2)}:${radius}:${sortMode}`;
@@ -351,6 +371,21 @@ export default function Businesses() {
     fetchExploreData(DEFAULT_LAT, DEFAULT_LNG, DEFAULT_RADIUS, false, 'canonical');
   }, [fetchExploreData]);
 
+  const resolveLocationLabel = async (latitude: number, longitude: number) => {
+    try {
+      const resolved = await api.reverseGeocodeLocation(latitude, longitude);
+      return {
+        city: resolved.city,
+        region: resolved.region,
+        label: resolved.label || DEFAULT_LOCATION_LABEL,
+      };
+    } catch {
+      return {
+        label: DEFAULT_LOCATION_LABEL,
+      };
+    }
+  };
+
   const requestLocation = () => {
     setError(null);
     if (!navigator.geolocation) {
@@ -359,9 +394,17 @@ export default function Businesses() {
     }
     setLocationLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
+        const locationLabel = await resolveLocationLabel(
+          position.coords.latitude,
+          position.coords.longitude
+        );
         applyLocation(
-          { latitude: position.coords.latitude, longitude: position.coords.longitude },
+          {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            ...locationLabel,
+          },
           radius,
           sortMode,
           true
@@ -396,14 +439,19 @@ export default function Businesses() {
     return counts;
   }, [businesses]);
 
-  const categories = useMemo(() => Object.entries(categoryCounts)
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => {
-      if (a.label === 'All Categories') return -1;
-      if (b.label === 'All Categories') return 1;
-      return b.count - a.count;
+  const navCategories = useMemo<FilterCategory[]>(() => (
+    EXPLORE_NAV_CATEGORY_SPECS.map((category) => {
+      const matchedValue = category.aliases.find((alias) => (categoryCounts[alias] ?? 0) > 0);
+      const value = matchedValue ?? ('value' in category ? category.value : category.aliases[0]);
+      const count = value === 'All Categories' ? businesses.length : categoryCounts[value] ?? 0;
+
+      return {
+        label: category.label,
+        value,
+        count,
+      };
     })
-    .slice(0, 10), [categoryCounts]);
+  ), [businesses.length, categoryCounts]);
 
   const businessTagMap = useMemo(() => {
     const next: Record<string, string[]> = {};
@@ -429,6 +477,69 @@ export default function Businesses() {
       })
       .slice(0, 24);
   }, [businessTagMap, businesses]);
+
+  const autocompleteSuggestions = useMemo<SearchSuggestion[]>(() => {
+    const query = searchInput.trim().toLowerCase();
+    const suggestions: SearchSuggestion[] = [];
+    const seen = new Set<string>();
+
+    const addSuggestion = (suggestion: SearchSuggestion) => {
+      if (seen.has(suggestion.id)) return;
+      seen.add(suggestion.id);
+      suggestions.push(suggestion);
+    };
+
+    const categorySuggestions = navCategories
+      .filter((category) => category.value !== 'All Categories')
+      .filter((category) => !query || category.label.toLowerCase().includes(query) || category.value?.toLowerCase().includes(query));
+
+    categorySuggestions.slice(0, query ? 4 : 6).forEach((category) => {
+      addSuggestion({
+        id: `category-${category.value ?? category.label}`,
+        label: category.label,
+        description: `${category.count || 'Nearby'} places`,
+        type: 'category',
+        categoryValue: category.value,
+      });
+    });
+
+    if (query) {
+      businesses
+        .filter((business) => {
+          const businessTags = businessTagMap[getBusinessId(business)] ?? [];
+          return [
+            business.name,
+            business.category,
+            business.address,
+            business.short_description || business.description,
+            businessTags.join(' '),
+          ].join(' ').toLowerCase().includes(query);
+        })
+        .slice(0, 5)
+        .forEach((business) => {
+          addSuggestion({
+            id: `business-${getBusinessId(business)}`,
+            label: business.name,
+            description: [business.category, business.address].filter(Boolean).join(' - ') || 'Local business',
+            type: 'business',
+          });
+        });
+
+      tagFacets
+        .filter((tag) => tag.label.toLowerCase().includes(query))
+        .slice(0, 4)
+        .forEach((tag) => {
+          addSuggestion({
+            id: `tag-${tag.label}`,
+            label: tag.label,
+            description: `${tag.count} tagged places`,
+            type: 'tag',
+          });
+        });
+    }
+
+    return suggestions.slice(0, 8);
+  }, [businessTagMap, businesses, navCategories, searchInput, tagFacets]);
 
   useEffect(() => {
     setSelectedTagFilters((current) => current.filter((tag) => tagFacets.some((facet) => facet.label === tag)));
@@ -664,16 +775,42 @@ export default function Businesses() {
     ));
   };
 
+  const handleSearchSuggestionSelect = (suggestion: SearchSuggestion) => {
+    setSearchInput(suggestion.label);
+    setSearchQuery(suggestion.label);
+
+    if (suggestion.type === 'category') {
+      setSelectedCategory(suggestion.categoryValue ?? suggestion.label);
+      return;
+    }
+
+    if (suggestion.type === 'tag') {
+      setSelectedCategory('All Categories');
+      setSelectedTagFilters((current) => (
+        current.includes(suggestion.label) ? current : [suggestion.label, ...current]
+      ));
+      return;
+    }
+
+    setSelectedCategory('All Categories');
+  };
+
   return (
     <div className="explore-page min-h-screen bg-[hsl(var(--background))]">
       <StickySearchFilters
         searchQuery={searchInput}
         onSearchQueryChange={setSearchInput}
-        categories={categories}
+        autocompleteSuggestions={autocompleteSuggestions}
+        onSuggestionSelect={handleSearchSuggestionSelect}
+        categories={navCategories}
         selectedCategory={selectedCategory}
         onCategoryChange={setSelectedCategory}
         filtersOpen={filtersOpen}
         onFiltersToggle={() => setFiltersOpen(!filtersOpen)}
+        locationLabel={location?.label ?? DEFAULT_LOCATION_LABEL}
+        locationActive={!!location}
+        loadingLocation={locationLoading}
+        onUseLocation={requestLocation}
       />
 
       <FiltersModal
@@ -683,9 +820,6 @@ export default function Businesses() {
         onRadiusChange={handleRadiusChange}
         minRadius={MIN_RADIUS}
         maxRadius={MAX_RADIUS}
-        locationActive={!!location}
-        loadingLocation={locationLoading}
-        onUseLocation={requestLocation}
         tagFacets={tagFacets}
         selectedTagFilters={selectedTagFilters}
         onToggleTagFilter={toggleTagFilter}
@@ -730,8 +864,6 @@ export default function Businesses() {
 
           <div className="space-y-6">
             {loading && renderLoadingState()}
-
-            {}
             {!loading && topActiveBusinesses.length > 0 && (
               <section className="mb-8 animate-fade-in-up">
                 {renderBusinessList(topActiveBusinesses)}
@@ -830,7 +962,7 @@ export default function Businesses() {
 
       {loading && businesses.length === 0 && (
         <div className="fixed bottom-5 right-5 flex items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-2 text-ui text-[hsl(var(--muted-foreground))]">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-4 w-4 icon-spinner" />
           Loading
         </div>
       )}
