@@ -44,6 +44,7 @@ from backend.routes.claims import router as claims_router
 from backend.routes.subscriptions import router as subscriptions_router
 from backend.routes.activity import router as activity_router
 from backend.routes.discovery import router as discovery_router
+from backend.routes.location import router as location_router
 from backend.routes.saved import router as saved_router
 from backend.routes.users import router as users_router
 from backend.services.google_places import close_google_places_client
@@ -223,6 +224,7 @@ app.include_router(claims_router, prefix="/api", tags=["Claims"])
 app.include_router(subscriptions_router, prefix="/api", tags=["Subscriptions"])
 app.include_router(activity_router, prefix="/api", tags=["Activity"])
 app.include_router(discovery_router, prefix="/api", tags=["Discovery"])
+app.include_router(location_router, prefix="/api", tags=["Location"])
 app.include_router(saved_router, prefix="/api", tags=["Saved"])
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 
