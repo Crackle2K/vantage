@@ -1,6 +1,6 @@
 /**
  * @fileoverview Settings page (route `/settings`). Tabbed interface
- * with Profile (name, photo, bio), Appearance (light/dark theme),
+ * with Profile (name, photo, bio), Appearance (light theme),
  * Discovery (preference editor modal), and Security (password change
  * for email users, Google account info for OAuth users) sections.
  */
@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   User, Mail, Calendar, LogOut, Save, X, ArrowLeft,
-  ImageIcon, FileText, Moon, Sun, Lock, Palette, Star,
+  ImageIcon, FileText, Sun, Lock, Palette, Star,
   Shield, Eye, EyeOff, Check,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -381,15 +381,14 @@ export default function SettingsPage() {
               <div className="card-surface rounded-2xl p-6 space-y-5">
                 <div>
                   <h2 className="font-semibold text-[hsl(var(--foreground))] mb-1">Appearance</h2>
-                  <p className="text-caption text-[hsl(var(--muted-foreground))]">Choose how Vantage looks for you</p>
+                  <p className="text-caption text-[hsl(var(--muted-foreground))]">Vantage is using the light theme</p>
                 </div>
 
                 <div className="space-y-3">
                   <p className="text-ui font-medium text-[hsl(var(--foreground))]">Theme</p>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {([
                       { value: 'light', label: 'Light', Icon: Sun },
-                      { value: 'dark', label: 'Dark', Icon: Moon },
                     ] as const).map(({ value, label, Icon }) => (
                       <button
                         key={value}
