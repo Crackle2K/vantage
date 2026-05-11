@@ -32,6 +32,29 @@ const signUpSignals = [
   }
 ]
 
+function getPasswordValidationError(password: string): string | null {
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long'
+  }
+
+  if (password.length > 128) {
+    return 'Password must be less than 128 characters'
+  }
+
+  const checks = [
+    /[A-Z]/.test(password),
+    /[a-z]/.test(password),
+    /\d/.test(password),
+    /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)
+  ]
+
+  if (checks.filter(Boolean).length < 3) {
+    return 'Password must include at least 3 of: uppercase, lowercase, digits, special characters'
+  }
+
+  return null
+}
+
 type RecaptchaEnterprise = {
   ready: (cb: () => void) => void;
   render: (container: string | HTMLElement, params: {
@@ -116,8 +139,9 @@ export default function SignUpPage() {
       setError('Passwords do not match');
       return;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    const passwordError = getPasswordValidationError(password)
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -313,12 +337,12 @@ export default function SignUpPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
+                  placeholder="8+ chars, 3 of upper/lower/number/symbol"
                   required
                   autoComplete="new-password"
                   className="auth-editorial__input pr-12"
                   disabled={loading}
-                  minLength={6}
+                  minLength={8}
                 />
                 <button
                   type="button"
@@ -344,7 +368,7 @@ export default function SignUpPage() {
                 autoComplete="new-password"
                 className="auth-editorial__input"
                 disabled={loading}
-                minLength={6}
+                minLength={8}
               />
             </div>
 
@@ -370,7 +394,7 @@ export default function SignUpPage() {
               className="auth-editorial__submit min-primary-button min-primary-button--large"
             >
               {loading ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Creating account...</>
+                <><Loader2 className="h-4 w-4 icon-spinner" /> Creating account...</>
               ) : (
                 <><UserPlus className="h-4 w-4" /> Create Account</>
               )}
