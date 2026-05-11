@@ -67,11 +67,15 @@ async def create_review(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You have already reviewed this business. Use PUT to update your review."
         )
+    comment = sanitize_text(review_data.comment, max_length=1000) if review_data.comment else ""
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Review comment cannot be empty")
+
     review_dict = {
         "business_id": review_data.business_id,
         "user_id": current_user.id,
         "rating": review_data.rating,
-        "comment": sanitize_text(review_data.comment, max_length=1000) if review_data.comment else None,
+        "comment": comment,
         "created_at": datetime.utcnow()
     }
     result = await reviews_collection.insert_one(review_dict)
@@ -165,7 +169,11 @@ async def update_review(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this review"
         )
-    update_data = {k: v for k, v in review_data.dict(exclude_unset=True).items() if v is not None}
+    update_data = {k: v for k, v in review_data.model_dump(exclude_unset=True).items() if v is not None}
+    if "comment" in update_data:
+        update_data["comment"] = sanitize_text(update_data["comment"], max_length=1000)
+        if not update_data["comment"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Review comment cannot be empty")
     if not update_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

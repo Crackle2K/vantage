@@ -5,7 +5,7 @@ profile updates, and the full business response. Also provides the
 ``CategoryEnum`` for business categorization and ``GeoLocation`` for
 storing point coordinates.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
@@ -53,13 +53,15 @@ class GeoLocation(BaseModel):
     """
     type: str = "Point"
     coordinates: List[float] = Field(..., min_length=2, max_length=2)
-    class Config:
-        json_schema_extra = {
+
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "type": "Point",
-                "coordinates": [-79.3832, 43.6532]
-            }
+                "coordinates": [-79.3832, 43.6532],
+            },
         }
+    )
 
 class BusinessBase(BaseModel):
     """Core business fields shared across request/response models.
@@ -193,9 +195,10 @@ class Business(BusinessBase):
     checkins_today: int = 0
     trending_score: float = 0.0
     last_activity_at: Optional[datetime] = None
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "507f1f77bcf86cd799439011",
                 "owner_id": "507f1f77bcf86cd799439012",
@@ -210,6 +213,7 @@ class Business(BusinessBase):
                 },
                 "rating_average": 4.5,
                 "total_reviews": 42,
-                "created_at": "2026-01-15T10:30:00Z"
-            }
-        }
+                "created_at": "2026-01-15T10:30:00Z",
+            },
+        },
+    )

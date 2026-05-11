@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from backend.services.photo_proxy import build_photo_proxy_url
+from backend.utils.security import normalize_optional_url
 
 _CATEGORY_TO_SINGULAR: dict[str, str] = {
     "Restaurants": "restaurant",
@@ -328,6 +329,14 @@ def normalize_image_urls(image_urls: Optional[Iterable[str]], primary_image: str
 
     for value in [primary_image, *(image_urls or [])]:
         candidate = (value or "").strip()
+        if candidate.startswith(("/api/photos?", "/Images/")):
+            normalized_candidate = candidate
+        else:
+            try:
+                normalized_candidate = normalize_optional_url(candidate) or ""
+            except ValueError:
+                normalized_candidate = ""
+        candidate = normalized_candidate
         if not candidate or candidate in seen:
             continue
         seen.add(candidate)

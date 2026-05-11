@@ -25,7 +25,7 @@ from slowapi.util import get_remote_address
 
 from backend.config import REDIS_URL, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, ENVIRONMENT, GOOGLE_CLIENT_ID, RECAPTCHA_ENTERPRISE_PROJECT_ID, RECAPTCHA_ENTERPRISE_API_KEY, RECAPTCHA_ENTERPRISE_SITE_KEY, RECAPTCHA_SIGNUP_ACTION, RECAPTCHA_MIN_SCORE, RECAPTCHA_VERIFY_TIMEOUT_SECONDS
 from backend.models.user import UserLogin, User, Token, TokenData, UserRole, default_user_preferences
-from backend.utils.security import validate_password_strength
+from backend.utils.security import sanitize_text, validate_password_strength
 from backend.utils.audit import log_login, log_failed_auth, log_registration
 from backend.repositories.users import SupabaseUsersRepository
 
@@ -223,6 +223,14 @@ class RegisterRequest(BaseModel):
     role: UserRole = UserRole.CUSTOMER
     recaptcha_token: str = Field(..., min_length=1)
     recaptcha_action: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def sanitize_name(cls, value: str) -> str:
+        cleaned = sanitize_text(value, max_length=100)
+        if len(cleaned) < 2:
+            raise ValueError("Name must be at least 2 characters long")
+        return cleaned
 
     @field_validator("role")
     @classmethod
@@ -643,7 +651,7 @@ async def google_auth(request: Request, response: Response, auth_request: Google
         )
         google_id = idinfo['sub']
         email = idinfo['email']
-        name = idinfo.get('name', email.split('@')[0])
+        name = sanitize_text(idinfo.get('name', email.split('@')[0]), max_length=100) or email.split('@')[0]
     except ValueError as e:
         log_failed_auth(
             ip_address=request.client.host if request.client else "unknown",

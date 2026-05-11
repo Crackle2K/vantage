@@ -4,7 +4,7 @@ Defines Pydantic models for business ownership claims including submission,
 admin review, and claim status tracking. A claim is how a business owner
 verifies they own a listing.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from datetime import datetime
 from enum import Enum
@@ -57,8 +57,7 @@ class BusinessClaim(BaseModel):
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ClaimCreate(BaseModel):
     """Request body for submitting a new business ownership claim."""

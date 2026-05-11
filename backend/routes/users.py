@@ -24,6 +24,7 @@ from backend.database.document_store import (
 )
 from backend.repositories.users import SupabaseUsersRepository
 from backend.utils.audit import log_data_export, log_account_deletion, log_password_change
+from backend.utils.security import normalize_text_list
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -31,31 +32,6 @@ users_repository = SupabaseUsersRepository()
 
 def _serialize_user(user: dict) -> User:
     return User(**user)
-
-def _normalize_text_list(values: list[str], limit: int) -> list[str]:
-    """Deduplicate, trim, and truncate a list of text values.
-
-    Args:
-        values (list[str]): Raw input values.
-        limit (int): Maximum number of items to return.
-
-    Returns:
-        list[str]: Normalized, deduplicated, case-insensitive-unique list.
-    """
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        cleaned = str(value or "").strip()
-        if not cleaned:
-            continue
-        key = cleaned.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized.append(cleaned[:32])
-        if len(normalized) >= limit:
-            break
-    return normalized
 
 @router.get("/{user_id}", response_model=User)
 async def get_user_profile(user_id: str):
@@ -172,8 +148,8 @@ async def update_user_preferences(
         User: The updated user profile with new preferences.
     """
     update_data = {
-        "preferred_categories": _normalize_text_list(preferences_update.preferred_categories, 8),
-        "preferred_vibes": _normalize_text_list(preferences_update.preferred_vibes, 10),
+        "preferred_categories": normalize_text_list(preferences_update.preferred_categories, 8),
+        "preferred_vibes": normalize_text_list(preferences_update.preferred_vibes, 10),
         "prefer_independent": round(float(preferences_update.prefer_independent), 3),
         "price_pref": preferences_update.price_pref.value if preferences_update.price_pref else None,
         "discovery_mode": preferences_update.discovery_mode.value,
