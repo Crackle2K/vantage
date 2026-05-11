@@ -272,7 +272,7 @@ export default function AccountPage() {
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Quick Links</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Link to="/businesses" className="flex items-center gap-3 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))] transition-colors">
-                <div className="w-10 h-10 rounded-lg bg-info dark:bg-info/30 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-lg bg-info flex items-center justify-center">
                   <Store className="w-5 h-5 text-info" />
                 </div>
                 <div>
@@ -281,8 +281,8 @@ export default function AccountPage() {
                 </div>
               </Link>
               <Link to="/businesses" className="flex items-center gap-3 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))] transition-colors">
-                <div className="w-10 h-10 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
-                  <Heart className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                <div className="w-10 h-10 rounded-lg bg-rose-100 flex items-center justify-center">
+                  <Heart className="w-5 h-5 text-rose-600" />
                 </div>
                 <div>
                   <p className="font-medium text-ui text-[hsl(var(--foreground))]">My Favorites</p>
@@ -296,7 +296,7 @@ export default function AccountPage() {
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Session</h3>
             <button
               onClick={handleSignOut}
-              className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-error dark:border-error/50 text-error dark:text-error hover:bg-error dark:hover:bg-error/30 transition-colors font-medium text-ui"
+              className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-error text-error hover:bg-error transition-colors font-medium text-ui"
             >
               <LogOut className="w-4 h-4" />
               Sign Out
