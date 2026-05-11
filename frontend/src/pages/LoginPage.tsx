@@ -183,7 +183,7 @@ export default function LoginPage() {
               className="auth-editorial__submit min-primary-button min-primary-button--large"
             >
               {loading ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Signing in...</>
+                <><Loader2 className="h-4 w-4 icon-spinner" /> Signing in...</>
               ) : (
                 <><LogIn className="h-4 w-4" /> Sign In</>
               )}
