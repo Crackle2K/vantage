@@ -4,11 +4,16 @@ Defines Pydantic models for user data, authentication tokens, and
 user preference settings. Also provides enums for user roles, price
 preferences, and discovery modes.
 """
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import List, Optional
 from enum import Enum
 
-from backend.utils.security import validate_password_strength
+from backend.utils.security import (
+    normalize_optional_url,
+    normalize_text_list,
+    sanitize_text,
+    validate_password_strength,
+)
 
 class UserRole(str, Enum):
     """User role levels controlling access permissions."""
@@ -59,6 +64,14 @@ class UserBase(BaseModel):
     email: EmailStr
     role: UserRole = UserRole.CUSTOMER
 
+    @field_validator("name")
+    @classmethod
+    def sanitize_name(cls, value: str) -> str:
+        cleaned = sanitize_text(value, max_length=100)
+        if len(cleaned) < 2:
+            raise ValueError("Name must be at least 2 characters long")
+        return cleaned
+
 class UserCreate(BaseModel):
     """Request body for creating a new user with password validation.
 
@@ -72,6 +85,14 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8)
     role: UserRole = UserRole.CUSTOMER
+
+    @field_validator("name")
+    @classmethod
+    def sanitize_name(cls, value: str) -> str:
+        cleaned = sanitize_text(value, max_length=100)
+        if len(cleaned) < 2:
+            raise ValueError("Name must be at least 2 characters long")
+        return cleaned
 
     @field_validator("password")
     @classmethod
@@ -112,8 +133,8 @@ class User(UserBase):
     price_pref: Optional[PricePreference] = None
     discovery_mode: DiscoveryMode = DiscoveryMode.TRUSTED
     preferences_completed: bool = False
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 class UserInDB(User):
     """Extended user model including the hashed password for internal use."""
@@ -130,6 +151,26 @@ class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     profile_picture: Optional[str] = Field(None, max_length=500)
     about_me: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def sanitize_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = sanitize_text(value, max_length=100)
+        if len(cleaned) < 2:
+            raise ValueError("Name must be at least 2 characters long")
+        return cleaned
+
+    @field_validator("profile_picture")
+    @classmethod
+    def validate_profile_picture(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_optional_url(value, require_https=True)
+
+    @field_validator("about_me")
+    @classmethod
+    def sanitize_about_me(cls, value: Optional[str]) -> Optional[str]:
+        return sanitize_text(value, max_length=500) if value is not None else None
 
 class UserPreferencesUpdate(BaseModel):
     """Request body for updating user discovery preferences.
@@ -148,6 +189,16 @@ class UserPreferencesUpdate(BaseModel):
     price_pref: Optional[PricePreference] = None
     discovery_mode: DiscoveryMode = DiscoveryMode.TRUSTED
     preferences_completed: bool = True
+
+    @field_validator("preferred_categories", mode="before")
+    @classmethod
+    def sanitize_categories(cls, value) -> list[str]:
+        return normalize_text_list(value, limit=8, max_item_length=32)
+
+    @field_validator("preferred_vibes", mode="before")
+    @classmethod
+    def sanitize_vibes(cls, value) -> list[str]:
+        return normalize_text_list(value, limit=10, max_item_length=32)
 
 class PasswordChange(BaseModel):
     """Request body for changing a user's password.

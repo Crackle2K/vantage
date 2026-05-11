@@ -96,7 +96,6 @@ class GooglePlacesRegressionTests(IsolatedAsyncioTestCase):
         geo_cache = FakeCollection()
 
         with (
-            patch.object(discovery, "DEMO_MODE", False),
             patch.object(discovery, "GOOGLE_API_KEY", ""),
             patch.object(discovery, "get_businesses_collection", return_value=businesses),
             patch.object(discovery, "get_geo_cache_collection", return_value=geo_cache),

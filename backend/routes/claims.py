@@ -17,6 +17,7 @@ from backend.database.document_store import (
     get_businesses_collection,
     get_activity_feed_collection,
 )
+from backend.utils.security import sanitize_text
 
 router = APIRouter()
 
@@ -77,11 +78,11 @@ async def submit_claim(
         "business_id": claim_data.business_id,
         "user_id": current_user.id,
         "status": ClaimStatus.PENDING,
-        "owner_name": claim_data.owner_name,
-        "owner_role": claim_data.owner_role,
-        "owner_phone": claim_data.owner_phone,
-        "owner_email": claim_data.owner_email,
-        "proof_description": claim_data.proof_description,
+        "owner_name": sanitize_text(claim_data.owner_name, max_length=100),
+        "owner_role": sanitize_text(claim_data.owner_role, max_length=50),
+        "owner_phone": sanitize_text(claim_data.owner_phone, max_length=50) if claim_data.owner_phone else None,
+        "owner_email": sanitize_text(claim_data.owner_email, max_length=254) if claim_data.owner_email else None,
+        "proof_description": sanitize_text(claim_data.proof_description, max_length=500) if claim_data.proof_description else None,
         "verification_method": None,
         "verification_notes": None,
         "created_at": datetime.utcnow(),
@@ -184,7 +185,7 @@ async def review_claim(
     update = {
         "status": review_data.status,
         "verification_method": review_data.verification_method,
-        "verification_notes": review_data.verification_notes,
+        "verification_notes": sanitize_text(review_data.verification_notes, max_length=500) if review_data.verification_notes else None,
         "reviewed_at": datetime.utcnow(),
         "reviewed_by": current_user.id,
     }

@@ -45,7 +45,7 @@ async def get_tier_info():
     Returns:
         list[dict]: Serialized ``TierInfo`` objects for each plan tier.
     """
-    return [tier.dict() for tier in TIER_DISPLAY]
+    return [tier.model_dump() for tier in TIER_DISPLAY]
 
 @router.get("/subscriptions/features/{tier}")
 async def get_tier_features(tier: SubscriptionTier):
@@ -211,7 +211,7 @@ async def update_subscription(
     if sub["user_id"] != current_user.id:
         raise HTTPException(status_code=403, detail="Not your subscription")
 
-    update = {k: v for k, v in data.dict(exclude_unset=True).items() if v is not None}
+    update = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
     if not update:
         raise HTTPException(status_code=400, detail="No fields to update")
 

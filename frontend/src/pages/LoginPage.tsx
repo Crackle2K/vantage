@@ -86,7 +86,7 @@ export default function LoginPage() {
         <section className="auth-editorial__story">
           <div className="auth-editorial__media" aria-hidden="true">
             <img
-              src="/Images/Activity.png"
+              src="/Images/image3.webp"
               alt=""
             />
             <span className="auth-editorial__wordmark">VANTAGE</span>

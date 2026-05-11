@@ -32,7 +32,7 @@ from backend.database.document_store import (
     get_owner_posts_collection,
     get_reviews_collection,
 )
-from backend.utils.security import sanitize_text
+from backend.utils.security import normalize_optional_url, sanitize_text
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -130,6 +130,12 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
+def _normalize_activity_image_url(value: Optional[str]) -> Optional[str]:
+    try:
+        return normalize_optional_url(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid event image URL: {exc}") from exc
+
 @router.post("/checkins", status_code=status.HTTP_201_CREATED)
 @limiter.limit("20/minute")
 async def create_checkin(
@@ -182,6 +188,8 @@ async def create_checkin(
             if distance <= CHECKIN_RADIUS_METERS:
                 check_status = CheckInStatus.GEO_VERIFIED
 
+    sanitized_note = sanitize_text(data.note, max_length=280) if data.note else None
+
     checkin_doc = {
         "user_id": current_user.id,
         "business_id": data.business_id,
@@ -189,7 +197,7 @@ async def create_checkin(
         "latitude": data.latitude,
         "longitude": data.longitude,
         "distance_from_business": round(distance, 1) if distance else None,
-        "note": sanitize_text(data.note, max_length=280) if data.note else None,
+        "note": sanitized_note,
         "photo_url": None,
         "confirmations": 0,
         "confirmed_by": [],
@@ -223,7 +231,7 @@ async def create_checkin(
             "business_name": business.get("name", "Unknown"),
             "business_category": business.get("category"),
             "title": f"{current_user.name} checked in at {business.get('name', 'a business')}",
-            "description": data.note,
+            "description": sanitized_note,
             "likes": 0,
             "comments": 0,
             "created_at": datetime.utcnow(),
@@ -524,13 +532,18 @@ async def create_owner_event(
     if event_data.end_time <= event_data.start_time:
         raise HTTPException(status_code=400, detail="End time must be after start time")
 
+    title = sanitize_text(event_data.title, max_length=120)
+    description = sanitize_text(event_data.description, max_length=600)
+    if not title or not description:
+        raise HTTPException(status_code=400, detail="Event title and description are required")
+
     event_doc = {
         "business_id": event_data.business_id,
-        "title": event_data.title.strip(),
-        "description": event_data.description.strip(),
+        "title": title,
+        "description": description,
         "start_time": event_data.start_time,
         "end_time": event_data.end_time,
-        "image_url": event_data.image_url,
+        "image_url": _normalize_activity_image_url(event_data.image_url),
         "created_at": datetime.utcnow(),
     }
 
@@ -545,7 +558,7 @@ async def create_owner_event(
             "business_name": business.get("name", "Local business"),
             "business_category": business.get("category"),
             "title": f"New event from {business.get('name', 'a local business')}",
-            "description": event_data.title.strip(),
+            "description": title,
             "likes": 0,
             "comments": 0,
             "created_at": datetime.utcnow(),

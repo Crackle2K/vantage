@@ -6,8 +6,10 @@ import viteCompression from 'vite-plugin-compression'
 export default defineConfig({
   plugins: [
     react(),
-    viteCompression({ algorithm: 'brotliCompress', ext: '.br' }),
-    viteCompression({ algorithm: 'gzip', ext: '.gz' }),
+    // The plugin's verbose logger mis-renders absolute Windows paths as
+    // dist/C:/... under Vite 8, even though emitted files are in dist/assets.
+    viteCompression({ algorithm: 'brotliCompress', ext: '.br', verbose: false }),
+    viteCompression({ algorithm: 'gzip', ext: '.gz', verbose: false }),
   ],
   resolve: {
     alias: {

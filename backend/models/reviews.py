@@ -3,7 +3,7 @@
 Defines Pydantic models for business reviews including creation, updates,
 the full review response, and a variant that includes the reviewer's name.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from datetime import datetime
 
@@ -52,18 +52,20 @@ class Review(ReviewBase):
     business_id: str
     user_id: str
     created_at: datetime
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "507f1f77bcf86cd799439011",
                 "business_id": "507f1f77bcf86cd799439012",
                 "user_id": "507f1f77bcf86cd799439013",
                 "rating": 4.5,
                 "comment": "Great service and friendly staff! Highly recommend.",
-                "created_at": "2026-02-15T14:30:00Z"
-            }
-        }
+                "created_at": "2026-02-15T14:30:00Z",
+            },
+        },
+    )
 
 class ReviewWithUser(Review):
     """Review response variant that includes the reviewer's display name.

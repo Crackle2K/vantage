@@ -4,7 +4,7 @@ Defines Pydantic models for business promotional deals including creation,
 updates, the full deal response, and a variant that includes the parent
 business's name and category.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from datetime import datetime
 
@@ -61,9 +61,10 @@ class Deal(DealBase):
     business_id: str
     active: bool = True
     created_at: datetime
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "507f1f77bcf86cd799439011",
                 "business_id": "507f1f77bcf86cd799439012",
@@ -72,9 +73,10 @@ class Deal(DealBase):
                 "discount_percent": 20.0,
                 "expires_at": "2026-03-31T23:59:59Z",
                 "active": True,
-                "created_at": "2026-02-01T10:00:00Z"
-            }
-        }
+                "created_at": "2026-02-01T10:00:00Z",
+            },
+        },
+    )
 
 class DealWithBusiness(Deal):
     """Deal response variant that includes the parent business's name and category.

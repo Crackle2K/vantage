@@ -5,7 +5,7 @@ billing cycles, and the display-ready tier information shown on the
 pricing page. Also contains ``TIER_FEATURES`` with the full feature
 matrix and ``TIER_DISPLAY`` for the frontend pricing UI.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -115,8 +115,7 @@ class Subscription(BaseModel):
     stripe_price_id: Optional[str] = None
     billing_provider: str = "stripe"
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SubscriptionCreate(BaseModel):
     """Request body for creating a new subscription.

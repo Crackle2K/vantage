@@ -31,6 +31,7 @@ from backend.services.business_metadata import (
 )
 from backend.services.photo_proxy import build_category_placeholder_bytes, build_stream, get_photo_payload
 from backend.routes.discovery import discover_businesses
+from backend.utils.security import normalize_optional_url, normalize_text_list, sanitize_text
 
 router = APIRouter()
 
@@ -108,9 +109,53 @@ def business_helper(business) -> dict:
             business["owner_id"] = str(business["owner_id"])
     return business
 
+def _normalize_business_url(value: Optional[str], label: str) -> Optional[str]:
+    try:
+        return normalize_optional_url(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid {label}: {exc}",
+        ) from exc
+
+def _normalize_business_image_urls(values: Optional[list[str]], primary_image: Optional[str] = None) -> list[str]:
+    cleaned: list[str] = []
+    for value in values or []:
+        normalized = _normalize_business_url(value, "image URL")
+        if normalized:
+            cleaned.append(normalized)
+    return normalize_image_urls(cleaned, primary_image=primary_image or "")
+
+def _sanitize_business_update(data: dict) -> dict:
+    """Sanitize business-owner controlled fields before persistence."""
+    text_limits = {
+        "name": 200,
+        "description": 1000,
+        "address": 300,
+        "city": 100,
+        "phone": 50,
+        "email": 254,
+        "short_description": 160,
+    }
+    for key, limit in text_limits.items():
+        if key in data and data[key] is not None:
+            data[key] = sanitize_text(data[key], max_length=limit)
+    if "website" in data:
+        data["website"] = _normalize_business_url(data.get("website"), "website URL")
+    if "image_url" in data:
+        data["image_url"] = _normalize_business_url(data.get("image_url"), "image URL")
+    if "image_urls" in data and data["image_urls"] is not None:
+        data["image_urls"] = _normalize_business_image_urls(
+            data.get("image_urls"),
+            primary_image=data.get("image_url", ""),
+        )
+    if "known_for" in data and data["known_for"] is not None:
+        data["known_for"] = normalize_text_list(data.get("known_for"), limit=6, max_item_length=24)
+    return data
+
 @router.get("/photos")
 async def get_business_photo(
-    place_id: str = Query(..., min_length=3),
+    place_id: str = Query(..., min_length=3, max_length=256),
     maxwidth: int = Query(800, ge=120, le=1600),
 ):
     """Proxy a business photo by Google Place ID (GET /api/photos).
@@ -140,9 +185,9 @@ async def get_business_photo(
 @router.get("/businesses", response_model=List[Business])
 async def get_businesses(
     category: Optional[CategoryEnum] = None,
-    city: Optional[str] = None,
-    search: Optional[str] = None,
-    owner_id: Optional[str] = None,
+    city: Optional[str] = Query(None, max_length=100),
+    search: Optional[str] = Query(None, max_length=120),
+    owner_id: Optional[str] = Query(None, max_length=128),
     min_rating: Optional[float] = Query(None, ge=0, le=5),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100)
@@ -180,7 +225,7 @@ async def get_businesses_feed(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     category: Optional[CategoryEnum] = None,
-    search: Optional[str] = None,
+    search: Optional[str] = Query(None, max_length=120),
     sort_by: Optional[str] = Query(None, description="Sort by: rating, reviews, newest"),
 ):
     """Paginated business feed with sorting (GET /api/businesses/feed).
@@ -300,7 +345,7 @@ async def create_business(
         "description": business_data.description,
         "address": business_data.address,
         "city": business_data.city,
-        "location": business_data.location.dict(),
+        "location": business_data.location.model_dump(),
         "rating_average": 0.0,
         "total_reviews": 0,
         "phone": business_data.phone,
@@ -320,6 +365,7 @@ async def create_business(
         ),
         "created_at": datetime.utcnow()
     }
+    _sanitize_business_update(business_dict)
     normalize_business_metadata(business_dict)
     result = await businesses_collection.insert_one(business_dict)
     created_business = await businesses_collection.find_one({"_id": result.inserted_id})
@@ -353,14 +399,15 @@ async def update_business(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this business"
         )
-    update_data = {k: v for k, v in business_data.dict(exclude_unset=True).items() if v is not None}
+    update_data = {k: v for k, v in business_data.model_dump(exclude_unset=True).items() if v is not None}
+    _sanitize_business_update(update_data)
     if not update_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No valid fields to update"
         )
-    if "location" in update_data:
-        update_data["location"] = update_data["location"].dict()
+    if "location" in update_data and hasattr(update_data["location"], "model_dump"):
+        update_data["location"] = update_data["location"].model_dump()
     if "image_urls" in update_data or "image_url" in update_data:
         existing_images = update_data.get("image_urls") if "image_urls" in update_data else business.get("image_urls", [])
         primary_image = update_data.get("image_url", business.get("image_url", ""))
@@ -422,7 +469,8 @@ async def update_business_profile(
             detail="Only the claimed owner can edit business profile details"
         )
 
-    payload = profile_data.dict(exclude_unset=True)
+    payload = profile_data.model_dump(exclude_unset=True)
+    _sanitize_business_update(payload)
     update_data = {}
 
     if "short_description" in payload:

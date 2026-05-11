@@ -19,7 +19,7 @@ from collections import OrderedDict
 from pathlib import Path
 from threading import Lock
 from typing import Optional
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus, urljoin, urlsplit
 
 import httpx
 from fastapi import HTTPException
@@ -27,6 +27,7 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 from backend.config import GOOGLE_API_KEY
+from backend.utils.security import hostname_resolves_publicly, normalize_url
 
 PHOTO_PROXY_TTL_SECONDS = 7 * 24 * 60 * 60
 PHOTO_PROXY_MEMORY_ITEMS = 192
@@ -34,6 +35,15 @@ PHOTO_PROXY_DISK_DIR = Path("/tmp/vantage_photos")
 GOOGLE_PHOTO_URL = "https://maps.googleapis.com/maps/api/place/photo"
 GOOGLE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 HTTP_CLIENT_LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10)
+MAX_REMOTE_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_REDIRECTS = 3
+ALLOWED_REMOTE_IMAGE_TYPES = {
+    "image/avif",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
 _META_TAG_RE = re.compile(
     r"""<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]+content=["']([^"']+)["']""",
     re.IGNORECASE,
@@ -221,12 +231,88 @@ def build_category_placeholder_bytes(category: str = "", label: str = "V") -> tu
 </svg>"""
     return "image/svg+xml", svg.encode("utf-8")
 
+def _validate_public_fetch_url(url: str) -> str:
+    """Normalize a remote fetch URL and reject private-network targets."""
+    normalized = normalize_url(url, max_length=2000, require_public_host=True)
+    if not normalized:
+        raise ValueError("Missing URL")
+    host = urlsplit(normalized).hostname
+    if not host or not hostname_resolves_publicly(host):
+        raise ValueError("URL host is not publicly routable")
+    return normalized
+
+def _validate_remote_image_type(content_type: str) -> str:
+    media_type = (content_type or "application/octet-stream").split(";", 1)[0].strip().lower()
+    if media_type not in ALLOWED_REMOTE_IMAGE_TYPES:
+        raise ValueError("Remote URL did not return an allowed image type")
+    return media_type
+
 async def _fetch_bytes(url: str, timeout_seconds: float = 4.0) -> tuple[str, bytes]:
     client = await _get_http_client()
-    response = await client.get(url, timeout=timeout_seconds, follow_redirects=True)
-    response.raise_for_status()
-    content_type = response.headers.get("content-type", "image/jpeg").split(";")[0]
-    return content_type, response.content
+    current_url = _validate_public_fetch_url(url)
+
+    for _ in range(MAX_REDIRECTS + 1):
+        async with client.stream(
+            "GET",
+            current_url,
+            timeout=timeout_seconds,
+            follow_redirects=False,
+        ) as response:
+            if response.is_redirect:
+                location = response.headers.get("location")
+                if not location:
+                    raise ValueError("Remote redirect did not include a location")
+                current_url = _validate_public_fetch_url(urljoin(current_url, location))
+                continue
+
+            response.raise_for_status()
+            content_type = _validate_remote_image_type(response.headers.get("content-type", ""))
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > MAX_REMOTE_IMAGE_BYTES:
+                raise ValueError("Remote image is too large")
+
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                total += len(chunk)
+                if total > MAX_REMOTE_IMAGE_BYTES:
+                    raise ValueError("Remote image is too large")
+                chunks.append(chunk)
+            return content_type, b"".join(chunks)
+
+    raise ValueError("Too many redirects while fetching remote image")
+
+async def _fetch_text_preview(url: str, timeout_seconds: float = 1.5, max_bytes: int = 40000) -> tuple[str, str]:
+    """Fetch a small HTML preview while validating every redirect target."""
+    client = await _get_http_client()
+    current_url = _validate_public_fetch_url(url)
+
+    for _ in range(MAX_REDIRECTS + 1):
+        async with client.stream(
+            "GET",
+            current_url,
+            timeout=timeout_seconds,
+            follow_redirects=False,
+        ) as response:
+            if response.is_redirect:
+                location = response.headers.get("location")
+                if not location:
+                    raise ValueError("Remote redirect did not include a location")
+                current_url = _validate_public_fetch_url(urljoin(current_url, location))
+                continue
+
+            response.raise_for_status()
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                remaining = max_bytes - total
+                if remaining <= 0:
+                    break
+                chunks.append(chunk[:remaining])
+                total += min(len(chunk), remaining)
+            return current_url, b"".join(chunks).decode(response.encoding or "utf-8", errors="ignore")
+
+    raise ValueError("Too many redirects while fetching remote page")
 
 async def _fetch_google_photo_bytes(photo_reference: str, maxwidth: int) -> tuple[str, bytes]:
     if not GOOGLE_API_KEY:
@@ -280,21 +366,16 @@ async def _resolve_og_image_url(website_url: str) -> str:
         return ""
 
     try:
-        client = await _get_http_client()
-        response = await client.get(website_url, timeout=1.5, follow_redirects=True)
-        response.raise_for_status()
-        html = response.text[:40000]
+        final_url, html = await _fetch_text_preview(website_url)
         match = _META_TAG_RE.search(html)
         if not match:
             return ""
-        return urljoin(str(response.url), match.group(1).strip())
+        return urljoin(final_url, match.group(1).strip())
     except Exception:
         return ""
 
 async def _fetch_cached_url(url: str) -> tuple[str, bytes]:
     content_type, payload = await _fetch_bytes(url, timeout_seconds=4.0)
-    if not content_type.startswith("image/"):
-        raise ValueError("Resolved OG image URL did not return an image payload")
     return content_type, payload
 
 async def resolve_business_photo_payload(

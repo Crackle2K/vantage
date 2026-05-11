@@ -13,6 +13,7 @@ from backend.models.deal import Deal, DealCreate, DealUpdate, DealWithBusiness
 from backend.models.user import User
 from backend.models.auth import get_current_user
 from backend.database.document_store import get_deals_collection, get_businesses_collection
+from backend.utils.security import sanitize_text
 
 router = APIRouter()
 
@@ -61,10 +62,15 @@ async def create_deal(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Expiration date must be in the future"
         )
+    title = sanitize_text(deal_data.title, max_length=200)
+    description = sanitize_text(deal_data.description, max_length=500)
+    if not title or not description:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deal title and description are required")
+
     deal_dict = {
         "business_id": deal_data.business_id,
-        "title": deal_data.title,
-        "description": deal_data.description,
+        "title": title,
+        "description": description,
         "discount_percent": deal_data.discount_percent,
         "expires_at": deal_data.expires_at,
         "active": deal_data.active,
@@ -202,7 +208,15 @@ async def update_deal(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this deal"
         )
-    update_data = {k: v for k, v in deal_data.dict(exclude_unset=True).items() if v is not None}
+    update_data = {k: v for k, v in deal_data.model_dump(exclude_unset=True).items() if v is not None}
+    if "title" in update_data:
+        update_data["title"] = sanitize_text(update_data["title"], max_length=200)
+    if "description" in update_data:
+        update_data["description"] = sanitize_text(update_data["description"], max_length=500)
+    if ("title" in update_data and not update_data["title"]) or (
+        "description" in update_data and not update_data["description"]
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Deal title and description cannot be empty")
     if not update_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

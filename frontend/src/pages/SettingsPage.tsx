@@ -129,8 +129,18 @@ export default function SettingsPage() {
       setPasswordError('New passwords do not match')
       return
     }
-    if (newPassword.length < 6) {
-      setPasswordError('New password must be at least 6 characters')
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters')
+      return
+    }
+    const passwordStrengthChecks = [
+      /[A-Z]/.test(newPassword),
+      /[a-z]/.test(newPassword),
+      /\d/.test(newPassword),
+      /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(newPassword)
+    ].filter(Boolean).length
+    if (passwordStrengthChecks < 3) {
+      setPasswordError('New password must include at least 3 of: uppercase, lowercase, digits, special characters')
       return
     }
     setPasswordSaving(true)
@@ -540,7 +550,7 @@ export default function SettingsPage() {
                           {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
-                      <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1">Minimum 6 characters</p>
+                      <p className="text-caption text-[hsl(var(--muted-foreground))] mt-1">At least 8 characters and 3 of: uppercase, lowercase, digits, special characters</p>
                     </div>
 
                     <div>

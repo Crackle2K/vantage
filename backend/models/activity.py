@@ -5,7 +5,7 @@ owner-posted events, and business activity status. Also contains the
 ``calculate_credibility_score`` function that maps user activity statistics
 to a numeric score and tier.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -45,8 +45,8 @@ class CheckIn(BaseModel):
     confirmations: int = 0
     confirmed_by: List[str] = Field(default_factory=list)
     created_at: datetime
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 class CheckInCreate(BaseModel):
     """Request body for submitting a check-in.
@@ -99,8 +99,8 @@ class UserCredibility(BaseModel):
     is_verified_local: bool = False
     joined_at: Optional[datetime] = None
     last_active: Optional[datetime] = None
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 def calculate_credibility_score(stats: dict) -> tuple[float, CredibilityTier]:
     """Compute a credibility score (0-100) and tier from user activity statistics.
@@ -185,8 +185,8 @@ class ActivityFeedItem(BaseModel):
     likes: int = 0
     comments: int = 0
     created_at: datetime
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 class ActivityFeedCreate(BaseModel):
     """Request body for creating a new activity feed entry.
@@ -253,8 +253,7 @@ class OwnerEvent(BaseModel):
     business_category: Optional[str] = None
     business_image_url: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class BusinessActivityStatus(BaseModel):
     """Summary of a business's recent activity levels.
@@ -275,5 +274,5 @@ class BusinessActivityStatus(BaseModel):
     last_checkin_at: Optional[datetime] = None
     recent_activity_count: int = 0
     trending_score: float = 0.0
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
