@@ -49,16 +49,16 @@ export function CommunityActivityRail({ items }: CommunityActivityRailProps) {
         {items.map((item) => (
           <article
             key={item.id}
-            className="min-w-[240px] max-w-[240px] overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)]"
+            className="explore-rail-card explore-rail-card--scroll explore-rail-card--compact"
           >
-            <div className="relative h-20 overflow-hidden bg-[hsl(var(--secondary))]">
+            <div className="explore-rail-card__media">
               <BusinessImage
                 primaryImage={item.imageUrl}
                 category={item.category}
                 alt={item.name}
-                className="h-full w-full object-cover"
+                className="explore-rail-card__image"
               />
-              <button className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md border border-[hsl(var(--border))/0.7] bg-[hsl(var(--card))/0.75] text-[hsl(var(--foreground))]">
+              <button className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/24 bg-black/38 text-white backdrop-blur-md">
                 <Heart className="h-3.5 w-3.5" />
               </button>
             </div>
