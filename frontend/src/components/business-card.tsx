@@ -106,15 +106,15 @@ export const BusinessCard = memo(function BusinessCard({
       tabIndex={isClickable ? 0 : undefined}
       aria-label={isClickable ? `View ${business.name}` : undefined}
       className={cn(
-        'group overflow-hidden transition-all duration-200 motion-reduce:transition-none',
+        'group overflow-hidden transition-all duration-300 motion-reduce:transition-none',
         isClickable && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]',
-        'break-inside-avoid rounded-xl bg-transparent hover:-translate-y-0.5 motion-reduce:hover:translate-y-0'
+        'break-inside-avoid rounded-2xl bg-transparent hover:-translate-y-1 motion-reduce:hover:translate-y-0'
       )}
     >
       <div
         className={cn(
-          'relative overflow-hidden border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]',
-          `${aspect} min-h-[320px] rounded-xl shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)]`
+          'relative overflow-hidden border border-[hsl(var(--border))/0.72] bg-[hsl(var(--secondary))] transition-shadow duration-300 group-hover:shadow-[0_22px_54px_hsl(var(--shadow-soft)/0.12)]',
+          `${aspect} min-h-[320px] rounded-2xl shadow-[0_10px_30px_hsl(var(--shadow-soft)/0.07)]`
         )}
       >
         <div className="absolute inset-0">
@@ -124,10 +124,10 @@ export const BusinessCard = memo(function BusinessCard({
             imageCandidates={images}
             category={business.category}
             alt={business.name}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
           />
         </div>
-        <div className="absolute inset-x-0 bottom-0 h-20 bg-black/38" />
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/54 via-black/22 to-transparent" />
 
         <div className="absolute right-3 top-3">
           <button
@@ -137,7 +137,7 @@ export const BusinessCard = memo(function BusinessCard({
               onToggleFavorite();
             }}
             className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-md border border-white/20 bg-black/40 text-white transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/20',
+              'flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/42 text-white backdrop-blur-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black/20',
               'opacity-100 sm:translate-y-1 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100',
               isFavorite && 'border-[hsl(var(--primary))/0.35] bg-[hsl(var(--primary))/0.28] text-white'
             )}
@@ -149,7 +149,7 @@ export const BusinessCard = memo(function BusinessCard({
 
         {distance && (
           <div className="absolute bottom-3 right-3">
-            <span className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-black/35 px-2.5 py-1 text-caption text-white/90">
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/18 bg-black/40 px-3 py-1.5 text-caption font-medium text-white/92 backdrop-blur-md">
               <MapPin className="h-3.5 w-3.5" />
               {distance}
             </span>
@@ -157,8 +157,8 @@ export const BusinessCard = memo(function BusinessCard({
         )}
       </div>
 
-      <div className="space-y-1 px-1 pb-1 pt-3">
-        <h3 className="font-sub font-semibold leading-tight text-[hsl(var(--foreground))] line-clamp-2 text-[1.1rem]">
+      <div className="space-y-1.5 px-1.5 pb-1 pt-3.5">
+        <h3 className="font-sub text-[1.08rem] font-semibold leading-tight text-[hsl(var(--foreground))] line-clamp-2">
           {business.name}
         </h3>
         <p className="line-clamp-1 text-caption text-[hsl(var(--muted-foreground))]">
