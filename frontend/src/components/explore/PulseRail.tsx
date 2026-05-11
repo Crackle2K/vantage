@@ -66,14 +66,14 @@ export function PulseRail({ items, onView }: PulseRailProps) {
         {items.map((item) => (
           <article
             key={item.id}
-            className="min-w-[270px] max-w-[270px] overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)]"
+            className="explore-rail-card explore-rail-card--scroll explore-rail-card--pulse"
           >
-            <div className="relative h-24 overflow-hidden bg-[hsl(var(--secondary))]">
+            <div className="explore-rail-card__media">
               <BusinessImage
                 primaryImage={item.business.image_url}
                 category={item.business.category}
                 alt={item.business.name}
-                className="h-full w-full object-cover"
+                className="explore-rail-card__image"
               />
               <div className="absolute inset-0 bg-black/38" />
               <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-md border border-white/20 bg-black/35 px-2.5 py-1 text-caption text-white">
@@ -96,7 +96,7 @@ export function PulseRail({ items, onView }: PulseRailProps) {
                   <p className="truncate text-ui font-medium text-[hsl(var(--foreground))]">{item.business.name}</p>
                   <p className="truncate text-caption text-[hsl(var(--muted-foreground))]">{item.business.category}</p>
                 </div>
-                <Button type="button" variant="outline" onClick={() => onView(item)} className="rounded-md px-4">
+                <Button type="button" variant="outline" onClick={() => onView(item)} className="px-4">
                   View
                 </Button>
               </div>
