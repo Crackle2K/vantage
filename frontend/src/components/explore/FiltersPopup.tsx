@@ -1,48 +1,11 @@
 /**
- * @fileoverview Filter controls for the explore page: a toggle button
- * for the FiltersButton chip and a modal (FiltersModal) with location
- * enable, radius slider, and tag-based filter toggles.
+ * @fileoverview Filter modal for the Explore page. Location lives in the
+ * search bar; this modal owns only radius and tag filters.
  */
 
 import { useRef, useEffect } from 'react';
-import { Navigation, SlidersHorizontal, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface FiltersButtonProps {
-  isOpen: boolean;
-  onToggle: () => void;
-}
-
-/**
- * Renders the "Filters" chip button in the search bar, styled to match
- * CategoryChip with an active highlight state.
- *
- * @param {boolean} isOpen - Whether the filters modal is currently open.
- * @param {() => void} onToggle - Callback to toggle the filters modal.
- * @returns {JSX.Element} The filter toggle button.
- */
-export function FiltersButton({ isOpen, onToggle }: FiltersButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        onToggle();
-      }}
-      className={cn(
-        'inline-flex h-12 shrink-0 items-center gap-2 rounded-md border px-5 py-2 text-ui font-medium transition-colors duration-200 whitespace-nowrap',
-        isOpen
-          ? 'border-[hsl(var(--foreground))/0.18] bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]'
-          : 'border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))]/90 hover:bg-[hsl(var(--secondary))]'
-      )}
-      aria-label="Open filters"
-      aria-expanded={isOpen}
-    >
-      <SlidersHorizontal className="h-4 w-4" />
-      <span className="max-w-[180px] overflow-hidden text-ellipsis">Filters</span>
-    </button>
-  );
-}
 
 interface FiltersModalProps {
   isOpen: boolean;
@@ -51,17 +14,14 @@ interface FiltersModalProps {
   onRadiusChange: (value: number) => void;
   minRadius: number;
   maxRadius: number;
-  locationActive: boolean;
-  loadingLocation: boolean;
-  onUseLocation: () => void;
   tagFacets: Array<{ label: string; count: number }>;
   selectedTagFilters: string[];
   onToggleTagFilter: (tag: string) => void;
 }
 
 /**
- * Renders a filter dialog with location enable button, radius slider,
- * and tag-based filter chips. Closes on Escape key or backdrop click.
+ * Renders a filter dialog with radius and tag-based filter chips. Closes on
+ * Escape key or backdrop click.
  *
  * @param {FiltersModalProps} props - Filter state and callbacks.
  * @returns {JSX.Element | null} The filter modal, or null when closed.
@@ -73,9 +33,6 @@ export function FiltersModal({
   onRadiusChange,
   minRadius,
   maxRadius,
-  locationActive,
-  loadingLocation,
-  onUseLocation,
   tagFacets,
   selectedTagFilters,
   onToggleTagFilter,
@@ -124,19 +81,6 @@ export function FiltersModal({
         </div>
 
         <div className="space-y-4">
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onUseLocation}
-              disabled={loadingLocation}
-              className="w-full border-[hsl(var(--primary))/0.24] bg-[hsl(var(--background))/0.45] px-5"
-            >
-              <Navigation className="h-4 w-4" />
-              {locationActive ? 'Location enabled' : 'Use location'}
-            </Button>
-          </div>
-
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-ui text-[hsl(var(--muted-foreground))]">Radius</span>
