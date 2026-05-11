@@ -113,7 +113,7 @@ const signalCards: SignalCard[] = [
     title: 'Recent visits',
     detail: 'Fresh check-ins carry more weight than old review volume.',
     meta: '14,837 verified visits',
-    image: 'https://picsum.photos/seed/vantage-visits/1200/900',
+    image: '/Images/image2.webp',
     accent: 'forest',
     size: 'wide',
     bullets: ['Weighted for recency', 'Anchored to neighborhood behavior'],
@@ -123,7 +123,7 @@ const signalCards: SignalCard[] = [
     title: 'Return behavior',
     detail: 'Places people revisit are separated from one-time hype.',
     meta: '4,216 ranked places',
-    image: 'https://picsum.photos/seed/vantage-returns/1200/900',
+    image: '/Images/image3.webp',
     accent: 'ink',
     size: 'wide',
     bullets: ['Repeat visits outrank one-off spikes', 'Stable demand surfaces faster'],
@@ -133,7 +133,7 @@ const signalCards: SignalCard[] = [
     title: 'Owner activity',
     detail: 'Claimed businesses can publish events, deals, and availability updates.',
     meta: '923 owner notes',
-    image: 'https://picsum.photos/seed/vantage-owners/1200/900',
+    image: '/Images/image4.webp',
     accent: 'gold',
     size: 'standard',
     bullets: ['Events and hours stay current', 'No paid boost inside ranking'],
@@ -143,7 +143,7 @@ const signalCards: SignalCard[] = [
     title: 'Community trust',
     detail: 'Credibility tiers help filter noisy ratings from durable local signal.',
     meta: '91% recent-backed picks',
-    image: 'https://picsum.photos/seed/vantage-trust/1200/900',
+    image: '/Images/image5.webp',
     accent: 'forest',
     size: 'standard',
     bullets: ['Signal beats stale volume', 'Credible locals influence more'],
@@ -153,7 +153,7 @@ const signalCards: SignalCard[] = [
     title: 'Shortlist momentum',
     detail: 'Saves and return intent show which places are earning consideration right now.',
     meta: '5,402 active shortlists',
-    image: 'https://picsum.photos/seed/vantage-saves/1200/900',
+    image: '/Images/image1.webp',
     accent: 'ink',
     size: 'standard',
     bullets: ['Tracks intent before reviews land', 'Flags breakout places earlier'],
@@ -163,7 +163,7 @@ const signalCards: SignalCard[] = [
     title: 'Neighborhood clustering',
     detail: 'Vantage spots when a street or district starts pulling more local attention.',
     meta: '18 live districts',
-    image: 'https://picsum.photos/seed/vantage-neighborhoods/1200/900',
+    image: '/Images/image2.webp',
     accent: 'gold',
     size: 'standard',
     bullets: ['Useful for where to go next', 'Built from real nearby activity'],
@@ -197,32 +197,32 @@ const marqueeItems: MarqueeItem[] = [
   {
     label: 'Unionville dinner rooms',
     meta: '154 fresh saves',
-    image: '/Images/volosgreekcuisine.webp',
+    image: '/Images/image2.webp',
   },
   {
     label: 'Markham coffee counters',
     meta: '127 verified visits',
-    image: '/Images/dineencoffeeco.webp',
+    image: '/Images/image1.webp',
   },
   {
     label: 'Wellness bookings',
     meta: '18 owner updates',
-    image: '/Images/laperlasalon&spa.webp',
+    image: '/Images/image5.webp',
   },
   {
     label: 'Late-night returns',
     meta: '42 repeat visits',
-    image: '/Images/Activity.png',
+    image: '/Images/image3.webp',
   },
   {
     label: 'Neighborhood picks',
     meta: '86 trust score',
-    image: '/Images/Explore.png',
+    image: '/Images/image4.webp',
   },
   {
     label: 'Claimed listings',
     meta: '31% discovery lift',
-    image: '/Images/Pricing.png',
+    image: '/Images/image5.webp',
   },
 ];
 
@@ -245,7 +245,7 @@ const localSignalRows = [
   },
 ];
 
-const heroImageUrl = 'https://picsum.photos/seed/vantage-neighborhood-restaurant-night/1920/1280';
+const heroImageUrl = '/Images/image2.webp';
 
 function HomePage() {
   const [newsletterEmailValue, setNewsletterEmailValue] = useState('');
@@ -518,7 +518,7 @@ function HomePage() {
                 <span
                   className="min-inline-pill"
                   aria-hidden="true"
-                  style={{ backgroundImage: "url('/Images/volosgreekcuisine.webp')" }}
+                  style={{ backgroundImage: "url('/Images/image2.webp')" }}
                 />
                 {' '}
                 the local signal move in real time.
@@ -557,7 +557,7 @@ function HomePage() {
                 <span
                   className="min-inline-pill min-inline-pill--large"
                   aria-hidden="true"
-                  style={{ backgroundImage: "url('/Images/Explore.png')" }}
+                  style={{ backgroundImage: "url('/Images/image4.webp')" }}
                 />
                 {' '}
                 recently.
@@ -693,7 +693,7 @@ function HomePage() {
                     <span
                       className="min-inline-pill"
                       aria-hidden="true"
-                      style={{ backgroundImage: "url('/Images/dineencoffeeco.webp')" }}
+                      style={{ backgroundImage: "url('/Images/image1.webp')" }}
                     />
                     {' '}
                     you would actually recommend.

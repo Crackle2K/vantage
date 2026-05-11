@@ -201,7 +201,7 @@ export default function SignUpPage() {
         <section className="auth-editorial__story">
           <div className="auth-editorial__media" aria-hidden="true">
             <img
-              src="/Images/Explore.png"
+              src="/Images/image4.webp"
               alt=""
             />
             <span className="auth-editorial__wordmark">VANTAGE</span>
