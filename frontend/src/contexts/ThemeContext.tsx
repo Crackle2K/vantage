@@ -1,8 +1,6 @@
 /**
- * @fileoverview Theme context provider and hook for light/dark mode.
- * Persists the user's preference to localStorage and applies the
- * `dark` class to the document root. Falls back to the system
- * prefers-color-scheme media query on first visit.
+ * @fileoverview Theme context provider and hook. Theme switching is kept in
+ * the public API, but the app is currently pinned to light mode.
  */
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
@@ -21,21 +19,17 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 const STORAGE_KEY = 'vantage-theme';
 
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle('dark', theme === 'dark');
+  document.documentElement.classList.remove('dark');
+  document.documentElement.style.colorScheme = theme;
 }
 
 function getInitialTheme(): Theme {
-  const storedTheme = localStorage.getItem(STORAGE_KEY);
-  if (storedTheme === 'light' || storedTheme === 'dark') {
-    return storedTheme;
-  }
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 /**
- * Provides light/dark theme state to the component tree. Syncs the
- * theme to localStorage and the document root `.dark` class.
+ * Provides theme state to the component tree. Syncs a light-only value to
+ * localStorage and ensures the document root has no `.dark` class.
  *
  * @param {React.ReactNode} children - Child components that need theme access.
  * @returns {JSX.Element} The theme context provider wrapping children.
@@ -48,12 +42,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY, theme);
   }, [theme]);
 
-  const setTheme = (nextTheme: Theme) => {
-    setThemeState(nextTheme);
+  const setTheme = () => {
+    setThemeState('light');
   };
 
   const toggleTheme = () => {
-    setThemeState((current) => (current === 'dark' ? 'light' : 'dark'));
+    setThemeState('light');
   };
 
   const contextValue = useMemo(
