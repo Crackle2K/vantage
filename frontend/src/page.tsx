@@ -50,7 +50,7 @@ const categoryCards: CategoryCard[] = [
     placeCount: 214,
     description: 'Morning counters, quiet work tables, and neighborhood regulars.',
     tone: 'green',
-    image: 'https://picsum.photos/seed/vantage-cafes/900/700',
+    image: '/Images/image1.webp',
     pace: 'Slow mornings, quick resets',
     cues: ['Laptop corners', 'Regular traffic'],
     layout: 'flat',
@@ -60,7 +60,7 @@ const categoryCards: CategoryCard[] = [
     placeCount: 386,
     description: 'Dinner rooms with recent visits, return traffic, and owner updates.',
     tone: 'yellow',
-    image: 'https://picsum.photos/seed/vantage-restaurants/900/700',
+    image: '/Images/image2.webp',
     pace: 'High-turn evenings',
     cues: ['Booked tables', 'Late reservations'],
     layout: 'photo',
@@ -70,7 +70,7 @@ const categoryCards: CategoryCard[] = [
     placeCount: 143,
     description: 'Late-night rooms ranked by actual activity, not paid placement.',
     tone: 'blue',
-    image: 'https://picsum.photos/seed/vantage-bars/900/700',
+    image: '/Images/image3.webp',
     pace: 'After-hours energy',
     cues: ['Repeat crowds', 'Weekend spikes'],
     layout: 'flat',
@@ -80,7 +80,7 @@ const categoryCards: CategoryCard[] = [
     placeCount: 98,
     description: 'Small shops that locals keep saving, reviewing, and revisiting.',
     tone: 'red',
-    image: 'https://picsum.photos/seed/vantage-bakeries/900/700',
+    image: '/Images/image4.webp',
     pace: 'Early rush, quick sellouts',
     cues: ['Morning lines', 'Return orders'],
     layout: 'flat',
@@ -90,7 +90,7 @@ const categoryCards: CategoryCard[] = [
     placeCount: 167,
     description: 'Lower-volume places with credible signals from nearby people.',
     tone: 'green',
-    image: 'https://picsum.photos/seed/vantage-hidden-gems/900/700',
+    image: '/Images/image5.webp',
     pace: 'Quiet but rising',
     cues: ['Local saves', 'Word-of-mouth'],
     layout: 'photo',
@@ -100,7 +100,7 @@ const categoryCards: CategoryCard[] = [
     placeCount: 121,
     description: 'Studios, salons, clinics, and appointment-based local services.',
     tone: 'blue',
-    image: 'https://picsum.photos/seed/vantage-wellness/900/700',
+    image: '/Images/image1.webp',
     pace: 'Booked calendars',
     cues: ['Owner updates', 'Repeat bookings'],
     layout: 'flat',
@@ -250,11 +250,9 @@ const heroImageUrl = 'https://picsum.photos/seed/vantage-neighborhood-restaurant
 function HomePage() {
   const [newsletterEmailValue, setNewsletterEmailValue] = useState('');
   const [openFaqIndex, setOpenFaqIndex] = useState(0);
-  const landingRootRef = useRef<HTMLElement | null>(null);
+  const landingRootRef = useRef<HTMLDivElement | null>(null);
   const marqueeTrackRef = useRef<HTMLDivElement | null>(null);
   const heroSectionRef = useRef<HTMLElement | null>(null);
-  const heroFrameRef = useRef<HTMLDivElement | null>(null);
-  const heroImageRef = useRef<HTMLImageElement | null>(null);
   const signalStageRef = useRef<HTMLDivElement | null>(null);
   const signalPinRef = useRef<HTMLDivElement | null>(null);
   const panelStageRef = useRef<HTMLDivElement | null>(null);
@@ -265,7 +263,6 @@ function HomePage() {
   const ledgerRowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const ledgerValueRefs = useRef<Array<HTMLElement | null>>([]);
 
-  const currentYear = useMemo(() => new Date().getFullYear(), []);
   const marqueeLoopItems = useMemo(() => [...marqueeItems, ...marqueeItems], []);
 
   useEffect(() => {
@@ -320,43 +317,6 @@ function HomePage() {
     const context = gsap.context(() => {
       syncMarquee();
       window.addEventListener('resize', syncMarquee);
-
-      if (heroFrameRef.current && heroSectionRef.current) {
-        gsap.set(heroFrameRef.current, {
-          scale: 0.972,
-          transformOrigin: 'center top',
-        });
-
-        gsap.to(heroFrameRef.current, {
-          scale: 1.012,
-          ease: 'none',
-          scrollTrigger: {
-            trigger: heroSectionRef.current,
-            start: 'top top+=20',
-            end: 'bottom top+=150',
-            scrub: true,
-          },
-        });
-      }
-
-      if (heroImageRef.current && heroSectionRef.current) {
-        gsap.fromTo(
-          heroImageRef.current,
-          {
-            scale: 1,
-          },
-          {
-            scale: 1.1,
-            ease: 'none',
-            scrollTrigger: {
-              trigger: heroSectionRef.current,
-              start: 'top top',
-              end: 'bottom top+=150',
-              scrub: true,
-            },
-          }
-        );
-      }
 
       media.add('(min-width: 901px)', () => {
         const panelCards = panelCardRefs.current.filter((card): card is HTMLElement => card !== null);
@@ -532,12 +492,11 @@ function HomePage() {
   };
 
   return (
-    <main className="min-landing" ref={landingRootRef}>
+    <div className="min-landing" ref={landingRootRef}>
       <section className="min-hero min-hero--image" ref={heroSectionRef}>
         <div className="min-hero-shell">
-          <div className="min-hero-visual min-reveal" ref={heroFrameRef} aria-label="Neighborhood restaurant at night">
+          <div className="min-hero-visual min-reveal" aria-label="Neighborhood restaurant at night">
             <img
-              ref={heroImageRef}
               className="min-hero-visual__image"
               src={heroImageUrl}
               alt="Neighborhood restaurant frontage at night with warm local street activity."
@@ -673,9 +632,6 @@ function HomePage() {
               >
                 <div
                   className="min-category-card__media"
-                  ref={(node) => {
-                    cardMediaRefs.current[signalCards.length + index] = node;
-                  }}
                   style={{ backgroundImage: `url('${category.image}')` }}
                   aria-hidden="true"
                 />
@@ -909,36 +865,7 @@ function HomePage() {
         </div>
       </section>
 
-      <footer className="min-footer">
-        <div className="min-container min-footer__grid">
-          <div>
-            <Link to="/" className="min-footer__brand">
-              <img src="/Images/Vantage.png" alt="Vantage logo" />
-              <span>Vantage</span>
-            </Link>
-            <p>Local discovery ranked by fresh, credible community activity.</p>
-          </div>
-          <div>
-            <h3>Explore</h3>
-            <Link to="/businesses">Places</Link>
-            <Link to="/activity">Activity</Link>
-            <Link to="/saved">Saved</Link>
-          </div>
-          <div>
-            <h3>Business</h3>
-            <Link to="/claim">Claim</Link>
-            <Link to="/pricing">Pricing</Link>
-            <Link to="/dashboard">Dashboard</Link>
-          </div>
-          <div>
-            <h3>Company</h3>
-            <a href="mailto:privacy@vantage.local">Privacy</a>
-            <a href="mailto:legal@vantage.local">Terms</a>
-            <span>{currentYear}</span>
-          </div>
-        </div>
-      </footer>
-    </main>
+    </div>
   );
 }
 
