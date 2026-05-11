@@ -24,10 +24,10 @@ interface BusinessModalProps {
 
 const categoryGradients: Record<string, string> = {
   food: 'from-brand-light to-brand',
-  retail: 'from-brand-dark to-brand-light',
-  services: 'from-brand-dark to-brand',
+  retail: 'from-brand-strong to-brand-light',
+  services: 'from-brand-strong to-brand',
   entertainment: 'from-brand to-brand-light',
-  health: 'from-brand-light to-brand-dark',
+  health: 'from-brand-light to-brand-strong',
 }
 
 function getBusinessId(business: Business) {
@@ -224,21 +224,21 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   ]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-      <div className="absolute inset-0 bg-scrim-dark/60" />
+    <div className="product-modal fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 animate-fade-in" onClick={onClose}>
+      <div className="absolute inset-0 bg-[hsl(var(--foreground))]/60" />
 
       <div
-        className="relative w-full max-w-3xl max-h-[88vh] rounded-[28px] bg-[hsl(var(--card))] border border-[hsl(var(--border))] shadow-2xl overflow-hidden flex flex-col animate-scale-in"
+        className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.82] bg-[hsl(var(--card))] shadow-[0_30px_90px_hsl(var(--shadow-soft)/0.22)] animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-scrim-dark/40 text-on-primary flex items-center justify-center hover:bg-scrim-dark/60 transition-colors"
+          className="absolute top-4 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/18 bg-[hsl(var(--foreground))]/45 text-on-primary backdrop-blur-md transition-colors hover:bg-[hsl(var(--foreground))]/62"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="relative h-56 overflow-hidden flex-shrink-0">
+        <div className="relative h-64 flex-shrink-0 overflow-hidden sm:h-72">
           {modalImageCandidates.length > 0 ? (
             <BusinessImage
               primaryImage={modalImageCandidates[0]}
@@ -296,21 +296,21 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-7">
           {activeTab === 'info' && (
             <div className="space-y-5 animate-fade-in">
               {activityStatus && activityStatus.is_active_today && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-success dark:bg-success/20 border border-success dark:border-success">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-success border border-success">
                   <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                  <span className="text-ui font-medium text-success dark:text-success">Active Today</span>
-                  <span className="text-caption text-success dark:text-success ml-auto">
+                  <span className="text-ui font-medium text-success">Active Today</span>
+                  <span className="text-caption text-success ml-auto">
                     {activityStatus.checkins_today} check-in{activityStatus.checkins_today !== 1 ? 's' : ''} today
                   </span>
                 </div>
               )}
 
               {business.is_claimed ? (
-                <div className="flex items-center gap-2 text-ui text-success dark:text-success">
+                <div className="flex items-center gap-2 text-ui text-success">
                   <CheckCircle2 className="w-4 h-4" />
                   <span className="font-medium">Verified Business</span>
                 </div>
@@ -331,12 +331,12 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                   className={cn(
                     'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-ui font-medium transition-all',
                     checkedIn
-                      ? 'bg-success dark:bg-success/20 text-success dark:text-success'
+                      ? 'bg-success text-success'
                       : 'gradient-primary text-on-primary shadow-md shadow-brand/20 hover:shadow-lg'
                   )}
                 >
                   {checkingIn ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 icon-spinner" />
                   ) : checkedIn ? (
                     <><CheckCircle2 className="w-4 h-4" /> Checked In!</>
                   ) : (
@@ -422,7 +422,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                         disabled={profileSaving}
                         className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-ui font-medium gradient-primary text-on-primary disabled:opacity-60"
                       >
-                        {profileSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        {profileSaving ? <Loader2 className="w-4 h-4 icon-spinner" /> : <Save className="w-4 h-4" />}
                         Save details
                       </button>
                     </div>
@@ -539,7 +539,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                       Cancel
                     </button>
                     <button type="submit" disabled={submitting || reviewComment.length < 5} className="px-5 py-2 rounded-xl text-ui font-medium gradient-primary text-on-primary disabled:opacity-50 flex items-center gap-2">
-                      {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {submitting ? <Loader2 className="w-4 h-4 icon-spinner" /> : <Send className="w-4 h-4" />}
                       Submit
                     </button>
                   </div>
@@ -605,15 +605,15 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                   <div key={deal.id || deal._id} className="p-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-brand-light/15 dark:bg-brand-light/20 flex items-center justify-center flex-shrink-0">
-                          <Tag className="w-5 h-5 text-brand-light dark:text-brand-light" />
+                        <div className="w-10 h-10 rounded-lg bg-brand-light/15 flex items-center justify-center flex-shrink-0">
+                          <Tag className="w-5 h-5 text-brand-light" />
                         </div>
                         <div>
                           <h4 className="font-semibold text-[hsl(var(--foreground))]">{deal.title}</h4>
                           <p className="text-ui text-[hsl(var(--muted-foreground))]">{deal.description}</p>
                         </div>
                       </div>
-                      <span className="text-body font-bold text-brand-light dark:text-brand-light flex-shrink-0">
+                      <span className="text-body font-bold text-brand-light flex-shrink-0">
                         {deal.discount_type === 'percentage' ? `${deal.discount_value}%` : `$${deal.discount_value}`}
                       </span>
                     </div>
