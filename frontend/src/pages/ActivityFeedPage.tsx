@@ -40,11 +40,11 @@ const activityColors: Record<string, string> = {
 const credibilityBadges: Record<CredibilityTier, {
   label: string; color: string; abbr: string; bg: string; ringColor: string;
 }> = {
-  new:         { label: 'Newcomer',    color: 'bg-surface-elevated dark:bg-surface-elevated text-muted dark:text-muted',                    abbr: 'N', bg: 'bg-slate-500/20',   ringColor: '#94a3b8' },
-  regular:     { label: 'Regular',     color: 'bg-info dark:bg-info/30 text-info dark:text-info',                                           abbr: 'R', bg: 'bg-blue-500/20',    ringColor: '#22d3ee' },
-  trusted:     { label: 'Trusted',     color: 'bg-success dark:bg-success/30 text-success dark:text-success',                              abbr: 'T', bg: 'bg-emerald-500/20', ringColor: '#34d399' },
-  local_guide: { label: 'Local Guide', color: 'bg-brand-tertiary dark:bg-brand-tertiary/30 text-brand-tertiary dark:text-brand-tertiary',   abbr: 'LG', bg: 'bg-violet-500/20',  ringColor: '#a78bfa' },
-  ambassador:  { label: 'Ambassador',  color: 'bg-warning dark:bg-warning/30 text-warning dark:text-warning',                              abbr: 'A', bg: 'bg-amber-500/20',   ringColor: '#fbbf24' },
+  new:         { label: 'Newcomer',    color: 'bg-surface-elevated text-muted',                    abbr: 'N', bg: 'bg-slate-500/20',   ringColor: '#94a3b8' },
+  regular:     { label: 'Regular',     color: 'bg-info text-info',                                           abbr: 'R', bg: 'bg-blue-500/20',    ringColor: '#22d3ee' },
+  trusted:     { label: 'Trusted',     color: 'bg-success text-success',                              abbr: 'T', bg: 'bg-emerald-500/20', ringColor: '#34d399' },
+  local_guide: { label: 'Local Guide', color: 'bg-brand-tertiary text-brand-tertiary',   abbr: 'LG', bg: 'bg-violet-500/20',  ringColor: '#a78bfa' },
+  ambassador:  { label: 'Ambassador',  color: 'bg-warning text-warning',                              abbr: 'A', bg: 'bg-amber-500/20',   ringColor: '#fbbf24' },
 }
 
 function timeAgo(dateStr: string): string {
@@ -265,7 +265,6 @@ export default function ActivityFeedPage() {
   return (
     <div className="min-h-[60vh] py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        {}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
             <h1 className="text-heading font-bold text-[hsl(var(--foreground))] font-heading">
@@ -275,8 +274,6 @@ export default function ActivityFeedPage() {
               Real-time activity from your local community
             </p>
           </div>
-
-          {}
           <div className="flex items-center gap-2 px-4 py-2 rounded-full card-surface">
             <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
             <span className="text-ui font-medium text-[hsl(var(--foreground))]">Live Feed</span>
@@ -284,7 +281,6 @@ export default function ActivityFeedPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {}
           <div className="lg:col-span-2 space-y-4">
             {isAuthenticated && (
               <div className="card-surface rounded-2xl p-4 animate-fade-in-up">
@@ -328,7 +324,7 @@ export default function ActivityFeedPage() {
 
             {actionError && (
               <div className="card-surface rounded-2xl p-3 border border-red-300/40 bg-red-500/5">
-                <p className="text-caption text-red-600 dark:text-red-400">{actionError}</p>
+                <p className="text-caption text-red-600">{actionError}</p>
               </div>
             )}
             {loading ? (
@@ -345,7 +341,7 @@ export default function ActivityFeedPage() {
               ))
             ) : error ? (
               <div className="card-surface rounded-2xl p-10 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-red-100 dark:bg-red-900/20 flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center mx-auto mb-4">
                   <TrendingUp className="w-8 h-8 text-red-500" />
                 </div>
                 <h3 className="text-lg font-semibold text-[hsl(var(--foreground))] mb-2 font-heading">Something went wrong</h3>
@@ -383,16 +379,14 @@ export default function ActivityFeedPage() {
                   <div
                     key={item.id}
                     className="card-surface rounded-2xl p-5 hover:shadow-md transition-shadow duration-200 animate-fade-in-up"
-                    style={{ animationDelay: `${index * 50}ms` }}
+                    style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
                   >
                     <div className="flex items-start gap-3">
-                      {}
                       <div className={`w-10 h-10 rounded-full ${color} flex items-center justify-center flex-shrink-0`}>
                         <Icon className="w-5 h-5 text-brand-on-primary" />
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        {}
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-ui font-medium text-[hsl(var(--foreground))] leading-snug">
@@ -409,15 +403,11 @@ export default function ActivityFeedPage() {
                             {timeAgo(item.created_at)}
                           </span>
                         </div>
-
-                        {}
                         {item.description && (
                           <p className="text-ui text-[hsl(var(--muted-foreground))] mt-2 line-clamp-2">
                             {item.description}
                           </p>
                         )}
-
-                        {}
                         <div className="flex items-center gap-2 mt-3">
                           <span className="text-caption font-medium px-2.5 py-1 rounded-lg bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))]">
                             {item.business_name}
@@ -428,8 +418,6 @@ export default function ActivityFeedPage() {
                             </span>
                           )}
                         </div>
-
-                        {}
                         <div className="flex items-center gap-4 mt-3">
                           <button
                             onClick={() => toggleLike(item.id)}
@@ -458,7 +446,6 @@ export default function ActivityFeedPage() {
                                 {itemComments.map((comment) => (
                                   <div key={comment.id} className="rounded-lg bg-[hsl(var(--secondary))]/50 px-2.5 py-2">
                                     <div className="flex items-start gap-2">
-                                      {}
                                       <div className="w-6 h-6 rounded-full flex-shrink-0 overflow-hidden">
                                         {comment.profile_picture ? (
                                           <img 
@@ -515,19 +502,14 @@ export default function ActivityFeedPage() {
                 )
               })
             )}
-
-            {}
             {hasMore && <div ref={sentinelRef} className="h-4" />}
             {loadingMore && (
               <div className="flex justify-center py-4">
-                <div className="w-6 h-6 border-2 border-[hsl(var(--primary))] border-t-transparent rounded-full animate-spin" />
+                <div className="loading-spinner loading-spinner--sm" aria-label="Loading more activity" />
               </div>
             )}
           </div>
-
-          {}
           <div className="space-y-6">
-            {}
             {isAuthenticated && myCredibility && (() => {
               const currentBadge = credibilityBadges[myCredibility.tier]
               const score = Math.round(myCredibility.credibility_score)
@@ -594,9 +576,7 @@ export default function ActivityFeedPage() {
                 </div>
               )
             })()}
-
-            {}
-            <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+            <div className="card-surface rounded-2xl p-5 animate-fade-in-up motion-delay-100">
               <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-4 font-sub">
                 Community Trust Tiers
               </h3>
