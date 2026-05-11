@@ -59,14 +59,14 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
       role="button"
       tabIndex={0}
       aria-label={`View ${businessName}`}
-      className="overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.035)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.045)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="explore-rail-card"
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-[hsl(var(--secondary))]">
+      <div className="explore-rail-card__media aspect-[4/5] h-auto">
         <BusinessImage
           primaryImage={event.image_url || event.business_image_url}
           category={category}
           alt={event.title}
-          className="h-full w-full object-cover"
+          className="explore-rail-card__image"
         />
         <div className="absolute inset-0 bg-black/42" />
         <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-md border border-white/20 bg-black/35 px-3 py-1 text-caption text-white">
@@ -103,7 +103,7 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
             eventTrigger.stopPropagation();
             onViewBusiness();
           }}
-          className="w-full rounded-md focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--card))]"
+          className="w-full focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--card))]"
         >
           View business
         </Button>
