@@ -71,7 +71,7 @@ export default function SavedPage() {
 
         {loading ? (
           <div className="mt-8 flex items-center gap-3 rounded-2xl border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] px-5 py-4 text-ui text-[hsl(var(--muted-foreground))]">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 icon-spinner" />
             Loading saved businesses
           </div>
         ) : savedBusinesses.length === 0 ? (
