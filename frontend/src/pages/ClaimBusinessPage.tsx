@@ -123,7 +123,7 @@ export default function ClaimBusinessPage() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
         <div className="card-surface rounded-2xl p-10 max-w-md w-full text-center animate-fade-in-up">
-          <div className="w-16 h-16 rounded-2xl bg-warning dark:bg-warning/20 flex items-center justify-center mx-auto mb-6">
+          <div className="w-16 h-16 rounded-2xl bg-warning flex items-center justify-center mx-auto mb-6">
             <AlertCircle className="w-8 h-8 text-warning" />
           </div>
           <h2 className="text-subheading font-bold text-[hsl(var(--foreground))] mb-2 font-heading">
@@ -147,7 +147,6 @@ export default function ClaimBusinessPage() {
   return (
     <div className="min-h-[60vh] py-10 px-4">
       <div className="max-w-2xl mx-auto">
-        {}
         <div className="flex items-center justify-center gap-4 mb-10 animate-fade-in-up">
           {['Find', 'Verify', 'Done'].map((label, i) => {
             const stepIndex = step === 'search' ? 0 : step === 'claim' ? 1 : 2
@@ -174,8 +173,6 @@ export default function ClaimBusinessPage() {
             )
           })}
         </div>
-
-        {}
         {step === 'search' && (
           <div className="animate-fade-in-up">
             <div className="text-center mb-8">
@@ -186,8 +183,6 @@ export default function ClaimBusinessPage() {
                 Search our directory to find and claim your business listing
               </p>
             </div>
-
-            {}
             <div className="flex gap-2 mb-6">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
@@ -208,8 +203,6 @@ export default function ClaimBusinessPage() {
                 {searching ? 'Searching...' : 'Search'}
               </button>
             </div>
-
-            {}
             <div className="space-y-3">
               {businesses.map(biz => (
                 <div
@@ -225,7 +218,7 @@ export default function ClaimBusinessPage() {
                       <div className="flex items-center gap-2">
                         <h3 className="text-ui font-semibold text-[hsl(var(--foreground))]">{biz.name}</h3>
                         {biz.is_claimed && (
-                          <span className="flex items-center gap-1 text-caption text-success dark:text-success">
+                          <span className="flex items-center gap-1 text-caption text-success">
                             <CheckCircle2 className="w-3 h-3" />
                             Claimed
                           </span>
@@ -262,8 +255,6 @@ export default function ClaimBusinessPage() {
             </div>
           </div>
         )}
-
-        {}
         {step === 'claim' && selectedBiz && (
           <div className="animate-fade-in-up">
             <div className="text-center mb-8">
@@ -274,10 +265,8 @@ export default function ClaimBusinessPage() {
                 Tell us about your connection to this business
               </p>
             </div>
-
-            {}
             <div className="card-surface rounded-xl p-4 mb-6 flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-dark to-brand flex items-center justify-center">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-strong to-brand flex items-center justify-center">
                 <Store className="w-6 h-6 text-brand-on-primary" />
               </div>
               <div>
@@ -293,13 +282,11 @@ export default function ClaimBusinessPage() {
             </div>
 
             {error && (
-              <div className="mb-4 p-3 rounded-xl bg-error dark:bg-error/20 border border-error text-error dark:text-error text-ui flex items-center gap-2">
+              <div className="mb-4 p-3 rounded-xl bg-error border border-error text-error text-ui flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 {error}
               </div>
             )}
-
-            {}
             <div className="card-surface rounded-2xl p-6 space-y-5">
               <div>
                 <label className="flex items-center gap-2 text-ui font-medium text-[hsl(var(--foreground))] mb-2">
@@ -380,7 +367,7 @@ export default function ClaimBusinessPage() {
                 className="w-full py-3 rounded-xl gradient-primary text-on-primary font-medium text-ui shadow-lg shadow-brand/25 flex items-center justify-center gap-2"
               >
                 {submitting ? (
-                  <div className="w-5 h-5 border-2 border-outline-variant border-t-transparent rounded-full animate-spin" />
+                  <div className="loading-spinner loading-spinner--sm" aria-label="Submitting claim" />
                 ) : (
                   <>
                     Submit Claim
@@ -391,12 +378,10 @@ export default function ClaimBusinessPage() {
             </div>
           </div>
         )}
-
-        {}
         {step === 'success' && (
           <div className="text-center animate-fade-in-up">
-            <div className="w-20 h-20 rounded-2xl bg-success dark:bg-success/20 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 className="w-10 h-10 text-success dark:text-success" />
+            <div className="w-20 h-20 rounded-2xl bg-success flex items-center justify-center mx-auto mb-6">
+              <CheckCircle2 className="w-10 h-10 text-success" />
             </div>
             <h1 className="text-heading font-bold text-[hsl(var(--foreground))] mb-3 font-heading">
               Claim <span className="gradient-text font-serif">Submitted!</span>
