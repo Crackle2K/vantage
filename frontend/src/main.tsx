@@ -5,8 +5,8 @@
 
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { AuthProvider } from './contexts/AuthContext'
+import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import RootLayout from './layout'
 import './index.css'
@@ -30,9 +30,23 @@ const SavedPage = lazy(() => import('./pages/SavedPage'))
 function RouteFallback() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[hsl(var(--primary))] border-t-transparent" />
+      <div className="loading-spinner" aria-label="Loading" />
     </div>
   )
+}
+
+function HomeRoute() {
+  const { isAuthenticated, loading } = useAuth()
+
+  if (loading) {
+    return <RouteFallback />
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/businesses" replace />
+  }
+
+  return <HomePage />
 }
 
 /**
@@ -40,7 +54,7 @@ function RouteFallback() {
  *
  * Provider hierarchy (outer to inner):
  * - StrictMode: development-only checks
- * - ThemeProvider: light/dark theme state
+ * - ThemeProvider: light-mode theme state
  * - BrowserRouter: client-side routing
  * - AuthProvider: current user session
  * - RootLayout: shared header, footer, and page shell
@@ -53,7 +67,7 @@ createRoot(document.getElementById('root')!).render(
           <RootLayout>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
-                <Route path="/" element={<HomePage />} />
+                <Route path="/" element={<HomeRoute />} />
                 <Route path="/businesses" element={<Businesses />} />
                 <Route path="/decide" element={<DecidePage />} />
                 <Route path="/saved" element={<SavedPage />} />
