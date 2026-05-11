@@ -23,7 +23,7 @@ const tierGradients: Record<string, string> = {
   free: 'from-gray-400 to-gray-500',
   starter: 'from-brand to-brand-light',
   pro: 'from-brand to-brand',
-  premium: 'from-brand-dark to-brand',
+  premium: 'from-brand-strong to-brand',
 }
 
 const tierLabels: Record<string, string> = {
@@ -128,7 +128,7 @@ export default function PricingPage() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[hsl(var(--primary))] border-t-transparent rounded-full animate-spin" />
+        <div className="loading-spinner" aria-label="Loading pricing" />
       </div>
     )
   }
@@ -136,7 +136,6 @@ export default function PricingPage() {
   return (
     <div className="min-h-[60vh] py-12 px-4">
       <div className="max-w-6xl mx-auto">
-        {}
         <div className="text-center mb-12 animate-fade-in-up">
           <h1 className="text-heading md:text-display font-bold text-[hsl(var(--foreground))] mb-4 font-heading">
             Grow Your <span className="gradient-text font-serif">Business</span>
@@ -144,8 +143,6 @@ export default function PricingPage() {
           <p className="text-body text-[hsl(var(--muted-foreground))] max-w-2xl mx-auto">
             Free for community members. Business owners pay only for the tools they need to grow locally.
           </p>
-
-          {}
           <div className="mt-8 flex justify-center">
             <div className="relative inline-flex items-center">
               <div className="flex items-center gap-3">
@@ -177,8 +174,6 @@ export default function PricingPage() {
             </div>
           </div>
         </div>
-
-        {}
         {isAuthenticated && user?.role === 'business_owner' && myBusinesses.length > 0 && (
           <div className="max-w-md mx-auto mb-8">
             <label className="block text-ui font-medium text-[hsl(var(--foreground))] mb-2">
@@ -199,17 +194,15 @@ export default function PricingPage() {
         )}
 
         {error && (
-          <div className="max-w-md mx-auto mb-6 p-4 rounded-xl bg-error dark:bg-error/20 border border-error text-error dark:text-error text-ui text-center">
+          <div className="max-w-md mx-auto mb-6 p-4 rounded-xl bg-error border border-error text-error text-ui text-center">
             {error}
           </div>
         )}
         {success && (
-          <div className="max-w-md mx-auto mb-6 p-4 rounded-xl bg-success dark:bg-success/20 border border-success dark:border-success text-success dark:text-success text-ui text-center">
+          <div className="max-w-md mx-auto mb-6 p-4 rounded-xl bg-success border border-success text-success text-ui text-center">
             {success}
           </div>
         )}
-
-        {}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {tiers.map((tier, index) => {
             const Icon = tierIcons[tier.tier] || Star
@@ -218,14 +211,14 @@ export default function PricingPage() {
             const isCurrent = currentTier === tier.tier
             const price = billingCycle === 'monthly' ? tier.monthly_price : tier.yearly_price
             const monthlyEquivalent = billingCycle === 'yearly' ? price / 12 : price
+            const delayClass = ['motion-delay-0', 'motion-delay-100', 'motion-delay-200', 'motion-delay-300'][index] || 'motion-delay-300'
 
             return (
               <div
                 key={tier.tier}
-                className={`relative card-surface rounded-2xl p-6 flex flex-col animate-fade-in-up ${
+                className={`relative card-surface rounded-2xl p-6 flex flex-col animate-fade-in-up ${delayClass} ${
                   isHighlighted ? 'ring-2 ring-brand shadow-xl shadow-brand/10' : ''
                 }`}
-                style={{ animationDelay: `${index * 100}ms` }}
               >
                 {isHighlighted && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -242,17 +235,11 @@ export default function PricingPage() {
                     </span>
                   </div>
                 )}
-
-                {}
                 <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-4 shadow-lg`}>
                   <Icon className="w-6 h-6 text-brand-on-primary" />
                 </div>
-
-                {}
                 <h3 className="text-subheading font-bold text-[hsl(var(--foreground))] font-heading">{tier.name}</h3>
                 <p className="text-ui text-[hsl(var(--muted-foreground))] mt-1 mb-4">{tier.description}</p>
-
-                {}
                 <div className="mb-6">
                   <span className="text-heading font-bold text-[hsl(var(--foreground))]">
                     ${formatPrice(monthlyEquivalent)}
@@ -266,8 +253,6 @@ export default function PricingPage() {
                     </p>
                   )}
                 </div>
-
-                {}
                 <ul className="space-y-3 mb-8 flex-1">
                   {tier.features.map((feature, i) => (
                     <li key={i} className="flex items-start gap-2.5">
@@ -276,8 +261,6 @@ export default function PricingPage() {
                     </li>
                   ))}
                 </ul>
-
-                {}
                 <button
                   onClick={() => handleSubscribe(tier.tier)}
                   disabled={subscribing || isCurrent}
@@ -285,7 +268,7 @@ export default function PricingPage() {
                     isHighlighted
                       ? 'gradient-primary text-on-primary shadow-lg shadow-brand/25 hover:shadow-xl hover:shadow-brand/30'
                       : isCurrent
-                        ? 'bg-success dark:bg-success/20 text-success dark:text-success cursor-default'
+                        ? 'bg-success text-success cursor-default'
                         : tier.monthly_price === 0
                           ? 'bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]/80'
                           : 'border border-[hsl(var(--border))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]'
@@ -298,8 +281,6 @@ export default function PricingPage() {
             )
           })}
         </div>
-
-        {}
         <div className="mt-16 text-center">
           <p className="text-[hsl(var(--muted-foreground))] text-ui mb-2">
             Community members always browse for free. Subscriptions are for business owners only.
