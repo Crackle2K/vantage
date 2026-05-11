@@ -290,7 +290,7 @@ export default function DecidePage() {
                 <div className="rounded-2xl border border-[hsl(var(--border))/0.8] bg-[hsl(var(--background))/0.55] p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <Button type="button" variant="outline" onClick={requestLocation} disabled={locationLoading} className="rounded-full px-5">
-                      {locationLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}
+                      {locationLoading ? <Loader2 className="h-4 w-4 icon-spinner" /> : <Navigation className="h-4 w-4" />}
                       {usingDefaultArea ? 'Use my location' : 'Location enabled'}
                     </Button>
                     <span className="text-caption text-[hsl(var(--muted-foreground))]">
@@ -329,7 +329,7 @@ export default function DecidePage() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <p className="text-ui text-[hsl(var(--muted-foreground))]">{toggleRankingSummary}</p>
                 <Button type="button" onClick={handlePick} disabled={!primaryIntent || loading} className="h-12 rounded-full px-6">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {loading ? <Loader2 className="h-4 w-4 icon-spinner" /> : <Sparkles className="h-4 w-4" />}
                   Pick for me
                 </Button>
               </div>
