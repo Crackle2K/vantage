@@ -390,6 +390,13 @@ export interface ExploreLanesResponse {
   lanes: ExploreLane[];
 }
 
+/** City/province-state label resolved from browser geolocation coordinates. */
+export interface ReverseGeocodeResponse {
+  city: string;
+  region: string;
+  label: string;
+}
+
 /** Response from the "Decide for me" endpoint, containing curated picks. */
 export interface DecideResponse {
   items: Business[];
