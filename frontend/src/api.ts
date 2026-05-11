@@ -6,7 +6,7 @@
  * cookies) for session-based authentication.
  */
 
-import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse } from './types';
+import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse, ReverseGeocodeResponse } from './types';
 
 /**
  * Determines the API base URL based on environment variables and the
@@ -86,6 +86,13 @@ async function throwApiError(response: Response, fallback: string): Promise<neve
     const data = responseBody ? JSON.parse(responseBody) : null;
     if (data?.detail && typeof data.detail === 'string') {
       message = data.detail;
+    } else if (Array.isArray(data?.detail) && data.detail.length > 0) {
+      const firstIssue = data.detail[0];
+      if (typeof firstIssue === 'string') {
+        message = firstIssue;
+      } else if (firstIssue && typeof firstIssue.msg === 'string') {
+        message = firstIssue.msg;
+      }
     }
   } catch {
     // Ignore non-JSON error bodies and use the HTTP fallback message.
@@ -258,6 +265,18 @@ export const api = {
       `/businesses/nearby?lat=${lat}&lng=${lng}&radius=${radius}`,
       undefined,
       'Failed to fetch nearby businesses'
+    );
+  },
+
+  async reverseGeocodeLocation(lat: number, lng: number): Promise<ReverseGeocodeResponse> {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lng: String(lng),
+    });
+    return request<ReverseGeocodeResponse>(
+      `/location/reverse?${params}`,
+      undefined,
+      'Failed to resolve location'
     );
   },
 
