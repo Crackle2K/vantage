@@ -159,7 +159,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[hsl(var(--primary))] border-t-transparent rounded-full animate-spin" />
+        <div className="loading-spinner" aria-label="Loading dashboard" />
       </div>
     )
   }
@@ -169,7 +169,6 @@ export default function DashboardPage() {
   return (
     <div className="min-h-[60vh] py-8 px-4">
       <div className="max-w-6xl mx-auto">
-        {}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
             <h1 className="text-heading font-bold text-[hsl(var(--foreground))] font-heading">
@@ -190,11 +189,8 @@ export default function DashboardPage() {
             </Link>
           )}
         </div>
-
-        {}
         {myBusinesses.length === 0 ? (
           <div className="space-y-6">
-            {}
             {myClaims.length > 0 && (
               <div className="card-surface rounded-2xl p-6 animate-fade-in-up">
                 <h3 className="text-body font-semibold text-[hsl(var(--foreground))] mb-4 font-heading flex items-center gap-2">
@@ -216,9 +212,9 @@ export default function DashboardPage() {
                         </p>
                       </div>
                       <span className={`px-3 py-1 rounded-full text-caption font-medium ${
-                        claim.status === 'pending' ? 'bg-warning dark:bg-warning/20 text-warning dark:text-warning' :
-                        claim.status === 'verified' ? 'bg-success dark:bg-success/20 text-success dark:text-success' :
-                        'bg-error dark:bg-error/20 text-error dark:text-error'
+                        claim.status === 'pending' ? 'bg-warning text-warning' :
+                        claim.status === 'verified' ? 'bg-success text-success' :
+                        'bg-error text-error'
                       }`}>
                         {claim.status}
                       </span>
@@ -227,8 +223,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
-
-            {}
             <div className="card-surface rounded-2xl p-10 text-center animate-fade-in-up">
               <div className="w-20 h-20 rounded-2xl bg-[hsl(var(--secondary))] flex items-center justify-center mx-auto mb-6">
                 <Store className="w-10 h-10 text-[hsl(var(--muted-foreground))]" />
@@ -250,7 +244,6 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            {}
             {myBusinesses.length > 1 && (
               <div className="mb-6">
                 <div className="flex gap-3 overflow-x-auto pb-2">
@@ -271,8 +264,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
-
-            {}
             {selectedBiz && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 animate-fade-in-up">
                 <StatCard
@@ -305,12 +296,8 @@ export default function DashboardPage() {
                 />
               </div>
             )}
-
-            {}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {}
               <div className="lg:col-span-2 space-y-6">
-                {}
                 {selectedBiz && (
                   <div className="card-surface rounded-2xl p-6 animate-fade-in-up">
                     <div className="flex items-start justify-between mb-4">
@@ -343,8 +330,6 @@ export default function DashboardPage() {
                         </div>
                       )}
                     </div>
-
-                    {}
                     <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[hsl(var(--border))]">
                       <Link
                         to="/pricing"
@@ -363,9 +348,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 )}
-
-                {}
-                <div className="card-surface rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+                <div className="card-surface rounded-2xl p-6 animate-fade-in-up motion-delay-100">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-body font-semibold text-[hsl(var(--foreground))] font-heading flex items-center gap-2">
                       <Star className="w-5 h-5 text-warning" />
@@ -402,11 +385,8 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
-
-              {}
               <div className="space-y-6">
-                {}
-                <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
+                <div className="card-surface rounded-2xl p-5 animate-fade-in-up motion-delay-150">
                   <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                     <Shield className="w-4 h-4 text-brand" />
                     Subscription
@@ -420,7 +400,7 @@ export default function DashboardPage() {
                           {tierDisplayNames[subscription.tier] || subscription.tier}
                         </span>
                         <span className={`px-2 py-0.5 rounded-full text-caption ${
-                          subscription.status === 'active' ? 'bg-success dark:bg-success/20 text-success dark:text-success' : 'bg-error dark:bg-error/20 text-error dark:text-error'
+                          subscription.status === 'active' ? 'bg-success text-success' : 'bg-error text-error'
                         }`}>
                           {subscription.status}
                         </span>
@@ -447,9 +427,7 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
-
-                {}
-                <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '175ms' }}>
+                <div className="card-surface rounded-2xl p-5 animate-fade-in-up motion-delay-175">
                   <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                     <Plus className="w-4 h-4 text-brand" />
                     Create Event
@@ -523,9 +501,7 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </div>
-
-                {}
-                <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+                <div className="card-surface rounded-2xl p-5 animate-fade-in-up motion-delay-200">
                   <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                     <Tag className="w-4 h-4 text-brand" />
                     Active Deals
@@ -548,10 +524,8 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
-
-                {}
                 {activityStatus && (
-                  <div className="card-surface rounded-2xl p-5 animate-fade-in-up" style={{ animationDelay: '250ms' }}>
+                  <div className="card-surface rounded-2xl p-5 animate-fade-in-up motion-delay-250">
                     <h3 className="text-ui font-semibold text-[hsl(var(--foreground))] mb-3 font-sub flex items-center gap-2">
                       <Eye className="w-4 h-4 text-brand" />
                       Activity Signal
