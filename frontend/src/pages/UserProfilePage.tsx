@@ -41,7 +41,7 @@ export default function UserProfilePage() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-[hsl(var(--primary))] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="loading-spinner mx-auto mb-4" aria-label="Loading profile" />
           <p className="text-[hsl(var(--muted-foreground))]">Loading profile...</p>
         </div>
       </div>
@@ -83,17 +83,14 @@ export default function UserProfilePage() {
   return (
     <div className="min-h-[60vh] py-10 px-4">
       <div className="max-w-2xl mx-auto">
-        {}
         <Link to="/businesses" className="inline-flex items-center gap-1 text-ui text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" />
           Back to Explore
         </Link>
 
         <div className="animate-fade-in-up">
-          {}
           <div className="card-surface rounded-2xl p-8 mb-6">
             <div className="flex items-start gap-5">
-              {}
               <div className="w-24 h-24 rounded-2xl flex-shrink-0 overflow-hidden shadow-lg shadow-brand/20">
                 {user.profile_picture ? (
                   <img 
@@ -125,8 +122,6 @@ export default function UserProfilePage() {
               </div>
             </div>
           </div>
-
-          {}
           {user.about_me && (
             <div className="card-surface rounded-2xl p-6 mb-6">
               <h3 className="font-semibold text-[hsl(var(--foreground))] mb-3">About</h3>
@@ -135,8 +130,6 @@ export default function UserProfilePage() {
               </p>
             </div>
           )}
-
-          {}
           <div className="card-surface rounded-2xl p-6">
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Member Information</h3>
             <div className="space-y-3">
