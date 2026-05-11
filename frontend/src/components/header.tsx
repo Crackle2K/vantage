@@ -11,21 +11,17 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Moon,
   Settings,
-  Sun,
   User,
   X
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { useTheme } from '@/contexts/ThemeContext'
 import { cn } from '@/lib/utils'
 
 /**
  * Top navigation bar rendered as a compact editorial bar. Shows logo and auth
- * controls; logged-in users get a hamburger that opens a right-side
- * drawer with nav links, theme toggle, dashboard/claim links (for
- * business owners), and sign-out.
+ * controls; logged-in users get a left-side hamburger drawer with primary
+ * nav links, account links, and sign-out.
  *
  * Side effects:
  * - Closes the side menu on route change.
@@ -35,7 +31,6 @@ import { cn } from '@/lib/utils'
  */
 export function Header() {
   const { user, isAuthenticated, signOut } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -128,40 +123,45 @@ export function Header() {
           isLandingPageRoute && isPastHero && 'min-nav--transparent'
         )}
       >
-        <Link to="/" className="min-nav__brand" aria-label="Vantage homepage">
-          <img src="/Images/Vantage.png" alt="Vantage logo" className="min-nav__logo" />
-          <span>VANTAGE</span>
-        </Link>
+        <div className="min-nav__leading">
+          {isAuthenticated && user && (
+            <button
+              onClick={() => setSideMenuOpen(true)}
+              className="min-secondary-button min-nav__menu-button"
+              aria-label="Open menu"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+          )}
+          <Link
+            to={isAuthenticated ? '/businesses' : '/'}
+            className="min-nav__brand"
+            aria-label="Vantage homepage"
+          >
+            <img src="/Images/Vantage.png" alt="Vantage logo" className="min-nav__logo" />
+            <span>VANTAGE</span>
+          </Link>
+        </div>
 
         <div className="min-nav__actions">
           {isAuthenticated && user ? (
-            <>
-              <Link
-                to={`/user/${user.id}`}
-                className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-[rgba(154,121,50,0.34)] bg-[var(--min-paper)] text-[var(--min-forest)] transition-colors duration-200 hover:border-[rgba(154,121,50,0.55)] hover:bg-[var(--min-gold-soft)]"
-                aria-label="Open profile"
-              >
-                {user.profile_picture ? (
-                  <img
-                    src={user.profile_picture}
-                    alt={user.name || 'Profile'}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-[12px] font-bold">
-                    {user.name?.[0]?.toUpperCase() || 'U'}
-                  </span>
-                )}
-              </Link>
-              <button
-                onClick={() => setSideMenuOpen(true)}
-                className="min-secondary-button gap-2 px-3"
-                aria-label="Open menu"
-              >
-                <Menu className="h-4 w-4" />
-                <span className="hidden sm:inline">Menu</span>
-              </button>
-            </>
+            <Link
+              to={`/user/${user.id}`}
+              className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-[rgba(154,121,50,0.34)] bg-[var(--min-paper)] text-[var(--min-forest)] transition-colors duration-200 hover:border-[rgba(154,121,50,0.55)] hover:bg-[var(--min-gold-soft)]"
+              aria-label="Open profile"
+            >
+              {user.profile_picture ? (
+                <img
+                  src={user.profile_picture}
+                  alt={user.name || 'Profile'}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-[12px] font-bold">
+                  {user.name?.[0]?.toUpperCase() || 'U'}
+                </span>
+              )}
+            </Link>
           ) : (
             <>
               <Link to="/login" className="min-secondary-button min-nav__button">
@@ -176,7 +176,7 @@ export function Header() {
         <>
           <div
             className={cn(
-              'fixed inset-0 z-60 bg-black/40 transition-opacity duration-300',
+              'explore-menu-backdrop transition-opacity duration-300',
               sideMenuOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
             )}
             onClick={() => setSideMenuOpen(false)}
@@ -185,110 +185,101 @@ export function Header() {
 
           <aside
             className={cn(
-              'fixed top-0 right-0 z-70 h-full w-72 border-l border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_hsl(var(--shadow-soft)/0.04)] transition-transform duration-300 ease-out',
-              sideMenuOpen ? 'translate-x-0' : 'translate-x-full'
+              'explore-menu-drawer min-theme transition-transform duration-300 ease-out',
+              sideMenuOpen ? 'translate-x-0' : '-translate-x-full'
             )}
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
           >
             <div className="flex h-full flex-col">
-              <div className="flex h-14 items-center justify-between border-b border-[hsl(var(--border))] px-5">
-                <span className="font-heading text-sm font-semibold text-[hsl(var(--foreground))]">
-                  Menu
-                </span>
-                <button
+              <div className="explore-menu-drawer__header">
+                <Link
+                  to={isAuthenticated ? '/businesses' : '/'}
                   onClick={() => setSideMenuOpen(false)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]"
+                  className="explore-menu-drawer__brand"
+                  aria-label="Vantage home"
+                >
+                  <img
+                    src="/Images/Vantage.png"
+                    alt="Vantage logo"
+                  />
+                  <span>Vantage</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setSideMenuOpen(false)}
                   aria-label="Close menu"
                 >
                   <X className="h-4.5 w-4.5" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-3 py-4">
-                <button
-                  onClick={toggleTheme}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
-                >
-                  {isDark ? (
-                    <Sun className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                  ) : (
-                    <Moon className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                  )}
-                  <span className="text-ui font-medium">
-                    {isDark ? 'Light Mode' : 'Dark Mode'}
-                  </span>
-                </button>
+              <div className="flex-1 overflow-y-auto">
+                <nav className="explore-menu-drawer__nav">
+                  <div className="explore-menu-drawer__section">
+                    {navLinks.map((link) => (
+                      <Link
+                        key={link.to}
+                        to={link.to}
+                        onClick={() => setSideMenuOpen(false)}
+                        className={cn(isActive(link.to) && 'is-active')}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+                    {user.role === 'business_owner' && (
+                      <>
+                        <Link
+                          to="/dashboard"
+                          onClick={() => setSideMenuOpen(false)}
+                          className={cn(isActive('/dashboard') && 'is-active')}
+                        >
+                          <LayoutDashboard className="h-4 w-4 text-[var(--min-muted)]" />
+                          Dashboard
+                        </Link>
+                        <Link
+                          to="/claim"
+                          onClick={() => setSideMenuOpen(false)}
+                          className={cn(isActive('/claim') && 'is-active')}
+                        >
+                          <Award className="h-4 w-4 text-[var(--min-muted)]" />
+                          Claim Business
+                        </Link>
+                      </>
+                    )}
+                  </div>
 
-                <div className="my-3 border-t border-[hsl(var(--border))]" />
-
-                <nav className="flex flex-col gap-0.5">
-                  {navLinks.map((link) => (
+                  <div className="explore-menu-drawer__section explore-menu-drawer__section--ruled">
                     <Link
-                      key={link.to}
-                      to={link.to}
+                      to="/settings"
                       onClick={() => setSideMenuOpen(false)}
-                      className={cn(
-                        'rounded-lg px-3 py-2.5 text-ui font-medium transition-colors',
-                        isActive(link.to)
-                          ? 'bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))]'
-                          : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--secondary))] hover:text-[hsl(var(--foreground))]'
-                      )}
+                      className={cn(isActive('/settings') && 'is-active')}
                     >
-                      {link.label}
+                      <Settings className="h-4 w-4 text-[var(--min-muted)]" />
+                      Settings
                     </Link>
-                  ))}
+                    <Link
+                      to="/account"
+                      onClick={() => setSideMenuOpen(false)}
+                      className={cn(isActive('/account') && 'is-active')}
+                    >
+                      <User className="h-4 w-4 text-[var(--min-muted)]" />
+                      My Account
+                    </Link>
+                  </div>
+
+                  <div className="explore-menu-drawer__section explore-menu-drawer__section--ruled">
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="explore-menu-drawer__danger"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign out
+                    </button>
+                  </div>
                 </nav>
-
-                <div className="my-3 border-t border-[hsl(var(--border))]" />
-
-                {user.role === 'business_owner' && (
-                  <>
-                    <Link
-                      to="/dashboard"
-                      onClick={() => setSideMenuOpen(false)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
-                    >
-                      <LayoutDashboard className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                      Dashboard
-                    </Link>
-                    <Link
-                      to="/claim"
-                      onClick={() => setSideMenuOpen(false)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
-                    >
-                      <Award className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                      Claim Business
-                    </Link>
-                  </>
-                )}
-                <Link
-                  to="/settings"
-                  onClick={() => setSideMenuOpen(false)}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
-                >
-                  <Settings className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                  Settings
-                </Link>
-                <Link
-                  to="/account"
-                  onClick={() => setSideMenuOpen(false)}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
-                >
-                  <User className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
-                  My Account
-                </Link>
-              </div>
-
-              <div className="border-t border-[hsl(var(--border))] p-3">
-                <button
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-ui font-medium text-error transition-colors hover:bg-error"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign Out
-                </button>
               </div>
             </div>
           </aside>
