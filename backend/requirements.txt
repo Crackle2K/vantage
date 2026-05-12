@@ -10,7 +10,7 @@ email_validator==2.3.0
 fastapi==0.136.1
 h11==0.16.0
 httptools==0.7.1
-idna==3.13
+idna==3.14
 pyasn1==0.6.3
 pycparser==3.0
 pydantic==2.13.4
