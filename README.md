@@ -14,30 +14,30 @@
 ## About the Business
 
 **What is Vantage?**
-Vantage is a trust-first local business discovery platform. We surface the best nearby businesses through a real-time ranking engine — the Live Visibility Score (LVS) — powered by verified in-person visits, credibility-weighted reviews, and community activity signals. Unlike Google Maps or Yelp, visibility on Vantage is earned through genuine behavior, not advertising spend or SEO dominance.
+Vantage is a trust-first local business discovery platform. We surface the best nearby businesses through a real-time ranking engine - the Live Visibility Score (LVS) - powered by verified in-person visits, credibility-weighted reviews, and community activity signals. Unlike Google Maps or Yelp, visibility on Vantage is earned through genuine behavior, not advertising spend or SEO dominance.
 
 **What Service Do We Offer?**
 Vantage provides two interconnected services:
-- **For consumers:** A hyperlocal discovery experience that shows which independent businesses are genuinely active and trusted in their neighborhood right now — not which ones paid the most for placement.
+- **For consumers:** A hyperlocal discovery experience that shows which independent businesses are genuinely active and trusted in their neighborhood right now - not which ones paid the most for placement.
 - **For business owners:** A fair, merit-based visibility platform where a new café or family-run shop competes on the quality of their real-world activity, not their marketing budget. Owners can claim profiles, post events, create deals, and build credibility through verified customer engagement.
 
 **Is This a Need or a Want?**
-Vantage addresses a genuine need. Consumers increasingly distrust static star ratings and pay-to-play discovery platforms. Independent local businesses are being systematically buried by chain advertising and SEO spend on existing platforms. Vantage solves the real problem of unfair, unreliable local discovery — making it a trust infrastructure need for local economies, not a luxury feature.
+Vantage addresses a genuine need. Consumers increasingly distrust static star ratings and pay-to-play discovery platforms. Independent local businesses are being systematically buried by chain advertising and SEO spend on existing platforms. Vantage solves the real problem of unfair, unreliable local discovery - making it a trust infrastructure need for local economies, not a luxury feature.
 
 **Who Is Our Target Consumer?**
-- **Urban and suburban consumers** (ages 18–45) who regularly dine out, shop local, or explore their city and are frustrated by biased or stale results on existing platforms.
-- **Independent business owners** — cafés, restaurants, boutiques, gyms, salons — who rely on community foot traffic and want fair, earned exposure to local customers.
+- **Urban and suburban consumers** (ages 18-45) who regularly dine out, shop local, or explore their city and are frustrated by biased or stale results on existing platforms.
+- **Independent business owners** - cafés, restaurants, boutiques, gyms, salons - who rely on community foot traffic and want fair, earned exposure to local customers.
 - **Community-minded users** who value supporting local over chain businesses and want their recommendations to carry real weight.
 
 **What Motivated Us to Start Vantage?**
-The motivation is straightforward: local independent businesses are the backbone of communities, yet they are losing ground to chains that can outspend them on ads, SEO, and review manipulation. Every dollar that flows to a local business stays in the community. Vantage exists to level that playing field — to give independent businesses the same shot at visibility that was once only available to corporations with marketing departments. We believe that if a neighborhood café is packed every morning because it's genuinely great, the whole community deserves to know about it.
+The motivation is straightforward: local independent businesses are the backbone of communities, yet they are losing ground to chains that can outspend them on ads, SEO, and review manipulation. Every dollar that flows to a local business stays in the community. Vantage exists to level that playing field - to give independent businesses the same shot at visibility that was once only available to corporations with marketing departments. We believe that if a neighborhood café is packed every morning because it's genuinely great, the whole community deserves to know about it.
 
 **Why You Should Invest in Vantage**
-- **Defensible technical moat:** The Live Visibility Score is architecturally manipulation-proof — claim status, ad spend, and review volume have zero effect on rankings. Only verified real-world activity counts. This is not a policy; it is enforced in the codebase.
+- **Defensible technical moat:** The Live Visibility Score is architecturally manipulation-proof - claim status, ad spend, and review volume have zero effect on rankings. Only verified real-world activity counts. This is not a policy; it is enforced in the codebase.
 - **Massive underserved market:** Independent local businesses represent the overwhelming majority of all businesses globally, yet no major discovery platform truly serves their interests.
 - **Network effects:** The platform grows more valuable as community activity increases. Every check-in, review, and owner event makes rankings more accurate for everyone in the neighborhood.
 - **Multiple revenue streams:** Subscription tiers for business owners (deals, enhanced profiles, analytics) alongside a consumer-side platform with strong engagement and retention signals.
-- **Mission-aligned growth:** The business model is aligned with user trust. We earn revenue when businesses earn real customer engagement — not when they pay for fake visibility.
+- **Mission-aligned growth:** The business model is aligned with user trust. We earn revenue when businesses earn real customer engagement - not when they pay for fake visibility.
 
 ## Setup
 
