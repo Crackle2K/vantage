@@ -1,4 +1,11 @@
+# Windows-specific build configuration.
+# On Linux/macOS this file is effectively a no-op since
+# target and linker are picked up from the environment.
+
 [build]
+# Use the MinGW/GNU toolchain on Windows to avoid MSVC link.exe conflicts
+# (Git ships a POSIX link.exe that shadows the MSVC one).
+# On Linux/macOS the target defaults to the host triple automatically.
 target = "x86_64-pc-windows-gnu"
 
 [target.x86_64-pc-windows-gnu]
