@@ -2,7 +2,7 @@ use crate::{errors::AppError, jwt, models::user::TokenClaims, state::AppState};
 use axum::{
     body::Body,
     extract::{Request, State},
-    http::header::AUTHORIZATION,
+    http::header::{AUTHORIZATION, COOKIE},
     middleware::Next,
     response::Response,
 };
@@ -50,17 +50,24 @@ pub async fn optional_auth(
 }
 
 fn extract_token(req: &Request<Body>) -> Result<String, AppError> {
-    let header = req
-        .headers()
-        .get(AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".into()))?;
-
-    if !header.starts_with("Bearer ") {
-        return Err(AppError::Unauthorized("Invalid token format".into()));
+    // 1. Try Authorization: Bearer <token> header
+    if let Some(header) = req.headers().get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+        if header.starts_with("Bearer ") {
+            return Ok(header[7..].to_string());
+        }
     }
 
-    Ok(header[7..].to_string())
+    // 2. Fall back to session cookie (httpOnly, set by login/register/google-auth)
+    if let Some(cookie_header) = req.headers().get(COOKIE).and_then(|v| v.to_str().ok()) {
+        for part in cookie_header.split(';') {
+            let part = part.trim();
+            if let Some(value) = part.strip_prefix("session=") {
+                return Ok(value.to_string());
+            }
+        }
+    }
+
+    Err(AppError::Unauthorized("Not authenticated".into()))
 }
 
 pub fn verify_token(token: &str, secret: &str) -> Result<TokenClaims, AppError> {

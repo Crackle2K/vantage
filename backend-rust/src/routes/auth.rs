@@ -8,8 +8,8 @@ use crate::{
 };
 use axum::{
     extract::{Extension, State},
-    http::StatusCode,
-    response::IntoResponse,
+    http::{header::SET_COOKIE, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -85,9 +85,11 @@ async fn register(
     let user_id = result.inserted_id.as_object_id().map(|o| o.to_hex()).unwrap_or_default();
 
     let token = create_jwt(&user_id, &payload.email.to_lowercase(), "customer", &state.config.secret_key)?;
+    let cookie = session_cookie(&token, &state.config);
 
     Ok((
         StatusCode::CREATED,
+        [(SET_COOKIE, cookie)],
         Json(json!({
             "access_token": token,
             "token_type": "bearer",
@@ -135,22 +137,35 @@ async fn login(
     let subscription_tier = user.get_str("subscription_tier").unwrap_or("FREE").to_string();
 
     let token = create_jwt(&user_id, &email_lower, role, &state.config.secret_key)?;
+    let cookie = session_cookie(&token, &state.config);
 
-    Ok(Json(json!({
-        "access_token": token,
-        "token_type": "bearer",
-        "user": {
-            "id": user_id,
-            "email": email_lower,
-            "full_name": full_name,
-            "role": role,
-            "subscription_tier": subscription_tier,
-        }
-    })))
+    Ok((
+        [(SET_COOKIE, cookie)],
+        Json(json!({
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "id": user_id,
+                "email": email_lower,
+                "full_name": full_name,
+                "role": role,
+                "subscription_tier": subscription_tier,
+            }
+        })),
+    ))
 }
 
-async fn logout() -> impl IntoResponse {
-    Json(json!({ "message": "Logged out successfully" }))
+async fn logout(State(state): State<Arc<AppState>>) -> Response {
+    let is_prod = state.config.environment == "production";
+    let clear = format!(
+        "session=; Path=/; HttpOnly; SameSite=Lax{}; Max-Age=0",
+        if is_prod { "; Secure" } else { "" }
+    );
+    (
+        [(SET_COOKIE, clear)],
+        Json(json!({ "message": "Logged out successfully" })),
+    )
+        .into_response()
 }
 
 async fn me(
@@ -232,19 +247,34 @@ async fn google_auth(
     };
 
     let token = create_jwt(&user_id, &email, &role, &state.config.secret_key)?;
+    let cookie = session_cookie(&token, &state.config);
 
-    Ok(Json(json!({
-        "access_token": token,
-        "token_type": "bearer",
-        "user": {
-            "id": user_id,
-            "email": email,
-            "full_name": name,
-            "role": role,
-            "profile_picture": picture,
-            "subscription_tier": subscription_tier,
-        }
-    })))
+    Ok((
+        [(SET_COOKIE, cookie)],
+        Json(json!({
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "id": user_id,
+                "email": email,
+                "full_name": name,
+                "role": role,
+                "profile_picture": picture,
+                "subscription_tier": subscription_tier,
+            }
+        })),
+    ))
+}
+
+fn session_cookie(token: &str, config: &crate::config::Config) -> String {
+    let is_prod = config.environment == "production";
+    let expires = 60 * 60 * 24 * config.refresh_token_expire_days;
+    format!(
+        "session={}; Path=/; HttpOnly; SameSite=Lax{}; Max-Age={}",
+        token,
+        if is_prod { "; Secure" } else { "" },
+        expires
+    )
 }
 
 fn create_jwt(user_id: &str, email: &str, role: &str, secret: &str) -> Result<String> {
