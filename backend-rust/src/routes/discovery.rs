@@ -18,7 +18,7 @@ use std::sync::Arc;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/discover", get(discover))
-        .route("/discover/decide", post(decide))
+        .route("/decide", post(decide))
         .route("/explore/lanes", get(explore_lanes))
 }
 

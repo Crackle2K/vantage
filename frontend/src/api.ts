@@ -521,7 +521,7 @@ export const api = {
         headers: getAuthHeaders(),
       });
     } catch {
-      response = await fetch(buildApiUrl(`/explore/lanes?${params}`));
+      response = await fetch(buildApiUrl(`/explore/lanes?${params}`), { credentials: 'include' });
       if (!response.ok) await throwApiError(response, 'Failed to fetch explore lanes');
       return response.json();
     }

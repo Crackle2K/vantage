@@ -18,6 +18,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/activity/checkin", post(check_in))
         .route("/activity/owner-post", post(create_owner_post))
         .route("/activity/credibility/:user_id", get(get_credibility))
+        .route("/credibility/me", get(get_my_credibility))
+        .route("/feed/:id/like", post(toggle_like))
+        .route("/feed/:id/comments", get(get_comments).post(add_comment))
+        .route("/feed/posts", post(create_feed_post))
 }
 
 #[derive(Deserialize)]
@@ -165,6 +169,130 @@ async fn get_credibility(
         "check_in_count": check_in_count,
         "review_count": review_count,
     })))
+}
+
+async fn get_my_credibility(
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<AuthUser>,
+) -> Result<impl IntoResponse> {
+    let checkins: mongodb::Collection<Document> = state.db.mongo.collection("checkins");
+    let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
+
+    let check_in_count = checkins.count_documents(doc! { "user_id": &auth_user.id }).await? as i32;
+    let review_count = reviews.count_documents(doc! { "user_id": &auth_user.id }).await? as i32;
+
+    let score = crate::models::activity::calculate_credibility_score(check_in_count, review_count, 0);
+    let tier = crate::models::activity::credibility_tier(score);
+
+    Ok(Json(json!({
+        "user_id": auth_user.id,
+        "score": score,
+        "tier": tier,
+        "check_in_count": check_in_count,
+        "review_count": review_count,
+    })))
+}
+
+async fn toggle_like(
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse> {
+    let feed: mongodb::Collection<Document> = state.db.mongo.collection("activity_feed");
+    let oid = mongodb::bson::oid::ObjectId::parse_str(&id)
+        .map_err(|_| AppError::BadRequest("Invalid activity id".into()))?;
+
+    let existing = feed.find_one(doc! { "_id": oid, "likes": &auth_user.id }).await?;
+    let (update, liked) = if existing.is_some() {
+        (doc! { "$pull": { "likes": &auth_user.id }, "$inc": { "like_count": -1i32 } }, false)
+    } else {
+        (doc! { "$addToSet": { "likes": &auth_user.id }, "$inc": { "like_count": 1i32 } }, true)
+    };
+
+    feed.update_one(doc! { "_id": oid }, update).await?;
+
+    Ok(Json(json!({ "liked": liked })))
+}
+
+async fn get_comments(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse> {
+    let col: mongodb::Collection<Document> = state.db.mongo.collection("activity_comments");
+    let mut cursor = col
+        .find(doc! { "activity_id": &id })
+        .sort(doc! { "created_at": 1 })
+        .await?;
+
+    let mut comments: Vec<Value> = Vec::new();
+    while cursor.advance().await? {
+        comments.push(serde_json::to_value(&cursor.deserialize_current()?).unwrap_or(Value::Null));
+    }
+
+    Ok(Json(json!(comments)))
+}
+
+async fn add_comment(
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse> {
+    let content = payload["content"]
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("content required".into()))?;
+
+    let col: mongodb::Collection<Document> = state.db.mongo.collection("activity_comments");
+    let now = Utc::now();
+    let comment_doc = doc! {
+        "activity_id": &id,
+        "user_id": &auth_user.id,
+        "content": content,
+        "created_at": now.to_rfc3339(),
+    };
+    let result = col.insert_one(comment_doc).await?;
+    let comment_id = result.inserted_id.as_object_id().map(|o| o.to_hex()).unwrap_or_default();
+
+    // Increment comment count on the feed item
+    if let Ok(oid) = mongodb::bson::oid::ObjectId::parse_str(&id) {
+        let feed: mongodb::Collection<Document> = state.db.mongo.collection("activity_feed");
+        feed.update_one(doc! { "_id": oid }, doc! { "$inc": { "comment_count": 1i32 } }).await.ok();
+    }
+
+    let comment_count = col.count_documents(doc! { "activity_id": &id }).await? as i64;
+
+    Ok((StatusCode::CREATED, Json(json!({
+        "comment": { "id": comment_id, "activity_id": id, "user_id": auth_user.id, "content": content, "created_at": now.to_rfc3339() },
+        "comments": comment_count,
+    }))))
+}
+
+async fn create_feed_post(
+    State(state): State<Arc<AppState>>,
+    Extension(auth_user): Extension<AuthUser>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse> {
+    let business_id = payload["business_id"]
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("business_id required".into()))?;
+    let content = payload["content"]
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("content required".into()))?;
+
+    let col: mongodb::Collection<Document> = state.db.mongo.collection("owner_posts");
+    let now = Utc::now();
+    let post_doc = doc! {
+        "business_id": business_id,
+        "owner_id": &auth_user.id,
+        "content": content,
+        "image_url": payload["image_url"].as_str().unwrap_or(""),
+        "activity_type": "owner_post",
+        "created_at": now.to_rfc3339(),
+    };
+    let result = col.insert_one(post_doc).await?;
+    let post_id = result.inserted_id.as_object_id().map(|o| o.to_hex()).unwrap_or_default();
+
+    Ok((StatusCode::CREATED, Json(json!({ "id": post_id }))))
 }
 
 fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
