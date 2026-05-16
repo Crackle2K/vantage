@@ -1,0 +1,68 @@
+use crate::{errors::AppError, jwt, models::user::TokenClaims, state::AppState};
+use axum::{
+    body::Body,
+    extract::{Request, State},
+    http::header::AUTHORIZATION,
+    middleware::Next,
+    response::Response,
+};
+use std::sync::Arc;
+
+#[derive(Clone, Debug)]
+pub struct AuthUser {
+    pub id: String,
+    pub email: String,
+    pub role: String,
+}
+
+pub async fn require_auth(
+    State(state): State<Arc<AppState>>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Result<Response, AppError> {
+    let token = extract_token(&req)?;
+    let claims = verify_token(&token, &state.config.secret_key)?;
+
+    req.extensions_mut().insert(AuthUser {
+        id: claims.sub.clone(),
+        email: claims.email.clone(),
+        role: claims.role.clone(),
+    });
+
+    Ok(next.run(req).await)
+}
+
+pub async fn optional_auth(
+    State(state): State<Arc<AppState>>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Response {
+    if let Ok(token) = extract_token(&req) {
+        if let Ok(claims) = verify_token(&token, &state.config.secret_key) {
+            req.extensions_mut().insert(AuthUser {
+                id: claims.sub.clone(),
+                email: claims.email.clone(),
+                role: claims.role.clone(),
+            });
+        }
+    }
+    next.run(req).await
+}
+
+fn extract_token(req: &Request<Body>) -> Result<String, AppError> {
+    let header = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".into()))?;
+
+    if !header.starts_with("Bearer ") {
+        return Err(AppError::Unauthorized("Invalid token format".into()));
+    }
+
+    Ok(header[7..].to_string())
+}
+
+pub fn verify_token(token: &str, secret: &str) -> Result<TokenClaims, AppError> {
+    jwt::decode(token, secret)
+}
