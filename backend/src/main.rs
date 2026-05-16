@@ -28,8 +28,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 async fn main() {
     // Load .env
     dotenvy::dotenv().ok();
-    if std::path::Path::new("backend-rust/.env").exists() {
-        dotenvy::from_filename("backend-rust/.env").ok();
+    if std::path::Path::new("backend/.env").exists() {
+        dotenvy::from_filename("backend/.env").ok();
     } else if std::path::Path::new(".env").exists() {
         dotenvy::dotenv().ok();
     }
