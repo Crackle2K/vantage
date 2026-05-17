@@ -1,19 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SubscriptionTier {
+    #[default]
     Free,
     Starter,
     Pro,
     Premium,
-}
-
-impl Default for SubscriptionTier {
-    fn default() -> Self {
-        SubscriptionTier::Free
-    }
 }
 
 impl SubscriptionTier {

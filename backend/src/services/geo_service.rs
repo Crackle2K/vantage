@@ -13,7 +13,12 @@ pub fn geo_cell(lat: f64, lng: f64, precision: u32) -> String {
     let factor = 10_f64.powi(precision as i32);
     let cell_lat = (lat * factor).floor() / factor;
     let cell_lng = (lng * factor).floor() / factor;
-    format!("{:.prec$}:{:.prec$}", cell_lat, cell_lng, prec = precision as usize)
+    format!(
+        "{:.prec$}:{:.prec$}",
+        cell_lat,
+        cell_lng,
+        prec = precision as usize
+    )
 }
 
 #[cfg(test)]

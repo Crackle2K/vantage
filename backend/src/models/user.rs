@@ -2,47 +2,32 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum UserRole {
+    #[default]
     Customer,
     BusinessOwner,
     Admin,
 }
 
-impl Default for UserRole {
-    fn default() -> Self {
-        UserRole::Customer
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PricePreference {
     Budget,
     Moderate,
     Upscale,
+    #[default]
     Any,
 }
 
-impl Default for PricePreference {
-    fn default() -> Self {
-        PricePreference::Any
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DiscoveryMode {
     Hyperlocal,
+    #[default]
     Neighborhood,
     Citywide,
-}
-
-impl Default for DiscoveryMode {
-    fn default() -> Self {
-        DiscoveryMode::Neighborhood
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

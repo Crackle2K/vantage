@@ -341,8 +341,8 @@ function HomePage() {
         if (!panelStage || panelCards.length === 0) return;
 
         gsap.set(panelCards, {
-          zIndex: (index) => index + 1,
-          yPercent: (index) => (index === 0 ? 0 : 100),
+          zIndex: (index: number) => index + 1,
+          yPercent: (index: number) => (index === 0 ? 0 : 100),
         });
 
         const panelsTimeline = gsap.timeline({

@@ -79,15 +79,18 @@ pub async fn add_security_headers(req: Request<Body>, next: Next) -> Response {
             || path.starts_with("/api/users")
             || path.starts_with("/api/saved");
 
-        if method == Method::GET && is_json && is_api_path && !is_auth_or_private {
-            if !response.headers().contains_key("cache-control") {
-                response.headers_mut().insert(
-                    "Cache-Control",
-                    HeaderValue::from_static(
-                        "public, max-age=30, s-maxage=60, stale-while-revalidate=60",
-                    ),
-                );
-            }
+        if method == Method::GET
+            && is_json
+            && is_api_path
+            && !is_auth_or_private
+            && !response.headers().contains_key("cache-control")
+        {
+            response.headers_mut().insert(
+                "Cache-Control",
+                HeaderValue::from_static(
+                    "public, max-age=30, s-maxage=60, stale-while-revalidate=60",
+                ),
+            );
         }
     }
 

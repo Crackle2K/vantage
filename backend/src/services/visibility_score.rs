@@ -6,7 +6,6 @@ use mongodb::bson::Document;
 /// - Average rating (0-5) weighted by review count
 /// - Review count (log-scaled)
 /// - Whether the business is verified
-/// - Whether the business is claimed
 /// - Stored visibility_score override (if already computed externally)
 pub fn compute(doc: &Document) -> f64 {
     // Use stored score if available
@@ -36,13 +35,12 @@ pub fn compute(doc: &Document) -> f64 {
         score += 20.0;
     }
 
-    // Claimed status (0-10 points — actively managed)
-    if doc.get_bool("is_claimed").unwrap_or(false) {
-        score += 10.0;
-    }
-
     // Has description (0-5 points)
-    if doc.get_str("description").map(|s| !s.is_empty()).unwrap_or(false) {
+    if doc
+        .get_str("description")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+    {
         score += 5.0;
     }
 
@@ -53,7 +51,7 @@ pub fn compute(doc: &Document) -> f64 {
         }
     }
 
-    score.min(100.0).max(0.0)
+    score.clamp(0.0, 100.0)
 }
 
 /// Compute a match score for query relevance (0–1).
@@ -92,4 +90,25 @@ pub fn match_score(doc: &Document, query: &str) -> f64 {
     }
 
     score.min(1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute;
+    use mongodb::bson::doc;
+
+    #[test]
+    fn claimed_status_does_not_change_visibility_score() {
+        let mut unclaimed = doc! {
+            "rating": 4.8,
+            "review_count": 28,
+            "is_verified": true,
+            "description": "Independent neighborhood cafe",
+        };
+        let mut claimed = unclaimed.clone();
+        unclaimed.insert("is_claimed", false);
+        claimed.insert("is_claimed", true);
+
+        assert_eq!(compute(&unclaimed), compute(&claimed));
+    }
 }

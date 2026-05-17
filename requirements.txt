@@ -1,0 +1,2 @@
+# Python dependency kept in sync with api/requirements.txt for Vercel proxying.
+httpx==0.28.1

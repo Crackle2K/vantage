@@ -25,7 +25,9 @@ pub async fn verify_recaptcha_token(
     });
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(config.recaptcha_verify_timeout_secs))
+        .timeout(std::time::Duration::from_secs(
+            config.recaptcha_verify_timeout_secs,
+        ))
         .build()?;
 
     let resp: Value = client.post(&url).json(&body).send().await?.json().await?;
@@ -41,11 +43,19 @@ pub async fn verify_recaptcha_token(
         .unwrap_or("");
 
     if action != expected_action {
-        bail!("reCAPTCHA action mismatch: expected {}, got {}", expected_action, action);
+        bail!(
+            "reCAPTCHA action mismatch: expected {}, got {}",
+            expected_action,
+            action
+        );
     }
 
     if score < config.recaptcha_min_score {
-        bail!("reCAPTCHA score too low: {} < {}", score, config.recaptcha_min_score);
+        bail!(
+            "reCAPTCHA score too low: {} < {}",
+            score,
+            config.recaptcha_min_score
+        );
     }
 
     Ok(())

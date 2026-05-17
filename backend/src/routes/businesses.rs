@@ -1,14 +1,16 @@
 use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
-    models::business::{Business, BusinessCreate, BusinessSearchQuery, BusinessUpdate},
+    models::business::{BusinessCreate, BusinessSearchQuery, BusinessUpdate},
+    security,
     state::AppState,
 };
 use axum::{
-    extract::{Extension, Path, Query, State},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{delete, get, post, put},
+    body::Bytes,
+    extract::{Path, Query, State},
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
+    routing::get,
     Json, Router,
 };
 use chrono::Utc;
@@ -22,7 +24,9 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/businesses", get(list_businesses).post(create_business))
         .route(
             "/businesses/:id",
-            get(get_business).put(update_business).delete(delete_business),
+            get(get_business)
+                .put(update_business)
+                .delete(delete_business),
         )
         .route("/businesses/:id/photo", get(get_business_photo))
 }
@@ -39,11 +43,12 @@ async fn list_businesses(
 
     if let Some(q) = &params.q {
         if !q.is_empty() {
+            let q = security::safe_regex_literal(q, 120);
             filter.insert(
                 "$or",
                 vec![
-                    doc! { "name": { "$regex": q, "$options": "i" } },
-                    doc! { "description": { "$regex": q, "$options": "i" } },
+                    doc! { "name": { "$regex": q.as_str(), "$options": "i" } },
+                    doc! { "description": { "$regex": q.as_str(), "$options": "i" } },
                 ],
             );
         }
@@ -69,7 +74,9 @@ async fn list_businesses(
         businesses.push(doc_to_value(doc));
     }
 
-    Ok(Json(json!({ "businesses": businesses, "total": businesses.len() })))
+    Ok(Json(
+        json!({ "businesses": businesses, "total": businesses.len() }),
+    ))
 }
 
 async fn get_business(
@@ -77,8 +84,8 @@ async fn get_business(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let collection: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
-    let oid = ObjectId::parse_str(&id)
-        .map_err(|_| AppError::BadRequest("Invalid business ID".into()))?;
+    let oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid business ID".into()))?;
 
     let doc = collection
         .find_one(doc! { "_id": oid })
@@ -90,7 +97,7 @@ async fn get_business(
 
 async fn create_business(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Json(payload): Json<BusinessCreate>,
 ) -> Result<impl IntoResponse> {
     payload
@@ -99,10 +106,14 @@ async fn create_business(
 
     let collection: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
     let now = Utc::now();
+    if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
+        security::validate_lat_lng(lat, lng)?;
+    }
+    let website = security::normalize_url(payload.website.as_deref(), 500, false)?;
 
     let mut business_doc = doc! {
-        "name": &payload.name,
-        "address": &payload.address,
+        "name": security::sanitize_text(&payload.name, 200),
+        "address": security::sanitize_text(&payload.address, 300),
         "is_verified": false,
         "is_claimed": false,
         "owner_id": &auth_user.id,
@@ -114,25 +125,25 @@ async fn create_business(
     };
 
     if let Some(cat) = &payload.category {
-        business_doc.insert("category", cat.as_str());
+        business_doc.insert("category", security::sanitize_text(cat, 80));
     }
     if let Some(city) = &payload.city {
-        business_doc.insert("city", city.as_str());
+        business_doc.insert("city", security::sanitize_text(city, 120));
     }
     if let Some(state_val) = &payload.state {
-        business_doc.insert("state", state_val.as_str());
+        business_doc.insert("state", security::sanitize_text(state_val, 80));
     }
     if let Some(zip) = &payload.zip_code {
-        business_doc.insert("zip_code", zip.as_str());
+        business_doc.insert("zip_code", security::sanitize_text(zip, 20));
     }
     if let Some(phone) = &payload.phone {
-        business_doc.insert("phone", phone.as_str());
+        business_doc.insert("phone", security::sanitize_text(phone, 40));
     }
-    if let Some(website) = &payload.website {
-        business_doc.insert("website", website.as_str());
+    if let Some(website) = website {
+        business_doc.insert("website", website);
     }
     if let Some(desc) = &payload.description {
-        business_doc.insert("description", desc.as_str());
+        business_doc.insert("description", security::sanitize_text(desc, 1000));
     }
     if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
         business_doc.insert(
@@ -151,18 +162,21 @@ async fn create_business(
         .map(|o| o.to_hex())
         .unwrap_or_default();
 
-    Ok((StatusCode::CREATED, Json(json!({ "id": id, "message": "Business created" }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "id": id, "message": "Business created" })),
+    ))
 }
 
 async fn update_business(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<BusinessUpdate>,
 ) -> Result<impl IntoResponse> {
     let collection: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
-    let oid = ObjectId::parse_str(&id)
-        .map_err(|_| AppError::BadRequest("Invalid business ID".into()))?;
+    let oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid business ID".into()))?;
 
     let existing = collection
         .find_one(doc! { "_id": oid })
@@ -176,24 +190,28 @@ async fn update_business(
 
     let now = Utc::now();
     let mut update_doc = doc! { "updated_at": now.to_rfc3339() };
+    if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
+        security::validate_lat_lng(lat, lng)?;
+    }
+    let website = security::normalize_url(payload.website.as_deref(), 500, false)?;
 
     if let Some(name) = &payload.name {
-        update_doc.insert("name", name.as_str());
+        update_doc.insert("name", security::sanitize_text(name, 200));
     }
     if let Some(cat) = &payload.category {
-        update_doc.insert("category", cat.as_str());
+        update_doc.insert("category", security::sanitize_text(cat, 80));
     }
     if let Some(addr) = &payload.address {
-        update_doc.insert("address", addr.as_str());
+        update_doc.insert("address", security::sanitize_text(addr, 300));
     }
     if let Some(phone) = &payload.phone {
-        update_doc.insert("phone", phone.as_str());
+        update_doc.insert("phone", security::sanitize_text(phone, 40));
     }
-    if let Some(website) = &payload.website {
-        update_doc.insert("website", website.as_str());
+    if let Some(website) = website {
+        update_doc.insert("website", website);
     }
     if let Some(desc) = &payload.description {
-        update_doc.insert("description", desc.as_str());
+        update_doc.insert("description", security::sanitize_text(desc, 1000));
     }
     if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
         update_doc.insert(
@@ -211,12 +229,12 @@ async fn update_business(
 
 async fn delete_business(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let collection: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
-    let oid = ObjectId::parse_str(&id)
-        .map_err(|_| AppError::BadRequest("Invalid business ID".into()))?;
+    let oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid business ID".into()))?;
 
     let existing = collection
         .find_one(doc! { "_id": oid })
@@ -235,24 +253,58 @@ async fn delete_business(
 
 async fn get_business_photo(
     State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
+    Path(_id): Path<String>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<impl IntoResponse> {
+) -> Result<Response> {
     let photo_ref = params
         .get("ref")
         .cloned()
         .ok_or_else(|| AppError::BadRequest("Missing photo ref".into()))?;
+    let photo_ref = security::validate_photo_reference(&photo_ref)?;
 
     if state.config.google_api_key.is_empty() {
         return Err(AppError::BadRequest("Google API not configured".into()));
     }
 
+    let max_width = params
+        .get("maxwidth")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(800)
+        .clamp(64, 1200);
+
     let url = format!(
-        "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference={}&key={}",
-        photo_ref, state.config.google_api_key
+        "https://maps.googleapis.com/maps/api/place/photo?maxwidth={}&photo_reference={}&key={}",
+        max_width, photo_ref, state.config.google_api_key
     );
 
-    Ok(Json(json!({ "url": url })))
+    let response = reqwest::get(&url)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    if !response.status().is_success() {
+        return Err(AppError::BadRequest("Photo is unavailable".into()));
+    }
+
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .cloned()
+        .unwrap_or_else(|| HeaderValue::from_static("image/jpeg"));
+    let body: Bytes = response
+        .bytes()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, content_type),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=86400"),
+            ),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 fn doc_to_value(doc: Document) -> Value {

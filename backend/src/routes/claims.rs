@@ -1,27 +1,32 @@
-use crate::{errors::{AppError, Result}, middleware::auth::AuthUser, state::AppState};
+use crate::{
+    errors::{AppError, Result},
+    middleware::auth::AuthUser,
+    security,
+    state::AppState,
+};
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use chrono::Utc;
 use mongodb::bson::{doc, oid::ObjectId, Document};
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/claims", post(submit_claim))
-        .route("/claims/:id", get(get_claim).put(review_claim))
+        .route("/claims/my", get(my_claims))
         .route("/claims/mine", get(my_claims))
+        .route("/claims/:id", get(get_claim).put(review_claim))
 }
 
 async fn submit_claim(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse> {
     let business_id = payload["business_id"]
@@ -51,14 +56,21 @@ async fn submit_claim(
         "user_id": &auth_user.id,
         "verification_method": method,
         "status": "pending",
-        "notes": payload["notes"].as_str().unwrap_or(""),
+        "notes": security::sanitize_optional_text(payload["notes"].as_str(), 1000).unwrap_or_default(),
         "created_at": now.to_rfc3339(),
         "updated_at": now.to_rfc3339(),
     };
 
     let result = col.insert_one(claim_doc).await?;
-    let id = result.inserted_id.as_object_id().map(|o| o.to_hex()).unwrap_or_default();
-    Ok((StatusCode::CREATED, Json(json!({ "id": id, "status": "pending" }))))
+    let id = result
+        .inserted_id
+        .as_object_id()
+        .map(|o| o.to_hex())
+        .unwrap_or_default();
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "id": id, "status": "pending" })),
+    ))
 }
 
 async fn get_claim(
@@ -67,16 +79,22 @@ async fn get_claim(
 ) -> Result<impl IntoResponse> {
     let col: mongodb::Collection<Document> = state.db.mongo.collection("claims");
     let oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid ID".into()))?;
-    let doc = col.find_one(doc! { "_id": oid }).await?.ok_or_else(|| AppError::NotFound("Claim not found".into()))?;
+    let doc = col
+        .find_one(doc! { "_id": oid })
+        .await?
+        .ok_or_else(|| AppError::NotFound("Claim not found".into()))?;
     Ok(Json(serde_json::to_value(&doc).unwrap_or(Value::Null)))
 }
 
 async fn my_claims(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
 ) -> Result<impl IntoResponse> {
     let col: mongodb::Collection<Document> = state.db.mongo.collection("claims");
-    let mut cursor = col.find(doc! { "user_id": &auth_user.id }).sort(doc! { "created_at": -1 }).await?;
+    let mut cursor = col
+        .find(doc! { "user_id": &auth_user.id })
+        .sort(doc! { "created_at": -1 })
+        .await?;
     let mut claims: Vec<Value> = Vec::new();
     while cursor.advance().await? {
         claims.push(serde_json::to_value(&cursor.deserialize_current()?).unwrap_or(Value::Null));
@@ -86,7 +104,7 @@ async fn my_claims(
 
 async fn review_claim(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse> {
@@ -94,14 +112,21 @@ async fn review_claim(
         return Err(AppError::Forbidden("Admin only".into()));
     }
 
-    let status = payload["status"].as_str().ok_or_else(|| AppError::BadRequest("status required".into()))?;
+    let status = payload["status"]
+        .as_str()
+        .ok_or_else(|| AppError::BadRequest("status required".into()))?;
     if !matches!(status, "approved" | "rejected") {
-        return Err(AppError::BadRequest("status must be approved or rejected".into()));
+        return Err(AppError::BadRequest(
+            "status must be approved or rejected".into(),
+        ));
     }
 
     let col: mongodb::Collection<Document> = state.db.mongo.collection("claims");
     let oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid ID".into()))?;
-    let existing = col.find_one(doc! { "_id": oid }).await?.ok_or_else(|| AppError::NotFound("Claim not found".into()))?;
+    let existing = col
+        .find_one(doc! { "_id": oid })
+        .await?
+        .ok_or_else(|| AppError::NotFound("Claim not found".into()))?;
 
     let now = Utc::now();
     col.update_one(
@@ -111,7 +136,7 @@ async fn review_claim(
             "reviewed_by": &auth_user.id,
             "reviewed_at": now.to_rfc3339(),
             "updated_at": now.to_rfc3339(),
-            "notes": payload["notes"].as_str().unwrap_or(""),
+            "notes": security::sanitize_optional_text(payload["notes"].as_str(), 1000).unwrap_or_default(),
         }},
     )
     .await?;
@@ -129,5 +154,7 @@ async fn review_claim(
             .ok();
     }
 
-    Ok(Json(json!({ "message": "Claim reviewed", "status": status })))
+    Ok(Json(
+        json!({ "message": "Claim reviewed", "status": status }),
+    ))
 }

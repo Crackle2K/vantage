@@ -1,9 +1,9 @@
 //! Minimal HS256 JWT implementation using pure-Rust HMAC-SHA256.
 //! No ring dependency required.
+use crate::{errors::AppError, models::user::TokenClaims};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use crate::{errors::AppError, models::user::TokenClaims};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -63,5 +63,8 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    a.iter().zip(b.iter()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }

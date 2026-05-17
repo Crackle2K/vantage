@@ -1,11 +1,11 @@
 use crate::{
-    errors::{AppError, Result},
-    middleware::auth::AuthUser,
+    errors::Result,
+    security,
     services::{geo_service, visibility_score},
     state::AppState,
 };
 use axum::{
-    extract::{Extension, Query, State},
+    extract::{Query, State},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -26,6 +26,7 @@ pub fn router() -> Router<Arc<AppState>> {
 pub struct DiscoverParams {
     pub lat: Option<f64>,
     pub lng: Option<f64>,
+    pub radius: Option<f64>,
     pub radius_km: Option<f64>,
     pub category: Option<String>,
     pub q: Option<String>,
@@ -42,9 +43,16 @@ async fn discover(
 ) -> Result<impl IntoResponse> {
     let businesses: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
 
-    let limit = params.limit.unwrap_or(20).min(100);
-    let offset = params.offset.unwrap_or(0);
-    let radius_km = params.radius_km.unwrap_or(5.0);
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let radius_km = params
+        .radius_km
+        .or(params.radius)
+        .unwrap_or(5.0)
+        .clamp(0.1, 100.0);
+    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
+        security::validate_lat_lng(lat, lng)?;
+    }
 
     let mut filter = doc! {};
 
@@ -54,12 +62,13 @@ async fn discover(
 
     if let Some(q) = &params.q {
         if !q.is_empty() {
+            let q = security::safe_regex_literal(q, 120);
             filter.insert(
                 "$or",
                 vec![
-                    doc! { "name": { "$regex": q, "$options": "i" } },
-                    doc! { "description": { "$regex": q, "$options": "i" } },
-                    doc! { "category": { "$regex": q, "$options": "i" } },
+                    doc! { "name": { "$regex": q.as_str(), "$options": "i" } },
+                    doc! { "description": { "$regex": q.as_str(), "$options": "i" } },
+                    doc! { "category": { "$regex": q.as_str(), "$options": "i" } },
                 ],
             );
         }
@@ -83,7 +92,7 @@ async fn discover(
 
         // Inject distance if coordinates provided
         if let (Some(user_lat), Some(user_lng)) = (params.lat, params.lng) {
-            if let Some(loc) = doc.get_document("location").ok() {
+            if let Ok(loc) = doc.get_document("location") {
                 if let Ok(coords) = loc.get_array("coordinates") {
                     if coords.len() == 2 {
                         let biz_lng = coords[0].as_f64().unwrap_or(0.0);
@@ -151,7 +160,10 @@ async fn decide(
     let intent = payload["intent"].as_str().unwrap_or("explore");
     let lat = payload["lat"].as_f64();
     let lng = payload["lng"].as_f64();
-    let constraints = payload["constraints"].as_array().cloned().unwrap_or_default();
+    let constraints = payload["constraints"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
 
     let businesses: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
     let mut filter = doc! {};
@@ -178,7 +190,7 @@ async fn decide(
         let mut score = visibility_score::compute(&doc);
 
         if let (Some(u_lat), Some(u_lng)) = (lat, lng) {
-            if let Some(loc) = doc.get_document("location").ok() {
+            if let Ok(loc) = doc.get_document("location") {
                 if let Ok(coords) = loc.get_array("coordinates") {
                     if coords.len() == 2 {
                         let biz_lng = coords[0].as_f64().unwrap_or(0.0);
@@ -197,15 +209,11 @@ async fn decide(
         for c in &constraints {
             if let Some(c_str) = c.as_str() {
                 match c_str {
-                    "verified" => {
-                        if !val["is_verified"].as_bool().unwrap_or(false) {
-                            passes = false;
-                        }
+                    "verified" if !val["is_verified"].as_bool().unwrap_or(false) => {
+                        passes = false;
                     }
-                    "high_rated" => {
-                        if val["rating"].as_f64().unwrap_or(0.0) < 4.0 {
-                            passes = false;
-                        }
+                    "high_rated" if val["rating"].as_f64().unwrap_or(0.0) < 4.0 => {
+                        passes = false;
                     }
                     _ => {}
                 }
@@ -235,15 +243,13 @@ async fn explore_lanes(
     let businesses: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
     let lat = params.lat.unwrap_or(state.config.demo_lat);
     let lng = params.lng.unwrap_or(state.config.demo_lng);
+    security::validate_lat_lng(lat, lng)?;
 
     let categories = ["restaurant", "cafe", "bar", "gym", "salon"];
     let mut lanes: Vec<Value> = Vec::new();
 
     for cat in &categories {
-        let mut cursor = businesses
-            .find(doc! { "category": *cat })
-            .limit(10)
-            .await?;
+        let mut cursor = businesses.find(doc! { "category": *cat }).limit(10).await?;
 
         let mut items: Vec<(Value, f64)> = Vec::new();
         while cursor.advance().await? {
@@ -251,7 +257,7 @@ async fn explore_lanes(
             let mut val = serde_json::to_value(&doc).unwrap_or(Value::Null);
             let mut score = visibility_score::compute(&doc);
 
-            if let Some(loc) = doc.get_document("location").ok() {
+            if let Ok(loc) = doc.get_document("location") {
                 if let Ok(coords) = loc.get_array("coordinates") {
                     if coords.len() == 2 {
                         let biz_lng = coords[0].as_f64().unwrap_or(0.0);

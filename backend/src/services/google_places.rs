@@ -21,10 +21,7 @@ pub async fn search_nearby(
 
     let resp: Value = reqwest::get(&url).await?.json().await?;
 
-    let results = resp["results"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let results = resp["results"].as_array().cloned().unwrap_or_default();
 
     Ok(results)
 }

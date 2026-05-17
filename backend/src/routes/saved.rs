@@ -1,8 +1,8 @@
-use crate::{errors::{AppError, Result}, middleware::auth::AuthUser, state::AppState};
+use crate::{errors::Result, middleware::auth::AuthUser, state::AppState};
 use axum::{
-    extract::{Extension, Path, State},
+    extract::{Path, State},
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use chrono::Utc;
@@ -11,14 +11,15 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/saved", get(list_saved))
-        .route("/saved/:business_id", post(save_business).delete(unsave_business))
+    Router::new().route("/saved", get(list_saved)).route(
+        "/saved/:business_id",
+        post(save_business).delete(unsave_business),
+    )
 }
 
 async fn list_saved(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
 ) -> Result<impl IntoResponse> {
     let col: mongodb::Collection<Document> = state.db.mongo.collection("saved");
     let mut cursor = col
@@ -36,7 +37,7 @@ async fn list_saved(
 
 async fn save_business(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let col: mongodb::Collection<Document> = state.db.mongo.collection("saved");
@@ -62,7 +63,7 @@ async fn save_business(
 
 async fn unsave_business(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let col: mongodb::Collection<Document> = state.db.mongo.collection("saved");

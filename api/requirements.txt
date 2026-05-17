@@ -1,0 +1,2 @@
+# Python dependency for the Vercel /api proxy.
+httpx==0.28.1

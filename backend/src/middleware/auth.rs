@@ -1,8 +1,10 @@
 use crate::{errors::AppError, jwt, models::user::TokenClaims, state::AppState};
+use async_trait::async_trait;
 use axum::{
     body::Body,
-    extract::{Request, State},
+    extract::{FromRequestParts, Request, State},
     http::header::{AUTHORIZATION, COOKIE},
+    http::request::Parts,
     middleware::Next,
     response::Response,
 };
@@ -13,6 +15,22 @@ pub struct AuthUser {
     pub id: String,
     pub email: String,
     pub role: String,
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthUser>()
+            .cloned()
+            .ok_or_else(|| AppError::Unauthorized("Not authenticated".into()))
+    }
 }
 
 pub async fn require_auth(
@@ -51,9 +69,13 @@ pub async fn optional_auth(
 
 fn extract_token(req: &Request<Body>) -> Result<String, AppError> {
     // 1. Try Authorization: Bearer <token> header
-    if let Some(header) = req.headers().get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
-        if header.starts_with("Bearer ") {
-            return Ok(header[7..].to_string());
+    if let Some(header) = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(token) = header.strip_prefix("Bearer ") {
+            return Ok(token.to_string());
         }
     }
 

@@ -42,9 +42,7 @@ impl IntoResponse for AppError {
                 msg.as_str(),
             ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg.as_str()),
-            AppError::Unauthorized(msg) => {
-                (StatusCode::UNAUTHORIZED, "unauthorized", msg.as_str())
-            }
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "unauthorized", msg.as_str()),
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, "forbidden", msg.as_str()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.as_str()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg.as_str()),

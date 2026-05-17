@@ -78,7 +78,8 @@ impl SupabaseClient {
             .json(body);
         let resp = req.send().await?;
         let mut rows: Vec<T> = resp.json().await?;
-        rows.pop().ok_or_else(|| anyhow::anyhow!("Insert returned no rows"))
+        rows.pop()
+            .ok_or_else(|| anyhow::anyhow!("Insert returned no rows"))
     }
 
     pub async fn update<B: Serialize>(
@@ -103,7 +104,7 @@ impl SupabaseClient {
             .headers()
             .get("content-range")
             .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.split('/').last())
+            .and_then(|s| s.split('/').next_back())
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
         Ok(count)
@@ -122,7 +123,7 @@ impl SupabaseClient {
             .headers()
             .get("content-range")
             .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.split('/').last())
+            .and_then(|s| s.split('/').next_back())
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
         Ok(count)

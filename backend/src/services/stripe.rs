@@ -14,7 +14,10 @@ async fn stripe_post(secret_key: &str, path: &str, params: &[(&str, &str)]) -> R
 
     let data: Value = resp.json().await?;
     if let Some(err) = data.get("error") {
-        anyhow::bail!("Stripe error: {}", err["message"].as_str().unwrap_or("unknown"));
+        anyhow::bail!(
+            "Stripe error: {}",
+            err["message"].as_str().unwrap_or("unknown")
+        );
     }
     Ok(data)
 }
@@ -40,11 +43,7 @@ pub async fn create_customer(secret_key: &str, email: &str) -> Result<String> {
     Ok(id)
 }
 
-pub async fn create_subscription(
-    secret_key: &str,
-    email: &str,
-    price_id: &str,
-) -> Result<Value> {
+pub async fn create_subscription(secret_key: &str, email: &str, price_id: &str) -> Result<Value> {
     // Create or retrieve customer
     let customer_id = create_customer(secret_key, email).await?;
 

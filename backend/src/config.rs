@@ -29,6 +29,7 @@ pub struct Config {
 
     // Redis
     pub redis_url: String,
+    pub rate_limit_per_minute: u32,
 
     // Supabase
     pub supabase_url: String,
@@ -48,8 +49,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
-        let secret_key = env::var("SECRET_KEY")
-            .expect("SECRET_KEY environment variable must be set");
+        let secret_key =
+            env::var("SECRET_KEY").expect("SECRET_KEY environment variable must be set");
 
         Config {
             secret_key,
@@ -87,12 +88,14 @@ impl Config {
             production_url: env::var("PRODUCTION_URL").unwrap_or_default(),
             environment: env::var("ENVIRONMENT").unwrap_or_else(|_| "development".into()),
 
-            redis_url: env::var("REDIS_URL")
-                .unwrap_or_else(|_| "redis://localhost:6379/0".into()),
+            redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379/0".into()),
+            rate_limit_per_minute: env::var("RATE_LIMIT_PER_MINUTE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(120),
 
             supabase_url: env::var("SUPABASE_URL").unwrap_or_default(),
-            supabase_service_role_key: env::var("SUPABASE_SERVICE_ROLE_KEY")
-                .unwrap_or_default(),
+            supabase_service_role_key: env::var("SUPABASE_SERVICE_ROLE_KEY").unwrap_or_default(),
             supabase_jwt_secret: env::var("SUPABASE_JWT_SECRET").unwrap_or_default(),
 
             stripe_secret_key: env::var("STRIPE_SECRET_KEY").unwrap_or_default(),

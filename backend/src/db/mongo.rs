@@ -1,5 +1,5 @@
 use crate::config::Config;
-use mongodb::{Client, Database, options::ClientOptions};
+use mongodb::{options::ClientOptions, Client, Database};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -12,8 +12,7 @@ impl MongoDb {
     pub async fn connect(config: &Config) -> Self {
         let mongo_uri = std::env::var("MONGODB_URI")
             .unwrap_or_else(|_| "mongodb://localhost:27017".to_string());
-        let db_name = std::env::var("MONGODB_DB_NAME")
-            .unwrap_or_else(|_| "vantage".to_string());
+        let db_name = std::env::var("MONGODB_DB_NAME").unwrap_or_else(|_| "vantage".to_string());
 
         let mut opts = ClientOptions::parse(&mongo_uri)
             .await

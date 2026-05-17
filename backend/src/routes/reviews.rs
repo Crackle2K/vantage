@@ -1,13 +1,14 @@
 use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
+    security,
     state::AppState,
 };
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use chrono::Utc;
@@ -19,7 +20,10 @@ use std::sync::Arc;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/reviews", post(create_review))
-        .route("/reviews/:id", get(get_review).put(update_review).delete(delete_review))
+        .route(
+            "/reviews/:id",
+            get(get_review).put(update_review).delete(delete_review),
+        )
         .route("/businesses/:id/reviews", get(list_business_reviews))
 }
 
@@ -59,8 +63,8 @@ async fn get_review(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let collection: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let oid = ObjectId::parse_str(&id)
-        .map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
+    let oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
 
     let doc = collection
         .find_one(doc! { "_id": oid })
@@ -79,11 +83,13 @@ struct ReviewCreate {
 
 async fn create_review(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Json(payload): Json<ReviewCreate>,
 ) -> Result<impl IntoResponse> {
     if payload.rating < 1.0 || payload.rating > 5.0 {
-        return Err(AppError::BadRequest("Rating must be between 1 and 5".into()));
+        return Err(AppError::BadRequest(
+            "Rating must be between 1 and 5".into(),
+        ));
     }
 
     let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
@@ -97,7 +103,9 @@ async fn create_review(
         .await?
         .is_some()
     {
-        return Err(AppError::Conflict("You have already reviewed this business".into()));
+        return Err(AppError::Conflict(
+            "You have already reviewed this business".into(),
+        ));
     }
 
     let now = Utc::now();
@@ -105,7 +113,7 @@ async fn create_review(
         "business_id": &payload.business_id,
         "user_id": &auth_user.id,
         "rating": payload.rating,
-        "comment": payload.comment.clone().unwrap_or_default(),
+        "comment": security::sanitize_optional_text(payload.comment.as_deref(), 2000).unwrap_or_default(),
         "is_verified": false,
         "credibility_weight": 1.0,
         "helpful_count": 0,
@@ -134,13 +142,13 @@ struct ReviewUpdate {
 
 async fn update_review(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Path(id): Path<String>,
     Json(payload): Json<ReviewUpdate>,
 ) -> Result<impl IntoResponse> {
     let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let oid = ObjectId::parse_str(&id)
-        .map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
+    let oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
 
     let existing = reviews
         .find_one(doc! { "_id": oid })
@@ -157,7 +165,7 @@ async fn update_review(
         update.insert("rating", r);
     }
     if let Some(c) = payload.comment {
-        update.insert("comment", c);
+        update.insert("comment", security::sanitize_text(&c, 2000));
     }
 
     reviews
@@ -172,12 +180,12 @@ async fn update_review(
 
 async fn delete_review(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let oid = ObjectId::parse_str(&id)
-        .map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
+    let oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
 
     let existing = reviews
         .find_one(doc! { "_id": oid })

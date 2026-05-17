@@ -3,11 +3,12 @@ use crate::{
     jwt,
     middleware::auth::AuthUser,
     models::user::{GoogleAuthRequest, TokenClaims, UserCreate, UserLogin},
+    security,
     services::recaptcha,
     state::AppState,
 };
 use axum::{
-    extract::{Extension, State},
+    extract::State,
     http::{header::SET_COOKIE, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -19,10 +20,6 @@ use mongodb::bson::{doc, Document};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use validator::Validate;
-
-const LOCKOUT_THRESHOLD: i32 = 5;
-const LOCKOUT_DURATION_MINUTES: i64 = 15;
-const LOCKOUT_WINDOW_MINUTES: i64 = 30;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -40,17 +37,14 @@ async fn register(
     payload
         .validate()
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    security::validate_password_strength(&payload.password)?;
 
     // reCAPTCHA verification
     if let Some(token) = &payload.recaptcha_token {
         if !state.config.recaptcha_api_key.is_empty() {
-            recaptcha::verify_recaptcha_token(
-                &state.config,
-                token,
-                "SIGNUP",
-            )
-            .await
-            .map_err(|e| AppError::BadRequest(e.to_string()))?;
+            recaptcha::verify_recaptcha_token(&state.config, token, "SIGNUP")
+                .await
+                .map_err(|e| AppError::BadRequest(e.to_string()))?;
         }
     }
 
@@ -65,13 +59,14 @@ async fn register(
         return Err(AppError::Conflict("Email already registered".into()));
     }
 
-    let hashed = hash(&payload.password, DEFAULT_COST)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let hashed =
+        hash(&payload.password, DEFAULT_COST).map_err(|e| AppError::Internal(e.to_string()))?;
 
     let now = Utc::now();
+    let full_name = security::sanitize_optional_text(payload.full_name.as_deref(), 120);
     let user_doc = doc! {
         "email": payload.email.to_lowercase(),
-        "full_name": payload.full_name.clone().unwrap_or_default(),
+        "full_name": full_name.clone().unwrap_or_default(),
         "password_hash": hashed,
         "role": "customer",
         "is_active": true,
@@ -82,9 +77,18 @@ async fn register(
     };
 
     let result = users.insert_one(user_doc).await?;
-    let user_id = result.inserted_id.as_object_id().map(|o| o.to_hex()).unwrap_or_default();
+    let user_id = result
+        .inserted_id
+        .as_object_id()
+        .map(|o| o.to_hex())
+        .unwrap_or_default();
 
-    let token = create_jwt(&user_id, &payload.email.to_lowercase(), "customer", &state.config.secret_key)?;
+    let token = create_jwt(
+        &user_id,
+        &payload.email.to_lowercase(),
+        "customer",
+        &state.config.secret_key,
+    )?;
     let cookie = session_cookie(&token, &state.config);
 
     Ok((
@@ -96,7 +100,7 @@ async fn register(
             "user": {
                 "id": user_id,
                 "email": payload.email.to_lowercase(),
-                "full_name": payload.full_name,
+                "full_name": full_name,
                 "role": "customer",
                 "subscription_tier": "FREE",
             }
@@ -134,7 +138,10 @@ async fn login(
         .unwrap_or_default();
     let role = user.get_str("role").unwrap_or("customer");
     let full_name = user.get_str("full_name").ok().map(String::from);
-    let subscription_tier = user.get_str("subscription_tier").unwrap_or("FREE").to_string();
+    let subscription_tier = user
+        .get_str("subscription_tier")
+        .unwrap_or("FREE")
+        .to_string();
 
     let token = create_jwt(&user_id, &email_lower, role, &state.config.secret_key)?;
     let cookie = session_cookie(&token, &state.config);
@@ -168,10 +175,7 @@ async fn logout(State(state): State<Arc<AppState>>) -> Response {
         .into_response()
 }
 
-async fn me(
-    State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
-) -> Result<impl IntoResponse> {
+async fn me(State(state): State<Arc<AppState>>, auth_user: AuthUser) -> Result<impl IntoResponse> {
     let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
     let user = users
         .find_one(doc! { "_id": mongodb::bson::oid::ObjectId::parse_str(&auth_user.id).unwrap_or_default() })
@@ -181,7 +185,10 @@ async fn me(
     let email = user.get_str("email").unwrap_or("").to_string();
     let full_name = user.get_str("full_name").ok().map(String::from);
     let role = user.get_str("role").unwrap_or("customer").to_string();
-    let subscription_tier = user.get_str("subscription_tier").unwrap_or("FREE").to_string();
+    let subscription_tier = user
+        .get_str("subscription_tier")
+        .unwrap_or("FREE")
+        .to_string();
     let profile_picture = user.get_str("profile_picture").ok().map(String::from);
 
     Ok(Json(json!({
@@ -217,9 +224,15 @@ async fn google_auth(
     let existing = users.find_one(doc! { "email": &email }).await?;
 
     let (user_id, role, subscription_tier) = if let Some(user) = existing {
-        let id = user.get_object_id("_id").map(|o| o.to_hex()).unwrap_or_default();
+        let id = user
+            .get_object_id("_id")
+            .map(|o| o.to_hex())
+            .unwrap_or_default();
         let r = user.get_str("role").unwrap_or("customer").to_string();
-        let tier = user.get_str("subscription_tier").unwrap_or("FREE").to_string();
+        let tier = user
+            .get_str("subscription_tier")
+            .unwrap_or("FREE")
+            .to_string();
         // Update google_id and profile_picture
         users
             .update_one(
@@ -242,7 +255,11 @@ async fn google_auth(
             "subscription_tier": "FREE",
         };
         let result = users.insert_one(user_doc).await?;
-        let id = result.inserted_id.as_object_id().map(|o| o.to_hex()).unwrap_or_default();
+        let id = result
+            .inserted_id
+            .as_object_id()
+            .map(|o| o.to_hex())
+            .unwrap_or_default();
         (id, "customer".into(), "FREE".into())
     };
 
@@ -294,7 +311,7 @@ async fn verify_google_token(credential: &str, client_id: &str) -> anyhow::Resul
     // For simplicity, use Google's tokeninfo endpoint for validation
     let url = format!(
         "https://oauth2.googleapis.com/tokeninfo?id_token={}",
-        credential
+        urlencoding::encode(credential)
     );
     let resp = reqwest::get(&url).await?;
     if !resp.status().is_success() {

@@ -3,9 +3,11 @@ name: Rust backend CI
 on:
   push:
     paths:
+      - '.github/workflows/rust.yml'
       - 'backend/**'
   pull_request:
     paths:
+      - '.github/workflows/rust.yml'
       - 'backend/**'
 
 env:

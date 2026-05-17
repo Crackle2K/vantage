@@ -1,4 +1,7 @@
-use crate::{errors::{AppError, Result}, state::AppState};
+use crate::{
+    errors::{AppError, Result},
+    state::AppState,
+};
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
@@ -45,13 +48,21 @@ async fn reverse_geocode(
 
     let results = resp["results"].as_array().cloned().unwrap_or_default();
     if results.is_empty() {
-        return Ok(Json(json!({ "formatted_address": null, "city": null, "state": null })));
+        return Ok(Json(
+            json!({ "formatted_address": null, "city": null, "state": null }),
+        ));
     }
 
     let result = &results[0];
-    let formatted = result["formatted_address"].as_str().unwrap_or("").to_string();
+    let formatted = result["formatted_address"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
 
-    let components = result["address_components"].as_array().cloned().unwrap_or_default();
+    let components = result["address_components"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     let city = find_component(&components, "locality");
     let state_name = find_component(&components, "administrative_area_level_1");
 

@@ -1,6 +1,11 @@
-use crate::{errors::{AppError, Result}, middleware::auth::AuthUser, models::subscription::all_tier_infos, state::AppState};
+use crate::{
+    errors::{AppError, Result},
+    middleware::auth::AuthUser,
+    models::subscription::all_tier_infos,
+    state::AppState,
+};
 use axum::{
-    extract::{Extension, State},
+    extract::State,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -23,7 +28,7 @@ async fn get_tiers() -> impl IntoResponse {
 
 async fn my_subscription(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
 ) -> Result<impl IntoResponse> {
     let col: mongodb::Collection<Document> = state.db.mongo.collection("subscriptions");
     let sub = col.find_one(doc! { "user_id": &auth_user.id }).await?;
@@ -36,7 +41,7 @@ async fn my_subscription(
 
 async fn create_subscription(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse> {
     let tier = payload["tier"].as_str().unwrap_or("FREE");
@@ -89,7 +94,7 @@ async fn create_subscription(
 
 async fn cancel_subscription(
     State(state): State<Arc<AppState>>,
-    Extension(auth_user): Extension<AuthUser>,
+    auth_user: AuthUser,
 ) -> Result<impl IntoResponse> {
     let col: mongodb::Collection<Document> = state.db.mongo.collection("subscriptions");
     let sub = col
@@ -97,7 +102,10 @@ async fn cancel_subscription(
         .await?
         .ok_or_else(|| AppError::NotFound("No active subscription".into()))?;
 
-    let sub_id = sub.get_str("stripe_subscription_id").unwrap_or("").to_string();
+    let sub_id = sub
+        .get_str("stripe_subscription_id")
+        .unwrap_or("")
+        .to_string();
 
     if !sub_id.is_empty() && !state.config.stripe_secret_key.is_empty() {
         crate::services::stripe::cancel_subscription(&state.config.stripe_secret_key, &sub_id)

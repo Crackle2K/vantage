@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod config;
 mod db;
 mod errors;
@@ -5,14 +7,11 @@ mod jwt;
 mod middleware;
 mod models;
 mod routes;
+mod security;
 mod services;
 mod state;
 
-use axum::{
-    middleware as axum_middleware,
-    routing::get,
-    Router,
-};
+use axum::{middleware as axum_middleware, routing::get, Router};
 use config::Config;
 use db::Database;
 use state::AppState;
@@ -51,6 +50,7 @@ async fn main() {
     let state = Arc::new(AppState {
         config: config.clone(),
         db,
+        rate_limiter: security::RateLimiter::new(),
     });
 
     // CORS
@@ -97,6 +97,10 @@ async fn main() {
             state.clone(),
             middleware::auth::optional_auth,
         ))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::rate_limit::rate_limit,
+        ))
         .layer(axum_middleware::from_fn(
             middleware::security_headers::add_security_headers,
         ))
@@ -112,9 +116,7 @@ async fn main() {
         .expect("Failed to bind TCP listener");
 
     tracing::info!("Listening on {}", addr);
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    axum::serve(listener, app).await.expect("Server error");
 }
 
 async fn root() -> axum::Json<serde_json::Value> {

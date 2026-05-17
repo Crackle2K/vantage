@@ -1,20 +1,5 @@
-# Windows-specific build configuration.
-# On Linux/macOS this file is effectively a no-op since
-# target and linker are picked up from the environment.
-
-[build]
-# Use the MinGW/GNU toolchain on Windows to avoid MSVC link.exe conflicts
-# (Git ships a POSIX link.exe that shadows the MSVC one).
-# On Linux/macOS the target defaults to the host triple automatically.
-target = "x86_64-pc-windows-gnu"
-
-[target.x86_64-pc-windows-gnu]
-linker = "C:/msys64/ucrt64/bin/x86_64-w64-mingw32-gcc.exe"
-
-[env]
-CC = "C:/msys64/ucrt64/bin/gcc.exe"
-CXX = "C:/msys64/ucrt64/bin/g++.exe"
-AR = "C:/msys64/ucrt64/bin/ar.exe"
-OPENSSL_DIR = "C:/msys64/ucrt64"
-OPENSSL_LIB_DIR = "C:/msys64/ucrt64/lib"
-OPENSSL_INCLUDE_DIR = "C:/msys64/ucrt64/include"
+# Keep committed Cargo configuration portable.
+#
+# Platform-specific linker or OpenSSL overrides should be supplied by the
+# developer's environment or CI job. Do not force a Windows target here; this
+# crate must build on Linux for CI and container images.
