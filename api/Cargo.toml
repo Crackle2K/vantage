@@ -1,0 +1,19 @@
+[package]
+name = "vantage-api-handler"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bootstrap"
+path = "index.rs"
+
+[dependencies]
+vantage-backend = { path = "../backend" }
+vercel_runtime = "0.5"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+bytes = "1"
+http = "1"
+http-body-util = "0.1"
+tower = { version = "0.4", features = ["util"] }
+anyhow = "1"

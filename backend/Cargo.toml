@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Vantage API — trust-first local business discovery"
 
+[lib]
+name = "vantage_backend"
+path = "src/lib.rs"
+
 [[bin]]
 name = "vantage"
 path = "src/main.rs"
