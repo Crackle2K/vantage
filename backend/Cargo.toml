@@ -1,0 +1,68 @@
+[package]
+name = "vantage-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Vantage API — trust-first local business discovery"
+
+[[bin]]
+name = "vantage"
+path = "src/main.rs"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros", "multipart"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+mongodb = { version = "3", default-features = false, features = ["rustls-tls-aws-lc", "bson-3", "compat-3-3-0", "dns-resolver"] }
+
+# HTTP client (Supabase REST, Google, Stripe)
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+
+# Auth — ring-free JWT using pure-Rust HMAC-SHA256
+hmac = "0.12"
+sha2 = "0.10"
+bcrypt = "0.15"
+
+# Redis (rate limiting / lockout)
+redis = { version = "0.25", features = ["tokio-comp"] }
+
+# Rate limiting
+governor = "0.6"
+nonzero_ext = "0.3"
+
+# Config / env
+dotenvy = "0.15"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+base64 = "0.22"
+rand = "0.8"
+once_cell = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait = "0.1"
+urlencoding = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

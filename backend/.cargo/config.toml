@@ -1,0 +1,5 @@
+# Keep committed Cargo configuration portable.
+#
+# Platform-specific linker or OpenSSL overrides should be supplied by the
+# developer's environment or CI job. Do not force a Windows target here; this
+# crate must build on Linux for CI and container images.
