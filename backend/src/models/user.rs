@@ -63,6 +63,7 @@ pub struct UserCreate {
     pub email: String,
     #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
     pub password: String,
+    #[serde(alias = "name")]
     pub full_name: Option<String>,
     pub role: Option<UserRole>,
     pub recaptcha_token: Option<String>,

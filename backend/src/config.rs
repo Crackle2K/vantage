@@ -86,7 +86,7 @@ impl Config {
             frontend_url: env::var("FRONTEND_URL")
                 .unwrap_or_else(|_| "http://localhost:5173".into()),
             production_url: env::var("PRODUCTION_URL").unwrap_or_default(),
-            environment: env::var("ENVIRONMENT").unwrap_or_else(|_| "development".into()),
+            environment: normalized_environment(),
 
             redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379/0".into()),
             rate_limit_per_minute: env::var("RATE_LIMIT_PER_MINUTE")
@@ -121,22 +121,50 @@ impl Config {
         self.environment == "production"
     }
 
+    pub fn recaptcha_enabled(&self) -> bool {
+        !self.recaptcha_project_id.is_empty()
+            && !self.recaptcha_api_key.is_empty()
+            && !self.recaptcha_site_key.is_empty()
+    }
+
     pub fn allowed_origins(&self) -> Vec<String> {
-        let mut origins = vec![
-            "http://localhost:5173".to_string(),
-            "http://localhost:3000".to_string(),
-            "http://localhost:5174".to_string(),
-        ];
-        if !self.frontend_url.is_empty() {
-            origins.push(self.frontend_url.clone());
-        }
-        if !self.production_url.is_empty() {
-            origins.push(self.production_url.clone());
-        }
+        let mut origins = Vec::new();
+        push_origin(&mut origins, "http://localhost:5173");
+        push_origin(&mut origins, "http://localhost:3000");
+        push_origin(&mut origins, "http://localhost:5174");
+        push_origin(&mut origins, &self.frontend_url);
+        push_origin(&mut origins, &self.production_url);
+
         if let Ok(vercel_url) = env::var("VERCEL_URL") {
-            origins.push(format!("https://{}", vercel_url));
-            origins.push(format!("https://{}.vercel.app", vercel_url));
+            push_origin(
+                &mut origins,
+                format!("https://{}", vercel_url.trim_start_matches("https://")),
+            );
         }
         origins
+    }
+}
+
+fn normalized_environment() -> String {
+    let raw = env::var("ENVIRONMENT")
+        .or_else(|_| env::var("VERCEL_ENV"))
+        .unwrap_or_else(|_| "development".into())
+        .to_ascii_lowercase();
+
+    match raw.as_str() {
+        "prod" | "production" => "production".into(),
+        "preview" | "staging" => "preview".into(),
+        _ => "development".into(),
+    }
+}
+
+fn push_origin(origins: &mut Vec<String>, origin: impl AsRef<str>) {
+    let value = origin.as_ref().trim().trim_end_matches('/');
+    if value.is_empty() || !(value.starts_with("http://") || value.starts_with("https://")) {
+        return;
+    }
+    let normalized = value.to_string();
+    if !origins.contains(&normalized) {
+        origins.push(normalized);
     }
 }

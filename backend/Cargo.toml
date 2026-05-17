@@ -29,8 +29,9 @@ serde_json = "1"
 # Database
 mongodb = { version = "3", default-features = false, features = ["rustls-tls-aws-lc", "bson-3", "compat-3-3-0", "dns-resolver"] }
 
-# HTTP client (Supabase REST, Google, Stripe)
-reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+# HTTP client (Supabase REST, Google, Stripe). Use rustls so Vercel/Linux
+# builds do not depend on system OpenSSL headers.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Auth — ring-free JWT using pure-Rust HMAC-SHA256
 hmac = "0.12"
@@ -66,7 +67,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 urlencoding = "2"
 
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1

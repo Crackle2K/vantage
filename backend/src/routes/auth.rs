@@ -2,7 +2,7 @@ use crate::{
     errors::{AppError, Result},
     jwt,
     middleware::auth::AuthUser,
-    models::user::{GoogleAuthRequest, TokenClaims, UserCreate, UserLogin},
+    models::user::{GoogleAuthRequest, TokenClaims, UserCreate, UserLogin, UserRole},
     security,
     services::recaptcha,
     state::AppState,
@@ -39,23 +39,29 @@ async fn register(
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
     security::validate_password_strength(&payload.password)?;
 
-    // reCAPTCHA verification
-    if let Some(token) = &payload.recaptcha_token {
-        if !state.config.recaptcha_api_key.is_empty() {
-            recaptcha::verify_recaptcha_token(&state.config, token, "SIGNUP")
-                .await
-                .map_err(|e| AppError::BadRequest(e.to_string()))?;
-        }
+    if state.config.recaptcha_enabled() {
+        let token = payload
+            .recaptcha_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|token| !token.is_empty() && *token != "recaptcha-not-configured")
+            .ok_or_else(|| AppError::BadRequest("reCAPTCHA token required".into()))?;
+
+        recaptcha::verify_recaptcha_token(
+            &state.config,
+            token,
+            &state.config.recaptcha_signup_action,
+        )
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     }
 
     let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
+    let email = payload.email.trim().to_lowercase();
+    let role = registration_role(payload.role.as_ref())?;
 
     // Check for duplicate email
-    if users
-        .find_one(doc! { "email": payload.email.to_lowercase() })
-        .await?
-        .is_some()
-    {
+    if users.find_one(doc! { "email": &email }).await?.is_some() {
         return Err(AppError::Conflict("Email already registered".into()));
     }
 
@@ -65,10 +71,10 @@ async fn register(
     let now = Utc::now();
     let full_name = security::sanitize_optional_text(payload.full_name.as_deref(), 120);
     let user_doc = doc! {
-        "email": payload.email.to_lowercase(),
+        "email": &email,
         "full_name": full_name.clone().unwrap_or_default(),
         "password_hash": hashed,
-        "role": "customer",
+        "role": role,
         "is_active": true,
         "created_at": now.to_rfc3339(),
         "updated_at": now.to_rfc3339(),
@@ -83,12 +89,7 @@ async fn register(
         .map(|o| o.to_hex())
         .unwrap_or_default();
 
-    let token = create_jwt(
-        &user_id,
-        &payload.email.to_lowercase(),
-        "customer",
-        &state.config.secret_key,
-    )?;
+    let token = create_jwt(&user_id, &email, role, &state.config)?;
     let cookie = session_cookie(&token, &state.config);
 
     Ok((
@@ -97,13 +98,14 @@ async fn register(
         Json(json!({
             "access_token": token,
             "token_type": "bearer",
-            "user": {
-                "id": user_id,
-                "email": payload.email.to_lowercase(),
-                "full_name": full_name,
-                "role": "customer",
-                "subscription_tier": "FREE",
-            }
+            "user": public_user_json(
+                &user_id,
+                &email,
+                full_name.as_deref(),
+                role,
+                "FREE",
+                None,
+            ),
         })),
     ))
 }
@@ -143,7 +145,7 @@ async fn login(
         .unwrap_or("FREE")
         .to_string();
 
-    let token = create_jwt(&user_id, &email_lower, role, &state.config.secret_key)?;
+    let token = create_jwt(&user_id, &email_lower, role, &state.config)?;
     let cookie = session_cookie(&token, &state.config);
 
     Ok((
@@ -151,19 +153,20 @@ async fn login(
         Json(json!({
             "access_token": token,
             "token_type": "bearer",
-            "user": {
-                "id": user_id,
-                "email": email_lower,
-                "full_name": full_name,
-                "role": role,
-                "subscription_tier": subscription_tier,
-            }
+            "user": public_user_json(
+                &user_id,
+                &email_lower,
+                full_name.as_deref(),
+                role,
+                &subscription_tier,
+                None,
+            ),
         })),
     ))
 }
 
 async fn logout(State(state): State<Arc<AppState>>) -> Response {
-    let is_prod = state.config.environment == "production";
+    let is_prod = state.config.is_production();
     let clear = format!(
         "session=; Path=/; HttpOnly; SameSite=Lax{}; Max-Age=0",
         if is_prod { "; Secure" } else { "" }
@@ -177,13 +180,19 @@ async fn logout(State(state): State<Arc<AppState>>) -> Response {
 
 async fn me(State(state): State<Arc<AppState>>, auth_user: AuthUser) -> Result<impl IntoResponse> {
     let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
+    let oid = mongodb::bson::oid::ObjectId::parse_str(&auth_user.id)
+        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
     let user = users
-        .find_one(doc! { "_id": mongodb::bson::oid::ObjectId::parse_str(&auth_user.id).unwrap_or_default() })
+        .find_one(doc! { "_id": oid })
         .await?
         .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
     let email = user.get_str("email").unwrap_or("").to_string();
-    let full_name = user.get_str("full_name").ok().map(String::from);
+    let full_name = user
+        .get_str("full_name")
+        .or_else(|_| user.get_str("name"))
+        .ok()
+        .map(String::from);
     let role = user.get_str("role").unwrap_or("customer").to_string();
     let subscription_tier = user
         .get_str("subscription_tier")
@@ -191,14 +200,14 @@ async fn me(State(state): State<Arc<AppState>>, auth_user: AuthUser) -> Result<i
         .to_string();
     let profile_picture = user.get_str("profile_picture").ok().map(String::from);
 
-    Ok(Json(json!({
-        "id": auth_user.id,
-        "email": email,
-        "full_name": full_name,
-        "role": role,
-        "subscription_tier": subscription_tier,
-        "profile_picture": profile_picture,
-    })))
+    Ok(Json(public_user_json(
+        &auth_user.id,
+        &email,
+        full_name.as_deref(),
+        &role,
+        &subscription_tier,
+        profile_picture.as_deref(),
+    )))
 }
 
 async fn google_auth(
@@ -263,7 +272,7 @@ async fn google_auth(
         (id, "customer".into(), "FREE".into())
     };
 
-    let token = create_jwt(&user_id, &email, &role, &state.config.secret_key)?;
+    let token = create_jwt(&user_id, &email, &role, &state.config)?;
     let cookie = session_cookie(&token, &state.config);
 
     Ok((
@@ -271,20 +280,20 @@ async fn google_auth(
         Json(json!({
             "access_token": token,
             "token_type": "bearer",
-            "user": {
-                "id": user_id,
-                "email": email,
-                "full_name": name,
-                "role": role,
-                "profile_picture": picture,
-                "subscription_tier": subscription_tier,
-            }
+            "user": public_user_json(
+                &user_id,
+                &email,
+                name.as_deref(),
+                &role,
+                &subscription_tier,
+                picture.as_deref(),
+            ),
         })),
     ))
 }
 
 fn session_cookie(token: &str, config: &crate::config::Config) -> String {
-    let is_prod = config.environment == "production";
+    let is_prod = config.is_production();
     let expires = 60 * 60 * 24 * config.refresh_token_expire_days;
     format!(
         "session={}; Path=/; HttpOnly; SameSite=Lax{}; Max-Age={}",
@@ -294,26 +303,38 @@ fn session_cookie(token: &str, config: &crate::config::Config) -> String {
     )
 }
 
-fn create_jwt(user_id: &str, email: &str, role: &str, secret: &str) -> Result<String> {
+fn create_jwt(
+    user_id: &str,
+    email: &str,
+    role: &str,
+    config: &crate::config::Config,
+) -> Result<String> {
     let now = Utc::now().timestamp();
     let claims = TokenClaims {
         sub: user_id.to_string(),
         email: email.to_string(),
         role: role.to_string(),
-        exp: now + 30 * 60,
+        exp: now + config.access_token_expire_minutes * 60,
         iat: now,
     };
-    jwt::encode(&claims, secret)
+    jwt::encode(&claims, &config.secret_key)
 }
 
 async fn verify_google_token(credential: &str, client_id: &str) -> anyhow::Result<Value> {
+    if client_id.trim().is_empty() {
+        anyhow::bail!("Google OAuth is not configured");
+    }
+
     // Decode the JWT without verification first to get kid, then verify with Google certs
     // For simplicity, use Google's tokeninfo endpoint for validation
     let url = format!(
         "https://oauth2.googleapis.com/tokeninfo?id_token={}",
         urlencoding::encode(credential)
     );
-    let resp = reqwest::get(&url).await?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let resp = client.get(&url).send().await?;
     if !resp.status().is_success() {
         anyhow::bail!("Google token verification failed");
     }
@@ -326,4 +347,38 @@ async fn verify_google_token(credential: &str, client_id: &str) -> anyhow::Resul
     }
 
     Ok(info)
+}
+
+fn registration_role(role: Option<&UserRole>) -> Result<&'static str> {
+    match role.unwrap_or(&UserRole::Customer) {
+        UserRole::Customer => Ok("customer"),
+        UserRole::BusinessOwner => Ok("business_owner"),
+        UserRole::Admin => Err(AppError::Forbidden(
+            "Admin accounts cannot be self-registered".into(),
+        )),
+    }
+}
+
+fn public_user_json(
+    id: &str,
+    email: &str,
+    full_name: Option<&str>,
+    role: &str,
+    subscription_tier: &str,
+    profile_picture: Option<&str>,
+) -> Value {
+    let name = full_name
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(email);
+
+    json!({
+        "id": id,
+        "_id": id,
+        "email": email,
+        "name": name,
+        "full_name": full_name,
+        "role": role,
+        "profile_picture": profile_picture,
+        "subscription_tier": subscription_tier,
+    })
 }

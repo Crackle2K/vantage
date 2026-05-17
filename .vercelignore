@@ -9,6 +9,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+requirements.txt
 
 # Virtual environments
 .venv/
@@ -29,6 +30,9 @@ ENV/
 
 # Node modules (will be installed by Vercel)
 node_modules/
+
+# Rust build output
+target/
 
 # Test files
 test_*.py

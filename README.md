@@ -3,10 +3,9 @@
 # Vantage
 
 [![Build](https://img.shields.io/badge/build-passing-brightgreen)](https://vercel.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.11x-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![Rust](https://img.shields.io/badge/Rust-Axum-B7410E?logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
 
 </div>
@@ -42,11 +41,10 @@ The motivation is straightforward: local independent businesses are the backbone
 ## Setup
 
 ```bash
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn backend.main:app --reload
+cargo run -p vantage-backend --bin vantage
 ```
+
+Backend default URL: `http://localhost:8000`
 
 ### Frontend
 
@@ -69,21 +67,11 @@ Add these values in `backend/.env` (see `backend/.env.example`):
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-Recommended initial values:
-
-- `DB_READ_PROVIDER=mongo` for the remaining legacy data paths
-- `DB_WRITE_MODE=mongo` until the rest of the backend is rewritten
-
-### Run the Supabase users schema
-
-Execute:
-
-- `scripts/supabase/migrations/000_users.sql`
-
 ### Notes
 
-- User auth, login, profile updates, password changes, and account deletion are now backed by Supabase users storage.
-- The remaining business/discovery/activity routes still use the existing Mongo-backed implementation and will need to be rewritten separately.
+- The active deployment backend is Rust + Axum via `api/index.rs`.
+- User auth currently uses the Rust API and Mongo-backed user records while the Supabase migration remains in progress.
+- Business, discovery, activity, and LVS routes still depend on MongoDB Atlas.
 
 ## Next Steps
 

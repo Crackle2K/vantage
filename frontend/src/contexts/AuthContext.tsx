@@ -81,13 +81,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {
-      await api.login(email, password);
-      await fetchUser();
+      const userData = await api.login(email, password);
+      setUser(userData);
       return { error: null };
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Login failed' };
     }
-  }, [fetchUser]);
+  }, []);
 
   const signUp = useCallback(async (
     name: string,
@@ -98,23 +98,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     recaptchaAction: string
   ) => {
     try {
-      await api.register(name, email, password, role, recaptchaToken, recaptchaAction);
-      await fetchUser();
+      const userData = await api.register(name, email, password, role, recaptchaToken, recaptchaAction);
+      setUser(userData);
       return { error: null };
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Registration failed' };
     }
-  }, [fetchUser]);
+  }, []);
 
   const signInWithGoogle = useCallback(async (credential: string) => {
     try {
-      await api.googleAuth(credential);
-      await fetchUser();
+      const userData = await api.googleAuth(credential);
+      setUser(userData);
       return { error: null };
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Google sign-in failed' };
     }
-  }, [fetchUser]);
+  }, []);
 
   const signOut = useCallback(async () => {
     // Call backend logout endpoint to clear httpOnly cookie

@@ -65,7 +65,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/", get(root))
+        .route("/api", get(root))
         .route("/health", get(health_check))
+        .route("/api/health", get(health_check))
         .nest("/api/auth", routes::auth::router())
         .nest("/api", routes::businesses::router())
         .nest("/api", routes::reviews::router())

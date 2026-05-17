@@ -52,6 +52,20 @@ const GET_CACHE_TTL_MS = 15_000;
 const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
 const inflightRequests = new Map<string, Promise<unknown>>();
 
+type ApiUser = Partial<User> & {
+  id?: string;
+  _id?: string;
+  email?: string;
+  full_name?: string | null;
+  subscription_tier?: string | null;
+};
+
+type AuthResponse = {
+  access_token?: string;
+  token_type?: string;
+  user: ApiUser;
+};
+
 /**
  * Constructs a full API URL from a path, handling `/api` prefix
  * deduplication when the base URL already ends with `/api`.
@@ -123,6 +137,23 @@ function getAuthHeaders(includeJson: boolean = false): HeadersInit {
   return headers;
 }
 
+function normalizeRole(role: unknown): User['role'] {
+  return role === 'business_owner' || role === 'admin' ? role : 'customer';
+}
+
+function normalizeUser(user: ApiUser): User {
+  const id = user.id || user._id || '';
+  const email = user.email || '';
+  return {
+    ...user,
+    id,
+    _id: user._id || id,
+    email,
+    name: user.name || user.full_name || email || 'User',
+    role: normalizeRole(user.role),
+  };
+}
+
 /**
  * Performs an authenticated fetch request and returns the parsed JSON.
  * Throws on non-OK responses with a descriptive error message.
@@ -189,12 +220,13 @@ async function requestOrNull<T>(path: string, init?: RequestInit): Promise<T | n
 }
 
 export const api = {
-  async login(email: string, password: string): Promise<void> {
-    await request<{ message: string }>('/auth/login', {
+  async login(email: string, password: string): Promise<User> {
+    const data = await request<AuthResponse>('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     }, 'Login failed');
+    return normalizeUser(data.user);
   },
 
   async register(
@@ -204,12 +236,12 @@ export const api = {
     role: string,
     recaptchaToken: string,
     recaptchaAction: string
-  ): Promise<void> {
-    await request<{ message: string }>('/auth/register', {
+  ): Promise<User> {
+    const data = await request<AuthResponse>('/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name,
+        full_name: name,
         email,
         password,
         role,
@@ -217,20 +249,23 @@ export const api = {
         recaptcha_action: recaptchaAction,
       }),
     }, 'Registration failed');
+    return normalizeUser(data.user);
   },
 
   async getMe(): Promise<User> {
-    return request<User>('/auth/me', {
+    const user = await request<ApiUser>('/auth/me', {
       headers: getAuthHeaders(),
     }, 'Not authenticated');
+    return normalizeUser(user);
   },
 
-  async googleAuth(credential: string): Promise<void> {
-    await request<{ message: string }>('/auth/google', {
+  async googleAuth(credential: string): Promise<User> {
+    const data = await request<AuthResponse>('/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential }),
     }, 'Google authentication failed');
+    return normalizeUser(data.user);
   },
 
   async logout(): Promise<void> {
@@ -240,15 +275,17 @@ export const api = {
   },
 
   async getUserProfile(userId: string): Promise<User> {
-    return request<User>(`/users/${userId}`, undefined, 'Failed to fetch user profile');
+    const user = await request<ApiUser>(`/users/${userId}`, undefined, 'Failed to fetch user profile');
+    return normalizeUser(user);
   },
 
   async updateMyProfile(updates: UserUpdate): Promise<User> {
-    return request<User>('/users/me', {
+    const user = await request<ApiUser>('/users/me', {
       method: 'PUT',
       headers: getAuthHeaders(true),
       body: JSON.stringify(updates),
     }, 'Failed to update profile');
+    return normalizeUser(user);
   },
 
   async getBusinesses(category?: string, sortBy?: string, search?: string, ownerId?: string): Promise<Business[]> {

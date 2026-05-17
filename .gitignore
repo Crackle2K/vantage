@@ -34,6 +34,9 @@ node_modules/
 frontend/dist/
 frontend/dist-ssr/
 
+# Rust
+/target/
+
 # OS files
 .DS_Store
 Thumbs.db

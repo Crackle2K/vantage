@@ -51,14 +51,31 @@ async fn update_me(
     let now = Utc::now();
     let mut update = doc! { "updated_at": now.to_rfc3339() };
 
-    if let Some(name) = payload["full_name"].as_str() {
+    if let Some(name) = payload["name"]
+        .as_str()
+        .or_else(|| payload["full_name"].as_str())
+    {
         update.insert("full_name", security::sanitize_text(name, 120));
+    }
+    if let Some(profile_picture) = payload["profile_picture"].as_str() {
+        if let Some(cleaned) = security::sanitize_optional_text(Some(profile_picture), 500) {
+            update.insert("profile_picture", cleaned);
+        }
+    }
+    if let Some(about_me) = payload["about_me"].as_str() {
+        if let Some(cleaned) = security::sanitize_optional_text(Some(about_me), 500) {
+            update.insert("about_me", cleaned);
+        }
     }
 
     users
         .update_one(doc! { "_id": oid }, doc! { "$set": update })
         .await?;
-    Ok(Json(json!({ "message": "Profile updated" })))
+    let updated = users
+        .find_one(doc! { "_id": oid })
+        .await?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+    Ok(Json(sanitize_user(updated)))
 }
 
 async fn update_preferences(
@@ -146,5 +163,32 @@ async fn get_user_profile(
 
 fn sanitize_user(mut doc: Document) -> Value {
     doc.remove("password_hash");
-    serde_json::to_value(&doc).unwrap_or(Value::Null)
+    let id = doc
+        .get_object_id("_id")
+        .map(|oid| oid.to_hex())
+        .or_else(|_| doc.get_str("id").map(String::from))
+        .unwrap_or_default();
+    let email = doc.get_str("email").unwrap_or_default();
+    let name = doc
+        .get_str("full_name")
+        .or_else(|_| doc.get_str("name"))
+        .unwrap_or(email);
+    let role = doc.get_str("role").unwrap_or("customer");
+    let profile_picture = doc.get_str("profile_picture").ok();
+    let about_me = doc.get_str("about_me").ok();
+    let created_at = doc.get_str("created_at").ok();
+    let subscription_tier = doc.get_str("subscription_tier").ok();
+
+    json!({
+        "id": id,
+        "_id": id,
+        "email": email,
+        "name": name,
+        "full_name": doc.get_str("full_name").ok(),
+        "role": role,
+        "profile_picture": profile_picture,
+        "about_me": about_me,
+        "created_at": created_at,
+        "subscription_tier": subscription_tier,
+    })
 }
