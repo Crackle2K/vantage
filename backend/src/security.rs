@@ -157,16 +157,47 @@ pub fn validate_password_strength(password: &str) -> Result<()> {
 }
 
 pub fn sanitize_preferences(payload: UserPreferencesUpdate) -> serde_json::Value {
+    let categories = payload.preferred_categories.or(payload.categories);
+    let categories = categories.map(|items| {
+        items
+            .into_iter()
+            .filter_map(|item| sanitize_optional_text(Some(&item), 40))
+            .take(20)
+            .collect::<Vec<_>>()
+    });
+    let vibes = payload.preferred_vibes.map(|items| {
+        items
+            .into_iter()
+            .filter_map(|item| sanitize_optional_text(Some(&item), 40))
+            .take(20)
+            .collect::<Vec<_>>()
+    });
+    let price_pref = payload
+        .price_pref
+        .or(payload.price_preference)
+        .and_then(|value| match value.as_str() {
+            "$" | "$$" | "$$$" | "budget" | "moderate" | "upscale" | "any" => Some(value),
+            _ => None,
+        });
+    let discovery_mode = payload
+        .discovery_mode
+        .and_then(|value| match value.as_str() {
+            "new_places" | "trending" | "trusted" | "hyperlocal" | "neighborhood" | "citywide" => {
+                Some(value)
+            }
+            _ => None,
+        });
+    let prefer_independent = payload
+        .prefer_independent
+        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
+
     json!({
-        "categories": payload.categories.map(|items| {
-            items
-                .into_iter()
-                .filter_map(|item| sanitize_optional_text(Some(&item), 40))
-                .take(20)
-                .collect::<Vec<_>>()
-        }),
-        "price_preference": payload.price_preference,
-        "discovery_mode": payload.discovery_mode,
+        "preferred_categories": categories,
+        "preferred_vibes": vibes,
+        "prefer_independent": prefer_independent,
+        "price_pref": price_pref,
+        "discovery_mode": discovery_mode,
+        "preferences_completed": payload.preferences_completed,
         "max_distance_km": payload.max_distance_km.filter(|distance| distance.is_finite() && *distance > 0.0 && *distance <= 100.0),
         "show_verified_only": payload.show_verified_only,
         "show_open_now": payload.show_open_now,

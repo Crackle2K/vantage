@@ -129,6 +129,10 @@ fn public_user_json(user: &AuthUserRecord) -> Value {
     let full_name = metadata_str(&user.user_metadata, "full_name")
         .or_else(|| metadata_str(&user.user_metadata, "name"));
     let name = full_name.unwrap_or(email);
+    let preferences = user
+        .user_metadata
+        .get("preferences")
+        .unwrap_or(&Value::Null);
     json!({
         "id": user.id,
         "_id": user.id,
@@ -140,7 +144,13 @@ fn public_user_json(user: &AuthUserRecord) -> Value {
         "about_me": metadata_str(&user.user_metadata, "about_me"),
         "created_at": user.created_at,
         "subscription_tier": metadata_str(&user.app_metadata, "subscription_tier").unwrap_or("FREE"),
-        "preferences": user.user_metadata.get("preferences").cloned().unwrap_or(Value::Null),
+        "preferences": preferences,
+        "preferred_categories": preferences.get("preferred_categories").cloned().unwrap_or(Value::Null),
+        "preferred_vibes": preferences.get("preferred_vibes").cloned().unwrap_or(Value::Null),
+        "prefer_independent": preferences.get("prefer_independent").cloned().unwrap_or(Value::Null),
+        "price_pref": preferences.get("price_pref").cloned().unwrap_or(Value::Null),
+        "discovery_mode": preferences.get("discovery_mode").cloned().unwrap_or(Value::Null),
+        "preferences_completed": preferences.get("preferences_completed").cloned().unwrap_or(Value::Null),
     })
 }
 

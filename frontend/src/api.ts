@@ -322,11 +322,12 @@ export const api = {
   },
 
   async updateMyPreferences(preferences: UserPreferencesUpdate): Promise<User> {
-    return request<User>('/users/preferences', {
+    const user = await request<ApiUser>('/users/me/preferences', {
       method: 'PUT',
       headers: getAuthHeaders(true),
       body: JSON.stringify(preferences),
     }, 'Failed to update preferences');
+    return normalizeUser(user);
   },
 
   async updateBusinessProfile(

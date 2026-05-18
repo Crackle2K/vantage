@@ -109,9 +109,14 @@ pub struct GoogleAuthRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct UserPreferencesUpdate {
+    pub preferred_categories: Option<Vec<String>>,
+    pub preferred_vibes: Option<Vec<String>>,
+    pub prefer_independent: Option<f64>,
+    pub price_pref: Option<String>,
+    pub preferences_completed: Option<bool>,
     pub categories: Option<Vec<String>>,
-    pub price_preference: Option<PricePreference>,
-    pub discovery_mode: Option<DiscoveryMode>,
+    pub price_preference: Option<String>,
+    pub discovery_mode: Option<String>,
     pub max_distance_km: Option<f64>,
     pub show_verified_only: Option<bool>,
     pub show_open_now: Option<bool>,
