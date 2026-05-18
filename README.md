@@ -72,6 +72,7 @@ Add these values in `backend/.env` (see `backend/.env.example`):
 - The active deployment backend is Rust + Axum via `api/index.rs`.
 - User auth currently uses the Rust API and Mongo-backed user records while the Supabase migration remains in progress.
 - Business, discovery, activity, and LVS routes still depend on MongoDB Atlas.
+- Use a standard `mongodb://` Atlas seed-list URI for `MONGODB_URI`, not a `mongodb+srv://` URI. The deployed Rust build intentionally excludes the optional DNS SRV resolver until upstream hickory advisories are patched.
 
 ## Next Steps
 

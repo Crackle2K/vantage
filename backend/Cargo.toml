@@ -27,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Database
-mongodb = { version = "3", default-features = false, features = ["rustls-tls-aws-lc", "bson-3", "compat-3-3-0", "dns-resolver"] }
+mongodb = { version = "3", default-features = false, features = ["rustls-tls-aws-lc", "bson-3", "compat-3-3-0"] }
 
 # HTTP client (Supabase REST, Google, Stripe). Use rustls so Vercel/Linux
 # builds do not depend on system OpenSSL headers.
@@ -53,7 +53,7 @@ thiserror = "1"
 anyhow = "1"
 
 # Validation
-validator = { version = "0.18", features = ["derive"] }
+validator = { version = "0.20", features = ["derive"] }
 
 # Utilities
 uuid = { version = "1", features = ["v4"] }
