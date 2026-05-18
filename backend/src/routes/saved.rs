@@ -1,4 +1,9 @@
-use crate::{errors::Result, middleware::auth::AuthUser, state::AppState};
+use crate::{
+    errors::{AppError, Result},
+    middleware::auth::AuthUser,
+    routes::support::{eq, normalize_business, order, q, select_all, value_str},
+    state::AppState,
+};
 use axum::{
     extract::{Path, State},
     response::IntoResponse,
@@ -6,7 +11,6 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use mongodb::bson::{doc, Document};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -21,18 +25,37 @@ async fn list_saved(
     State(state): State<Arc<AppState>>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse> {
-    let col: mongodb::Collection<Document> = state.db.mongo.collection("saved");
-    let mut cursor = col
-        .find(doc! { "user_id": &auth_user.id })
-        .sort(doc! { "created_at": -1 })
+    let saved = state
+        .db
+        .supabase
+        .select_json(
+            "saved_businesses",
+            &[
+                select_all(),
+                eq("user_id", &auth_user.id),
+                order("created_at.desc"),
+            ],
+        )
         .await?;
 
-    let mut saved: Vec<Value> = Vec::new();
-    while cursor.advance().await? {
-        saved.push(serde_json::to_value(&cursor.deserialize_current()?).unwrap_or(Value::Null));
+    let mut items = Vec::new();
+    for saved_row in saved {
+        let business_id = value_str(&saved_row, "business_id");
+        if business_id.is_empty() {
+            continue;
+        }
+        if let Some(mut business) = state
+            .db
+            .supabase
+            .select_one_json("businesses", &[select_all(), eq("id", business_id)])
+            .await?
+        {
+            business["saved_at"] = saved_row.get("created_at").cloned().unwrap_or(Value::Null);
+            items.push(normalize_business(business));
+        }
     }
 
-    Ok(Json(json!({ "saved": saved })))
+    Ok(Json(json!({ "items": items })))
 }
 
 async fn save_business(
@@ -40,23 +63,41 @@ async fn save_business(
     auth_user: AuthUser,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    let col: mongodb::Collection<Document> = state.db.mongo.collection("saved");
-
-    if col
-        .find_one(doc! { "user_id": &auth_user.id, "business_id": &business_id })
-        .await?
-        .is_some()
-    {
-        return Ok(Json(json!({ "saved": true, "business_id": business_id })));
+    let business = state
+        .db
+        .supabase
+        .select_one_json("businesses", &[q("select", "id"), eq("id", &business_id)])
+        .await?;
+    if business.is_none() {
+        return Err(AppError::NotFound("Business not found".into()));
     }
 
-    let now = Utc::now();
-    col.insert_one(doc! {
-        "user_id": &auth_user.id,
-        "business_id": &business_id,
-        "created_at": now.to_rfc3339(),
-    })
-    .await?;
+    let existing = state
+        .db
+        .supabase
+        .select_one_json(
+            "saved_businesses",
+            &[
+                select_all(),
+                eq("user_id", &auth_user.id),
+                eq("business_id", &business_id),
+            ],
+        )
+        .await?;
+    if existing.is_none() {
+        state
+            .db
+            .supabase
+            .insert_json(
+                "saved_businesses",
+                json!({
+                    "user_id": auth_user.id,
+                    "business_id": business_id,
+                    "created_at": Utc::now().to_rfc3339(),
+                }),
+            )
+            .await?;
+    }
 
     Ok(Json(json!({ "saved": true, "business_id": business_id })))
 }
@@ -66,8 +107,17 @@ async fn unsave_business(
     auth_user: AuthUser,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    let col: mongodb::Collection<Document> = state.db.mongo.collection("saved");
-    col.delete_one(doc! { "user_id": &auth_user.id, "business_id": &business_id })
+    state
+        .db
+        .supabase
+        .delete_json(
+            "saved_businesses",
+            &[
+                eq("user_id", &auth_user.id),
+                eq("business_id", &business_id),
+            ],
+        )
         .await?;
+
     Ok(Json(json!({ "saved": false, "business_id": business_id })))
 }

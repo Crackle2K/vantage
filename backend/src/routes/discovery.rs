@@ -1,5 +1,9 @@
 use crate::{
     errors::Result,
+    routes::support::{
+        business_lat_lng, eq, ilike_or_filter, is_true, limit, normalize_business, offset, order,
+        select_all, QueryParams,
+    },
     security,
     services::{geo_service, visibility_score},
     state::AppState,
@@ -7,10 +11,9 @@ use crate::{
 use axum::{
     extract::{Query, State},
     response::IntoResponse,
-    routing::{get, post},
+    routing::get,
     Json, Router,
 };
-use mongodb::bson::{doc, Document};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -18,11 +21,11 @@ use std::sync::Arc;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/discover", get(discover))
-        .route("/decide", post(decide))
+        .route("/decide", get(decide_get).post(decide_post))
         .route("/explore/lanes", get(explore_lanes))
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct DiscoverParams {
     pub lat: Option<f64>,
     pub lng: Option<f64>,
@@ -30,256 +33,108 @@ pub struct DiscoverParams {
     pub radius_km: Option<f64>,
     pub category: Option<String>,
     pub q: Option<String>,
+    pub search: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub sort: Option<String>,
+    pub sort_mode: Option<String>,
     pub verified_only: Option<bool>,
     pub open_now: Option<bool>,
+    pub refresh: Option<bool>,
+    pub intent: Option<String>,
+    pub constraints: Option<String>,
 }
 
 async fn discover(
     State(state): State<Arc<AppState>>,
     Query(params): Query<DiscoverParams>,
 ) -> Result<impl IntoResponse> {
-    let businesses: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
-
-    let limit = params.limit.unwrap_or(20).clamp(1, 100);
-    let offset = params.offset.unwrap_or(0).max(0);
-    let radius_km = params
-        .radius_km
-        .or(params.radius)
-        .unwrap_or(5.0)
-        .clamp(0.1, 100.0);
-    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
-        security::validate_lat_lng(lat, lng)?;
-    }
-
-    let mut filter = doc! {};
-
-    if let Some(cat) = &params.category {
-        filter.insert("category", cat.as_str());
-    }
-
-    if let Some(q) = &params.q {
-        if !q.is_empty() {
-            let q = security::safe_regex_literal(q, 120);
-            filter.insert(
-                "$or",
-                vec![
-                    doc! { "name": { "$regex": q.as_str(), "$options": "i" } },
-                    doc! { "description": { "$regex": q.as_str(), "$options": "i" } },
-                    doc! { "category": { "$regex": q.as_str(), "$options": "i" } },
-                ],
-            );
-        }
-    }
-
-    if params.verified_only.unwrap_or(false) {
-        filter.insert("is_verified", true);
-    }
-
-    let mut cursor = businesses
-        .find(filter)
-        .skip(offset as u64)
-        .limit(limit * 3) // over-fetch for geo filtering
-        .await?;
-
-    let mut results: Vec<Value> = Vec::new();
-
-    while cursor.advance().await? {
-        let doc = cursor.deserialize_current()?;
-        let mut val = serde_json::to_value(&doc).unwrap_or(Value::Null);
-
-        // Inject distance if coordinates provided
-        if let (Some(user_lat), Some(user_lng)) = (params.lat, params.lng) {
-            if let Ok(loc) = doc.get_document("location") {
-                if let Ok(coords) = loc.get_array("coordinates") {
-                    if coords.len() == 2 {
-                        let biz_lng = coords[0].as_f64().unwrap_or(0.0);
-                        let biz_lat = coords[1].as_f64().unwrap_or(0.0);
-                        let dist = geo_service::haversine_km(user_lat, user_lng, biz_lat, biz_lng);
-
-                        if dist > radius_km {
-                            continue;
-                        }
-
-                        val["distance_km"] = json!(dist);
-                    }
-                }
-            }
-        }
-
-        // Compute visibility score
-        let vs = visibility_score::compute(&doc);
-        val["visibility_score"] = json!(vs);
-
-        results.push(val);
-    }
-
-    // Sort by sort param
-    match params.sort.as_deref() {
-        Some("distance") => {
-            results.sort_by(|a, b| {
-                let da = a["distance_km"].as_f64().unwrap_or(f64::MAX);
-                let db = b["distance_km"].as_f64().unwrap_or(f64::MAX);
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-            });
-        }
-        Some("rating") => {
-            results.sort_by(|a, b| {
-                let ra = a["rating"].as_f64().unwrap_or(0.0);
-                let rb = b["rating"].as_f64().unwrap_or(0.0);
-                rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
-            });
-        }
-        _ => {
-            // Default: sort by visibility score desc
-            results.sort_by(|a, b| {
-                let va = a["visibility_score"].as_f64().unwrap_or(0.0);
-                let vb = b["visibility_score"].as_f64().unwrap_or(0.0);
-                vb.partial_cmp(&va).unwrap_or(std::cmp::Ordering::Equal)
-            });
-        }
-    }
-
-    let total = results.len();
-    let results: Vec<Value> = results.into_iter().take(limit as usize).collect();
-
-    Ok(Json(json!({
-        "businesses": results,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    })))
+    let businesses = discover_rows(&state, &params).await?;
+    Ok(Json(businesses))
 }
 
-async fn decide(
+async fn decide_get(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<serde_json::Value>,
+    Query(mut params): Query<DiscoverParams>,
 ) -> Result<impl IntoResponse> {
-    let intent = payload["intent"].as_str().unwrap_or("explore");
-    let lat = payload["lat"].as_f64();
-    let lng = payload["lng"].as_f64();
+    params.limit = Some(params.limit.unwrap_or(3).clamp(1, 10));
+    let response = decide_from_params(&state, params).await?;
+    Ok(Json(response))
+}
+
+async fn decide_post(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<Value>,
+) -> Result<impl IntoResponse> {
     let constraints = payload["constraints"]
         .as_array()
-        .cloned()
-        .unwrap_or_default();
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .or_else(|| payload["constraints"].as_str().map(str::to_string));
 
-    let businesses: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
-    let mut filter = doc! {};
-
-    // Apply intent to category filter
-    let category_hint = match intent {
-        "eat" | "food" => Some("restaurant"),
-        "coffee" => Some("cafe"),
-        "drinks" => Some("bar"),
-        "shop" => None,
-        _ => None,
+    let params = DiscoverParams {
+        lat: payload["lat"].as_f64(),
+        lng: payload["lng"].as_f64(),
+        radius: payload["radius"].as_f64(),
+        radius_km: payload["radius_km"].as_f64(),
+        category: payload["category"].as_str().map(str::to_string),
+        q: None,
+        search: None,
+        limit: payload["limit"].as_i64().or(Some(3)),
+        offset: None,
+        sort: None,
+        sort_mode: None,
+        verified_only: None,
+        open_now: None,
+        refresh: None,
+        intent: payload["intent"].as_str().map(str::to_string),
+        constraints,
     };
 
-    if let Some(cat) = category_hint {
-        filter.insert("category", cat);
-    }
-
-    let mut cursor = businesses.find(filter).limit(50).await?;
-    let mut candidates: Vec<(Value, f64)> = Vec::new();
-
-    while cursor.advance().await? {
-        let doc = cursor.deserialize_current()?;
-        let mut val = serde_json::to_value(&doc).unwrap_or(Value::Null);
-        let mut score = visibility_score::compute(&doc);
-
-        if let (Some(u_lat), Some(u_lng)) = (lat, lng) {
-            if let Ok(loc) = doc.get_document("location") {
-                if let Ok(coords) = loc.get_array("coordinates") {
-                    if coords.len() == 2 {
-                        let biz_lng = coords[0].as_f64().unwrap_or(0.0);
-                        let biz_lat = coords[1].as_f64().unwrap_or(0.0);
-                        let dist = geo_service::haversine_km(u_lat, u_lng, biz_lat, biz_lng);
-                        val["distance_km"] = json!(dist);
-                        // Proximity boost: closer = higher score
-                        score += (5.0 - dist.min(5.0)) * 2.0;
-                    }
-                }
-            }
-        }
-
-        // Apply constraint filters
-        let mut passes = true;
-        for c in &constraints {
-            if let Some(c_str) = c.as_str() {
-                match c_str {
-                    "verified" if !val["is_verified"].as_bool().unwrap_or(false) => {
-                        passes = false;
-                    }
-                    "high_rated" if val["rating"].as_f64().unwrap_or(0.0) < 4.0 => {
-                        passes = false;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        if passes {
-            val["visibility_score"] = json!(score);
-            candidates.push((val, score));
-        }
-    }
-
-    candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    let recommendations: Vec<Value> = candidates.into_iter().take(3).map(|(v, _)| v).collect();
-
-    Ok(Json(json!({
-        "intent": intent,
-        "recommendations": recommendations,
-    })))
+    Ok(Json(decide_from_params(&state, params).await?))
 }
 
 async fn explore_lanes(
     State(state): State<Arc<AppState>>,
     Query(params): Query<DiscoverParams>,
 ) -> Result<impl IntoResponse> {
-    let businesses: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
     let lat = params.lat.unwrap_or(state.config.demo_lat);
     let lng = params.lng.unwrap_or(state.config.demo_lng);
     security::validate_lat_lng(lat, lng)?;
 
-    let categories = ["restaurant", "cafe", "bar", "gym", "salon"];
-    let mut lanes: Vec<Value> = Vec::new();
+    let lane_specs = [
+        ("for_you", "For You", None),
+        ("active", "Active Nearby", None),
+        ("restaurants", "Restaurants", Some("restaurant")),
+        ("coffee", "Coffee", Some("cafe")),
+        ("trusted", "Most Trusted", None),
+    ];
+    let mut lanes = Vec::new();
 
-    for cat in &categories {
-        let mut cursor = businesses.find(doc! { "category": *cat }).limit(10).await?;
+    for (id, title, category) in lane_specs {
+        let mut lane_params = params.clone();
+        lane_params.lat = Some(lat);
+        lane_params.lng = Some(lng);
+        lane_params.limit = Some(10);
+        lane_params.category = category.map(str::to_string);
+        lane_params.sort = Some(if id == "trusted" {
+            "rating".into()
+        } else {
+            "canonical".into()
+        });
 
-        let mut items: Vec<(Value, f64)> = Vec::new();
-        while cursor.advance().await? {
-            let doc = cursor.deserialize_current()?;
-            let mut val = serde_json::to_value(&doc).unwrap_or(Value::Null);
-            let mut score = visibility_score::compute(&doc);
-
-            if let Ok(loc) = doc.get_document("location") {
-                if let Ok(coords) = loc.get_array("coordinates") {
-                    if coords.len() == 2 {
-                        let biz_lng = coords[0].as_f64().unwrap_or(0.0);
-                        let biz_lat = coords[1].as_f64().unwrap_or(0.0);
-                        let dist = geo_service::haversine_km(lat, lng, biz_lat, biz_lng);
-                        val["distance_km"] = json!(dist);
-                        score += (5.0 - dist.min(5.0)) * 1.5;
-                    }
-                }
-            }
-
-            val["visibility_score"] = json!(score);
-            items.push((val, score));
-        }
-
-        items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
+        let items = discover_rows(&state, &lane_params).await?;
         if !items.is_empty() {
             lanes.push(json!({
-                "id": cat,
-                "title": format!("Top {}", capitalize(cat)),
-                "businesses": items.into_iter().take(5).map(|(v, _)| v).collect::<Vec<_>>(),
+                "id": id,
+                "title": title,
+                "subtitle": lane_subtitle(id),
+                "items": items.into_iter().take(5).collect::<Vec<_>>(),
             }));
         }
     }
@@ -287,10 +142,175 @@ async fn explore_lanes(
     Ok(Json(json!({ "lanes": lanes })))
 }
 
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+async fn decide_from_params(state: &AppState, mut params: DiscoverParams) -> Result<Value> {
+    let intent = params.intent.clone().unwrap_or_else(|| "EXPLORE".into());
+    if params.category.is_none() {
+        params.category = category_for_intent(&intent).map(str::to_string);
+    }
+    params.sort = Some("canonical".into());
+    params.limit = Some(params.limit.unwrap_or(3).clamp(1, 10) * 5);
+
+    let constraints = params
+        .constraints
+        .clone()
+        .unwrap_or_default()
+        .split(',')
+        .map(|value| value.trim().to_ascii_uppercase())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+
+    let mut rows = discover_rows(state, &params).await?;
+    rows.retain(|row| passes_decide_constraints(row, &constraints));
+    rows.truncate(params.limit.unwrap_or(15).min(5) as usize);
+
+    Ok(json!({
+        "items": rows,
+        "intent_explanation": intent_explanation(&intent, &constraints),
+    }))
+}
+
+async fn discover_rows(state: &AppState, params: &DiscoverParams) -> Result<Vec<Value>> {
+    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
+        security::validate_lat_lng(lat, lng)?;
+    }
+
+    let limit_value = params.limit.unwrap_or(50).clamp(1, 200);
+    let radius_km = params
+        .radius_km
+        .or(params.radius)
+        .unwrap_or(25.0)
+        .clamp(0.1, 150.0);
+
+    let mut query: QueryParams = vec![
+        select_all(),
+        limit(if params.lat.is_some() && params.lng.is_some() {
+            limit_value * 3
+        } else {
+            limit_value
+        }),
+        offset(params.offset.unwrap_or(0).max(0)),
+        order("created_at.desc"),
+    ];
+
+    if let Some(category) = params.category.as_ref().filter(|value| !value.is_empty()) {
+        query.push(eq("category", security::sanitize_text(category, 80)));
+    }
+    if let Some(search) = params
+        .q
+        .as_deref()
+        .or(params.search.as_deref())
+        .filter(|value| !value.trim().is_empty())
+    {
+        if let Some(filter) = ilike_or_filter(&["name", "description", "category"], search) {
+            query.push(filter);
+        }
+    }
+    if params.verified_only.unwrap_or(false) {
+        query.push(is_true("is_verified"));
+    }
+
+    let rows = state.db.supabase.select_json("businesses", &query).await?;
+    let mut results = rows
+        .into_iter()
+        .map(normalize_business)
+        .filter_map(|mut row| {
+            if let (Some(user_lat), Some(user_lng)) = (params.lat, params.lng) {
+                let (biz_lat, biz_lng) = business_lat_lng(&row)?;
+                let dist = geo_service::haversine_km(user_lat, user_lng, biz_lat, biz_lng);
+                if dist > radius_km {
+                    return None;
+                }
+                row["distance"] = json!(dist);
+                row["distance_km"] = json!(dist);
+            }
+
+            let score = visibility_score::compute(&row);
+            row["visibility_score"] = json!(score);
+            row["live_visibility_score"] = json!(score);
+            Some(row)
+        })
+        .collect::<Vec<_>>();
+
+    match params.sort.as_deref().or(params.sort_mode.as_deref()) {
+        Some("distance") => results.sort_by(|a, b| {
+            a["distance_km"]
+                .as_f64()
+                .unwrap_or(f64::MAX)
+                .partial_cmp(&b["distance_km"].as_f64().unwrap_or(f64::MAX))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+        Some("rating") | Some("most_reviewed") => results.sort_by(|a, b| {
+            let left = (
+                b["rating"].as_f64().unwrap_or(0.0),
+                b["review_count"].as_i64().unwrap_or(0),
+            );
+            let right = (
+                a["rating"].as_f64().unwrap_or(0.0),
+                a["review_count"].as_i64().unwrap_or(0),
+            );
+            left.partial_cmp(&right)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+        Some("newest") => results.sort_by(|a, b| {
+            b["created_at"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(a["created_at"].as_str().unwrap_or(""))
+        }),
+        _ => results.sort_by(|a, b| {
+            b["visibility_score"]
+                .as_f64()
+                .unwrap_or(0.0)
+                .partial_cmp(&a["visibility_score"].as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+    }
+
+    results.truncate(limit_value as usize);
+    Ok(results)
+}
+
+fn category_for_intent(intent: &str) -> Option<&'static str> {
+    match intent.to_ascii_uppercase().as_str() {
+        "DINNER" | "QUICK_BITE" | "DESSERT" => Some("restaurant"),
+        "COFFEE" | "STUDY" => Some("cafe"),
+        "DATE_NIGHT" => Some("bar"),
+        _ => None,
+    }
+}
+
+fn passes_decide_constraints(row: &Value, constraints: &[String]) -> bool {
+    constraints
+        .iter()
+        .all(|constraint| match constraint.as_str() {
+            "OPEN_NOW" => row["open_now"].as_bool().unwrap_or(true),
+            "CHEAP" => row["price_level"].as_i64().unwrap_or(2) <= 1,
+            "MOST_TRUSTED" => row["rating"].as_f64().unwrap_or(0.0) >= 4.0,
+            "HIDDEN_GEM" => row["review_count"].as_i64().unwrap_or(0) < 50,
+            "TRENDING" => row["trending_score"].as_f64().unwrap_or(0.0) > 0.0,
+            _ => true,
+        })
+}
+
+fn intent_explanation(intent: &str, constraints: &[String]) -> Vec<String> {
+    let mut reasons = vec![format!(
+        "Ranked for {}",
+        intent.replace('_', " ").to_lowercase()
+    )];
+    if !constraints.is_empty() {
+        reasons.push(format!("Applied {} preference filters", constraints.len()));
+    }
+    reasons.push("Sorted by Live Visibility Score, rating confidence, and proximity".into());
+    reasons
+}
+
+fn lane_subtitle(id: &str) -> &'static str {
+    match id {
+        "for_you" => "Ranked by verified activity and local trust",
+        "active" => "Nearby places with recent community signals",
+        "restaurants" => "Food spots earning attention",
+        "coffee" => "Cafe picks around you",
+        "trusted" => "High-rating places with review confidence",
+        _ => "Recommended local businesses",
     }
 }

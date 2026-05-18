@@ -8,4 +8,5 @@ pub mod location;
 pub mod reviews;
 pub mod saved;
 pub mod subscriptions;
+pub mod support;
 pub mod users;

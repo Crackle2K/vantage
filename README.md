@@ -58,7 +58,8 @@ Frontend default URL: `http://localhost:5173`
 
 ## Supabase Setup
 
-Vantage can now use Supabase directly for authentication and user profile storage.
+Supabase is the single source of truth for Vantage authentication, Postgres data,
+storage buckets, realtime activity, and user metadata.
 
 ### Configure backend environment
 
@@ -66,13 +67,21 @@ Add these values in `backend/.env` (see `backend/.env.example`):
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_JWT_SECRET`
+- `SECRET_KEY`
+
+Apply the database/storage/realtime schema from:
+
+```bash
+scripts/supabase/migrations/202605180001_supabase_single_source.sql
+```
 
 ### Notes
 
 - The active deployment backend is Rust + Axum via `api/index.rs`.
 - User auth and account profile storage use Supabase Auth metadata through the Rust API.
-- Business, discovery, activity, subscriptions, and LVS routes still depend on MongoDB Atlas until those paths are migrated.
-- Use a standard `mongodb://` Atlas seed-list URI for `MONGODB_URI`, not a `mongodb+srv://` URI. The deployed Rust build intentionally excludes the optional DNS SRV resolver until upstream hickory advisories are patched.
+- Business, discovery, activity, saved businesses, claims, deals, reviews, and subscriptions use Supabase PostgREST through the Rust API.
+- Business claiming does not contribute to Live Visibility Score; this invariant remains enforced in `backend/src/services/visibility_score.rs`.
 
 ## Next Steps
 

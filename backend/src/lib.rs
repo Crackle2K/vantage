@@ -107,13 +107,7 @@ async fn root() -> axum::Json<serde_json::Value> {
 async fn health_check(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
 ) -> axum::Json<serde_json::Value> {
-    let db_ok = state
-        .db
-        .mongo
-        .raw_db()
-        .list_collection_names()
-        .await
-        .is_ok();
+    let db_ok = state.db.supabase.health_check().await.is_ok();
 
     let status = if db_ok { "ok" } else { "degraded" };
 
@@ -121,7 +115,59 @@ async fn health_check(
         "status": status,
         "version": "1.0.0",
         "checks": {
-            "database": if db_ok { "ok" } else { "error" }
+            "supabase": if db_ok { "ok" } else { "error" }
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> Config {
+        Config {
+            secret_key: "test-secret-key-minimum-32-characters".into(),
+            algorithm: "HS256".into(),
+            access_token_expire_minutes: 30,
+            refresh_token_expire_days: 7,
+            google_api_key: String::new(),
+            google_client_id: String::new(),
+            google_client_secret: String::new(),
+            recaptcha_project_id: String::new(),
+            recaptcha_api_key: String::new(),
+            recaptcha_site_key: String::new(),
+            recaptcha_signup_action: "SIGNUP".into(),
+            recaptcha_min_score: 0.5,
+            recaptcha_verify_timeout_secs: 10,
+            api_url: "http://localhost:8000".into(),
+            frontend_url: "http://localhost:5173".into(),
+            production_url: String::new(),
+            environment: "test".into(),
+            redis_url: "redis://localhost:6379/0".into(),
+            rate_limit_per_minute: 120,
+            supabase_url: "https://example.supabase.co".into(),
+            supabase_service_role_key: "test-service-role-key".into(),
+            supabase_jwt_secret: String::new(),
+            stripe_secret_key: String::new(),
+            stripe_publishable_key: String::new(),
+            stripe_webhook_secret: String::new(),
+            demo_mode: false,
+            demo_lat: 37.7749,
+            demo_lng: -122.4194,
+        }
+    }
+
+    #[test]
+    fn router_builds_without_route_conflicts() {
+        let config = test_config();
+        let state = Arc::new(AppState {
+            db: Database {
+                supabase: db::SupabaseClient::new(&config),
+            },
+            config,
+            rate_limiter: security::RateLimiter::new(),
+        });
+
+        let _router = build_router(state);
+    }
 }

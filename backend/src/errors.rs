@@ -63,15 +63,14 @@ impl IntoResponse for AppError {
     }
 }
 
-impl From<mongodb::error::Error> for AppError {
-    fn from(e: mongodb::error::Error) -> Self {
-        AppError::DatabaseUnavailable(e.to_string())
-    }
-}
-
 impl From<anyhow::Error> for AppError {
     fn from(e: anyhow::Error) -> Self {
-        AppError::Internal(e.to_string())
+        let message = e.to_string();
+        if message.to_ascii_lowercase().contains("supabase") {
+            AppError::DatabaseUnavailable(message)
+        } else {
+            AppError::Internal(message)
+        }
     }
 }
 

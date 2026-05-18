@@ -66,11 +66,31 @@ impl SupabaseClient {
         Ok(data)
     }
 
-    pub async fn select<T: DeserializeOwned>(
-        &self,
-        table: &str,
-        query: &[(&str, &str)],
-    ) -> Result<Vec<T>> {
+    async fn parse_array_response(resp: reqwest::Response) -> Result<Vec<Value>> {
+        let data = Self::parse_json_response(resp).await?;
+        match data {
+            Value::Array(rows) => Ok(rows),
+            Value::Null => Ok(Vec::new()),
+            other => bail!("Expected Supabase array response, got {}", other),
+        }
+    }
+
+    pub async fn health_check(&self) -> Result<()> {
+        self.ensure_configured()?;
+        let _ = self
+            .select_json(
+                "businesses",
+                &[
+                    ("select".to_string(), "id".to_string()),
+                    ("limit".to_string(), "1".to_string()),
+                ],
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn select_json(&self, table: &str, query: &[(String, String)]) -> Result<Vec<Value>> {
+        self.ensure_configured()?;
         let mut req = self.http.get(self.table_url(table));
         for (k, v) in self.auth_headers() {
             req = req.header(k, v);
@@ -80,8 +100,103 @@ impl SupabaseClient {
             req = req.query(&[(k, v)]);
         }
         let resp = req.send().await?;
-        let data: Vec<T> = resp.json().await?;
-        Ok(data)
+        Self::parse_array_response(resp).await
+    }
+
+    pub async fn select_one_json(
+        &self,
+        table: &str,
+        query: &[(String, String)],
+    ) -> Result<Option<Value>> {
+        let mut scoped = query.to_vec();
+        if !scoped.iter().any(|(k, _)| k == "limit") {
+            scoped.push(("limit".to_string(), "1".to_string()));
+        }
+        let rows = self.select_json(table, &scoped).await?;
+        Ok(rows.into_iter().next())
+    }
+
+    pub async fn insert_json(&self, table: &str, body: Value) -> Result<Value> {
+        self.ensure_configured()?;
+        let mut req = self.http.post(self.table_url(table));
+        for (k, v) in self.auth_headers() {
+            req = req.header(k, v);
+        }
+        let resp = req
+            .header("Content-Type", "application/json")
+            .header("Prefer", "return=representation")
+            .json(&body)
+            .send()
+            .await?;
+        let rows = Self::parse_array_response(resp).await?;
+        rows.into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Insert returned no rows"))
+    }
+
+    pub async fn update_json(
+        &self,
+        table: &str,
+        filter: &[(String, String)],
+        body: Value,
+    ) -> Result<Vec<Value>> {
+        self.ensure_configured()?;
+        let mut req = self.http.patch(self.table_url(table));
+        for (k, v) in self.auth_headers() {
+            req = req.header(k, v);
+        }
+        for (k, v) in filter {
+            req = req.query(&[(k, v)]);
+        }
+        let resp = req
+            .header("Content-Type", "application/json")
+            .header("Prefer", "return=representation")
+            .json(&body)
+            .send()
+            .await?;
+        Self::parse_array_response(resp).await
+    }
+
+    pub async fn delete_json(
+        &self,
+        table: &str,
+        filter: &[(String, String)],
+    ) -> Result<Vec<Value>> {
+        self.ensure_configured()?;
+        let mut req = self.http.delete(self.table_url(table));
+        for (k, v) in self.auth_headers() {
+            req = req.header(k, v);
+        }
+        for (k, v) in filter {
+            req = req.query(&[(k, v)]);
+        }
+        let resp = req.header("Prefer", "return=representation").send().await?;
+        Self::parse_array_response(resp).await
+    }
+
+    pub async fn count(&self, table: &str, filter: &[(String, String)]) -> Result<usize> {
+        let mut query = vec![("select".to_string(), "id".to_string())];
+        query.extend_from_slice(filter);
+        Ok(self.select_json(table, &query).await?.len())
+    }
+
+    pub async fn select<T: DeserializeOwned>(
+        &self,
+        table: &str,
+        query: &[(&str, &str)],
+    ) -> Result<Vec<T>> {
+        self.ensure_configured()?;
+        let mut req = self.http.get(self.table_url(table));
+        for (k, v) in self.auth_headers() {
+            req = req.header(k, v);
+        }
+        req = req.header("Accept", "application/json");
+        for (k, v) in query {
+            req = req.query(&[(k, v)]);
+        }
+        let resp = req.send().await?;
+        let data = Self::parse_json_response(resp).await?;
+        serde_json::from_value(data).map_err(Into::into)
     }
 
     pub async fn select_one<T: DeserializeOwned>(
@@ -98,6 +213,7 @@ impl SupabaseClient {
         table: &str,
         body: &B,
     ) -> Result<T> {
+        self.ensure_configured()?;
         let mut req = self.http.post(self.table_url(table));
         for (k, v) in self.auth_headers() {
             req = req.header(k, v);
@@ -107,7 +223,8 @@ impl SupabaseClient {
             .header("Prefer", "return=representation")
             .json(body);
         let resp = req.send().await?;
-        let mut rows: Vec<T> = resp.json().await?;
+        let data = Self::parse_json_response(resp).await?;
+        let mut rows: Vec<T> = serde_json::from_value(data)?;
         rows.pop()
             .ok_or_else(|| anyhow::anyhow!("Insert returned no rows"))
     }
@@ -118,6 +235,7 @@ impl SupabaseClient {
         filter: &[(&str, &str)],
         body: &B,
     ) -> Result<u64> {
+        self.ensure_configured()?;
         let mut req = self.http.patch(self.table_url(table));
         for (k, v) in self.auth_headers() {
             req = req.header(k, v);
@@ -130,6 +248,7 @@ impl SupabaseClient {
         }
         req = req.json(body);
         let resp = req.send().await?;
+        let status = resp.status();
         let count = resp
             .headers()
             .get("content-range")
@@ -137,10 +256,14 @@ impl SupabaseClient {
             .and_then(|s| s.split('/').next_back())
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
+        if !status.is_success() {
+            bail!("Supabase update failed (HTTP {})", status.as_u16());
+        }
         Ok(count)
     }
 
     pub async fn delete(&self, table: &str, filter: &[(&str, &str)]) -> Result<u64> {
+        self.ensure_configured()?;
         let mut req = self.http.delete(self.table_url(table));
         for (k, v) in self.auth_headers() {
             req = req.header(k, v);
@@ -149,6 +272,7 @@ impl SupabaseClient {
             req = req.query(&[(k, v)]);
         }
         let resp = req.send().await?;
+        let status = resp.status();
         let count = resp
             .headers()
             .get("content-range")
@@ -156,6 +280,9 @@ impl SupabaseClient {
             .and_then(|s| s.split('/').next_back())
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
+        if !status.is_success() {
+            bail!("Supabase delete failed (HTTP {})", status.as_u16());
+        }
         Ok(count)
     }
 

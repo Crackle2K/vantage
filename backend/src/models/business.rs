@@ -136,13 +136,17 @@ pub struct BusinessUpdate {
 #[derive(Debug, Deserialize)]
 pub struct BusinessSearchQuery {
     pub q: Option<String>,
+    pub search: Option<String>,
     pub category: Option<String>,
+    pub owner_id: Option<String>,
     pub lat: Option<f64>,
     pub lng: Option<f64>,
     pub radius_km: Option<f64>,
+    pub radius: Option<f64>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
     pub verified_only: Option<bool>,
     pub open_now: Option<bool>,
     pub sort: Option<String>,
+    pub sort_by: Option<String>,
 }

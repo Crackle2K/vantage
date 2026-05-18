@@ -1,6 +1,9 @@
 use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
+    routes::support::{
+        eq, limit, normalize_review, offset, order, q, select_all, value_str, QueryParams,
+    },
     security,
     state::AppState,
 };
@@ -12,9 +15,8 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use mongodb::bson::{doc, oid::ObjectId, Document};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -25,6 +27,7 @@ pub fn router() -> Router<Arc<AppState>> {
             get(get_review).put(update_review).delete(delete_review),
         )
         .route("/businesses/:id/reviews", get(list_business_reviews))
+        .route("/reviews/business/:id", get(list_business_reviews))
 }
 
 #[derive(Deserialize)]
@@ -38,40 +41,32 @@ async fn list_business_reviews(
     Path(business_id): Path<String>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse> {
-    let collection: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let limit = params.limit.unwrap_or(20).min(100);
-    let offset = params.offset.unwrap_or(0);
+    let query: QueryParams = vec![
+        select_all(),
+        eq("business_id", business_id),
+        order("created_at.desc"),
+        limit(params.limit.unwrap_or(20).clamp(1, 100)),
+        offset(params.offset.unwrap_or(0)),
+    ];
 
-    let mut cursor = collection
-        .find(doc! { "business_id": &business_id })
-        .skip(offset as u64)
-        .limit(limit)
-        .sort(doc! { "created_at": -1 })
-        .await?;
+    let reviews = state
+        .db
+        .supabase
+        .select_json("reviews", &query)
+        .await?
+        .into_iter()
+        .map(normalize_review)
+        .collect::<Vec<_>>();
 
-    let mut reviews: Vec<Value> = Vec::new();
-    while cursor.advance().await? {
-        let doc = cursor.deserialize_current()?;
-        reviews.push(serde_json::to_value(&doc).unwrap_or(Value::Null));
-    }
-
-    Ok(Json(json!({ "reviews": reviews })))
+    Ok(Json(reviews))
 }
 
 async fn get_review(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    let collection: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let oid =
-        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
-
-    let doc = collection
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("Review not found".into()))?;
-
-    Ok(Json(serde_json::to_value(&doc).unwrap_or(Value::Null)))
+    let row = find_review(&state, &id).await?;
+    Ok(Json(normalize_review(row)))
 }
 
 #[derive(serde::Deserialize)]
@@ -86,52 +81,65 @@ async fn create_review(
     auth_user: AuthUser,
     Json(payload): Json<ReviewCreate>,
 ) -> Result<impl IntoResponse> {
-    if payload.rating < 1.0 || payload.rating > 5.0 {
-        return Err(AppError::BadRequest(
-            "Rating must be between 1 and 5".into(),
-        ));
+    validate_rating(payload.rating)?;
+
+    let business = state
+        .db
+        .supabase
+        .select_one_json(
+            "businesses",
+            &[select_all(), eq("id", &payload.business_id)],
+        )
+        .await?;
+    if business.is_none() {
+        return Err(AppError::NotFound("Business not found".into()));
     }
 
-    let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-
-    // One review per user per business
-    if reviews
-        .find_one(doc! {
-            "business_id": &payload.business_id,
-            "user_id": &auth_user.id,
-        })
-        .await?
-        .is_some()
-    {
+    let existing = state
+        .db
+        .supabase
+        .select_one_json(
+            "reviews",
+            &[
+                select_all(),
+                eq("business_id", &payload.business_id),
+                eq("user_id", &auth_user.id),
+            ],
+        )
+        .await?;
+    if existing.is_some() {
         return Err(AppError::Conflict(
             "You have already reviewed this business".into(),
         ));
     }
 
-    let now = Utc::now();
-    let review_doc = doc! {
-        "business_id": &payload.business_id,
-        "user_id": &auth_user.id,
-        "rating": payload.rating,
-        "comment": security::sanitize_optional_text(payload.comment.as_deref(), 2000).unwrap_or_default(),
-        "is_verified": false,
-        "credibility_weight": 1.0,
-        "helpful_count": 0,
-        "created_at": now.to_rfc3339(),
-        "updated_at": now.to_rfc3339(),
-    };
+    let now = Utc::now().to_rfc3339();
+    let mut body = Map::new();
+    body.insert("business_id".into(), json!(payload.business_id));
+    body.insert("user_id".into(), json!(auth_user.id));
+    body.insert("user_name".into(), json!(auth_user.email));
+    body.insert("rating".into(), json!(payload.rating));
+    body.insert(
+        "comment".into(),
+        json!(
+            security::sanitize_optional_text(payload.comment.as_deref(), 2000).unwrap_or_default()
+        ),
+    );
+    body.insert("is_verified".into(), json!(false));
+    body.insert("credibility_weight".into(), json!(1.0));
+    body.insert("helpful_count".into(), json!(0));
+    body.insert("created_at".into(), json!(now));
+    body.insert("updated_at".into(), json!(now));
 
-    let result = reviews.insert_one(review_doc).await?;
-    let id = result
-        .inserted_id
-        .as_object_id()
-        .map(|o| o.to_hex())
-        .unwrap_or_default();
+    let created = state
+        .db
+        .supabase
+        .insert_json("reviews", Value::Object(body))
+        .await?;
 
-    // Update business aggregate rating
     update_business_rating(&state, &payload.business_id).await?;
 
-    Ok((StatusCode::CREATED, Json(json!({ "id": id }))))
+    Ok((StatusCode::CREATED, Json(normalize_review(created))))
 }
 
 #[derive(serde::Deserialize)]
@@ -146,36 +154,37 @@ async fn update_review(
     Path(id): Path<String>,
     Json(payload): Json<ReviewUpdate>,
 ) -> Result<impl IntoResponse> {
-    let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let oid =
-        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
-
-    let existing = reviews
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("Review not found".into()))?;
-
-    if existing.get_str("user_id").unwrap_or("") != auth_user.id {
+    let existing = find_review(&state, &id).await?;
+    if value_str(&existing, "user_id") != auth_user.id {
         return Err(AppError::Forbidden("Not your review".into()));
     }
 
-    let now = Utc::now();
-    let mut update = doc! { "updated_at": now.to_rfc3339() };
-    if let Some(r) = payload.rating {
-        update.insert("rating", r);
+    let mut body = Map::new();
+    body.insert("updated_at".into(), json!(Utc::now().to_rfc3339()));
+    if let Some(rating) = payload.rating {
+        validate_rating(rating)?;
+        body.insert("rating".into(), json!(rating));
     }
-    if let Some(c) = payload.comment {
-        update.insert("comment", security::sanitize_text(&c, 2000));
+    if let Some(comment) = payload.comment {
+        body.insert(
+            "comment".into(),
+            json!(security::sanitize_text(&comment, 2000)),
+        );
     }
 
-    reviews
-        .update_one(doc! { "_id": oid }, doc! { "$set": update })
+    let updated = state
+        .db
+        .supabase
+        .update_json("reviews", &[eq("id", &id)], Value::Object(body))
         .await?;
+    let row = updated
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::NotFound("Review not found".into()))?;
 
-    let business_id = existing.get_str("business_id").unwrap_or("").to_string();
-    update_business_rating(&state, &business_id).await?;
+    update_business_rating(&state, value_str(&existing, "business_id")).await?;
 
-    Ok(Json(json!({ "message": "Review updated" })))
+    Ok(Json(normalize_review(row)))
 }
 
 async fn delete_review(
@@ -183,53 +192,74 @@ async fn delete_review(
     auth_user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let oid =
-        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid review ID".into()))?;
-
-    let existing = reviews
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("Review not found".into()))?;
-
-    if existing.get_str("user_id").unwrap_or("") != auth_user.id && auth_user.role != "admin" {
+    let existing = find_review(&state, &id).await?;
+    if value_str(&existing, "user_id") != auth_user.id && auth_user.role != "admin" {
         return Err(AppError::Forbidden("Not your review".into()));
     }
 
-    let business_id = existing.get_str("business_id").unwrap_or("").to_string();
-    reviews.delete_one(doc! { "_id": oid }).await?;
-    update_business_rating(&state, &business_id).await?;
+    state
+        .db
+        .supabase
+        .delete_json("reviews", &[eq("id", &id)])
+        .await?;
+    update_business_rating(&state, value_str(&existing, "business_id")).await?;
 
     Ok(Json(json!({ "message": "Review deleted" })))
 }
 
+async fn find_review(state: &AppState, id: &str) -> Result<Value> {
+    state
+        .db
+        .supabase
+        .select_one_json("reviews", &[select_all(), eq("id", id)])
+        .await?
+        .ok_or_else(|| AppError::NotFound("Review not found".into()))
+}
+
 async fn update_business_rating(state: &AppState, business_id: &str) -> Result<()> {
-    let reviews: mongodb::Collection<Document> = state.db.mongo.collection("reviews");
-    let businesses: mongodb::Collection<Document> = state.db.mongo.collection("businesses");
+    let reviews = state
+        .db
+        .supabase
+        .select_json(
+            "reviews",
+            &[q("select", "rating"), eq("business_id", business_id)],
+        )
+        .await?;
 
-    let pipeline = vec![
-        doc! { "$match": { "business_id": business_id } },
-        doc! { "$group": {
-            "_id": null,
-            "avg_rating": { "$avg": "$rating" },
-            "count": { "$sum": 1 }
-        }},
-    ];
+    let count = reviews.len() as i64;
+    let avg = if count == 0 {
+        Value::Null
+    } else {
+        let total = reviews
+            .iter()
+            .filter_map(|row| row.get("rating").and_then(Value::as_f64))
+            .sum::<f64>();
+        json!(total / count as f64)
+    };
 
-    let mut cursor = reviews.aggregate(pipeline).await?;
-    if cursor.advance().await? {
-        let agg = cursor.deserialize_current()?;
-        let avg = agg.get_f64("avg_rating").unwrap_or(0.0);
-        let count = agg.get_i32("count").unwrap_or(0);
+    state
+        .db
+        .supabase
+        .update_json(
+            "businesses",
+            &[eq("id", business_id)],
+            json!({
+                "rating": avg,
+                "review_count": count,
+                "updated_at": Utc::now().to_rfc3339(),
+            }),
+        )
+        .await
+        .ok();
 
-        businesses
-            .update_one(
-                doc! { "_id": business_id },
-                doc! { "$set": { "rating": avg, "review_count": count } },
-            )
-            .await
-            .ok();
+    Ok(())
+}
+
+fn validate_rating(rating: f64) -> Result<()> {
+    if !(1.0..=5.0).contains(&rating) || !rating.is_finite() {
+        return Err(AppError::BadRequest(
+            "Rating must be between 1 and 5".into(),
+        ));
     }
-
     Ok(())
 }

@@ -617,11 +617,4 @@ export const api = {
     }, 'Failed to change password');
   },
 
-  async purgeChains(): Promise<{ deleted: number; confidence_updated: number; total_scanned: number }> {
-    return request<{ deleted: number; confidence_updated: number; total_scanned: number }>('/purge-chains', {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    }, 'Failed to purge chain businesses');
-  },
-
 };
