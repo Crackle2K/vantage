@@ -1,4 +1,5 @@
 use crate::{
+    db::supabase::AuthUserRecord,
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     security,
@@ -10,9 +11,6 @@ use axum::{
     routing::{get, put},
     Json, Router,
 };
-use bcrypt::{hash, verify, DEFAULT_COST};
-use chrono::Utc;
-use mongodb::bson::{doc, oid::ObjectId, Document};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -28,15 +26,8 @@ async fn get_me(
     State(state): State<Arc<AppState>>,
     auth_user: AuthUser,
 ) -> Result<impl IntoResponse> {
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-    let oid = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
-    let user = users
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
-
-    Ok(Json(sanitize_user(user)))
+    let user = state.db.supabase.auth_get_user(&auth_user.id).await?;
+    Ok(Json(public_user_json(&user)))
 }
 
 async fn update_me(
@@ -44,38 +35,34 @@ async fn update_me(
     auth_user: AuthUser,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse> {
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-    let oid = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
-
-    let now = Utc::now();
-    let mut update = doc! { "updated_at": now.to_rfc3339() };
+    let current = state.db.supabase.auth_get_user(&auth_user.id).await?;
+    let mut user_metadata = current.user_metadata.clone();
 
     if let Some(name) = payload["name"]
         .as_str()
         .or_else(|| payload["full_name"].as_str())
     {
-        update.insert("full_name", security::sanitize_text(name, 120));
+        let cleaned = security::sanitize_text(name, 120);
+        set_metadata(&mut user_metadata, "full_name", json!(cleaned));
+        set_metadata(&mut user_metadata, "name", json!(cleaned));
     }
     if let Some(profile_picture) = payload["profile_picture"].as_str() {
         if let Some(cleaned) = security::sanitize_optional_text(Some(profile_picture), 500) {
-            update.insert("profile_picture", cleaned);
+            set_metadata(&mut user_metadata, "profile_picture", json!(cleaned));
         }
     }
     if let Some(about_me) = payload["about_me"].as_str() {
         if let Some(cleaned) = security::sanitize_optional_text(Some(about_me), 500) {
-            update.insert("about_me", cleaned);
+            set_metadata(&mut user_metadata, "about_me", json!(cleaned));
         }
     }
 
-    users
-        .update_one(doc! { "_id": oid }, doc! { "$set": update })
+    let updated = state
+        .db
+        .supabase
+        .auth_update_user(&auth_user.id, json!({ "user_metadata": user_metadata }))
         .await?;
-    let updated = users
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
-    Ok(Json(sanitize_user(updated)))
+    Ok(Json(public_user_json(&updated)))
 }
 
 async fn update_preferences(
@@ -83,21 +70,21 @@ async fn update_preferences(
     auth_user: AuthUser,
     Json(payload): Json<crate::models::user::UserPreferencesUpdate>,
 ) -> Result<impl IntoResponse> {
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-    let oid = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
+    let current = state.db.supabase.auth_get_user(&auth_user.id).await?;
+    let mut user_metadata = current.user_metadata.clone();
+    set_metadata(
+        &mut user_metadata,
+        "preferences",
+        security::sanitize_preferences(payload),
+    );
 
-    let now = Utc::now();
-    let pref_str = serde_json::to_string(&security::sanitize_preferences(payload))
-        .unwrap_or_else(|_| "{}".into());
-    users
-        .update_one(
-            doc! { "_id": oid },
-            doc! { "$set": { "preferences_json": &pref_str, "updated_at": now.to_rfc3339() } },
-        )
+    let updated = state
+        .db
+        .supabase
+        .auth_update_user(&auth_user.id, json!({ "user_metadata": user_metadata }))
         .await?;
 
-    Ok(Json(json!({ "message": "Preferences updated" })))
+    Ok(Json(public_user_json(&updated)))
 }
 
 async fn change_password(
@@ -114,34 +101,16 @@ async fn change_password(
 
     security::validate_password_strength(new_pw)?;
 
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-    let oid = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
-    let user = users
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
-
-    let hash_stored = user.get_str("password_hash").unwrap_or("");
-    if hash_stored.is_empty() {
-        return Err(AppError::BadRequest(
-            "Cannot change password for OAuth accounts".into(),
-        ));
-    }
-
-    let valid = verify(current, hash_stored)
+    state
+        .db
+        .supabase
+        .auth_login_password(&auth_user.email, current)
+        .await
         .map_err(|_| AppError::Unauthorized("Invalid current password".into()))?;
-    if !valid {
-        return Err(AppError::Unauthorized("Invalid current password".into()));
-    }
-
-    let new_hash = hash(new_pw, DEFAULT_COST).map_err(|e| AppError::Internal(e.to_string()))?;
-    let now = Utc::now();
-    users
-        .update_one(
-            doc! { "_id": oid },
-            doc! { "$set": { "password_hash": new_hash, "updated_at": now.to_rfc3339() } },
-        )
+    state
+        .db
+        .supabase
+        .auth_update_user(&auth_user.id, json!({ "password": new_pw }))
         .await?;
 
     Ok(Json(json!({ "message": "Password changed successfully" })))
@@ -151,44 +120,39 @@ async fn get_user_profile(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-    let oid = ObjectId::parse_str(&user_id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
-    let user = users
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
-    Ok(Json(sanitize_user(user)))
+    let user = state.db.supabase.auth_get_user(&user_id).await?;
+    Ok(Json(public_user_json(&user)))
 }
 
-fn sanitize_user(mut doc: Document) -> Value {
-    doc.remove("password_hash");
-    let id = doc
-        .get_object_id("_id")
-        .map(|oid| oid.to_hex())
-        .or_else(|_| doc.get_str("id").map(String::from))
-        .unwrap_or_default();
-    let email = doc.get_str("email").unwrap_or_default();
-    let name = doc
-        .get_str("full_name")
-        .or_else(|_| doc.get_str("name"))
-        .unwrap_or(email);
-    let role = doc.get_str("role").unwrap_or("customer");
-    let profile_picture = doc.get_str("profile_picture").ok();
-    let about_me = doc.get_str("about_me").ok();
-    let created_at = doc.get_str("created_at").ok();
-    let subscription_tier = doc.get_str("subscription_tier").ok();
-
+fn public_user_json(user: &AuthUserRecord) -> Value {
+    let email = user.email.as_deref().unwrap_or_default();
+    let full_name = metadata_str(&user.user_metadata, "full_name")
+        .or_else(|| metadata_str(&user.user_metadata, "name"));
+    let name = full_name.unwrap_or(email);
     json!({
-        "id": id,
-        "_id": id,
+        "id": user.id,
+        "_id": user.id,
         "email": email,
         "name": name,
-        "full_name": doc.get_str("full_name").ok(),
-        "role": role,
-        "profile_picture": profile_picture,
-        "about_me": about_me,
-        "created_at": created_at,
-        "subscription_tier": subscription_tier,
+        "full_name": full_name,
+        "role": metadata_str(&user.app_metadata, "role").unwrap_or("customer"),
+        "profile_picture": metadata_str(&user.user_metadata, "profile_picture"),
+        "about_me": metadata_str(&user.user_metadata, "about_me"),
+        "created_at": user.created_at,
+        "subscription_tier": metadata_str(&user.app_metadata, "subscription_tier").unwrap_or("FREE"),
+        "preferences": user.user_metadata.get("preferences").cloned().unwrap_or(Value::Null),
     })
+}
+
+fn metadata_str<'a>(metadata: &'a Value, key: &str) -> Option<&'a str> {
+    metadata.get(key).and_then(Value::as_str)
+}
+
+fn set_metadata(metadata: &mut Value, key: &str, value: Value) {
+    if !metadata.is_object() {
+        *metadata = json!({});
+    }
+    if let Some(object) = metadata.as_object_mut() {
+        object.insert(key.to_string(), value);
+    }
 }

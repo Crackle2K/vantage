@@ -1,8 +1,8 @@
 use crate::config::Config;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use reqwest::Client;
-use serde::{de::DeserializeOwned, Serialize};
-use serde_json::Value;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{json, Value};
 
 #[derive(Clone)]
 pub struct SupabaseClient {
@@ -34,6 +34,36 @@ impl SupabaseClient {
             ("apikey", self.service_role_key.clone()),
             ("Authorization", format!("Bearer {}", self.service_role_key)),
         ]
+    }
+
+    pub fn is_configured(&self) -> bool {
+        !self.url.trim().is_empty() && !self.service_role_key.trim().is_empty()
+    }
+
+    fn ensure_configured(&self) -> Result<()> {
+        if !self.is_configured() {
+            bail!("Supabase is not configured");
+        }
+        Ok(())
+    }
+
+    async fn parse_json_response(resp: reqwest::Response) -> Result<Value> {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        let data: Value =
+            serde_json::from_str(&text).unwrap_or_else(|_| json!({ "message": text }));
+
+        if !status.is_success() {
+            let message = data["msg"]
+                .as_str()
+                .or_else(|| data["message"].as_str())
+                .or_else(|| data["error_description"].as_str())
+                .or_else(|| data["error"].as_str())
+                .unwrap_or("Supabase request failed");
+            bail!("{} (HTTP {})", message, status.as_u16());
+        }
+
+        Ok(data)
     }
 
     pub async fn select<T: DeserializeOwned>(
@@ -130,12 +160,21 @@ impl SupabaseClient {
     }
 
     /// Call Supabase Auth admin API
-    pub async fn auth_create_user(&self, email: &str, password: &str) -> Result<Value> {
+    pub async fn auth_create_user(
+        &self,
+        email: &str,
+        password: &str,
+        user_metadata: Value,
+        app_metadata: Value,
+    ) -> Result<AuthUserRecord> {
+        self.ensure_configured()?;
         let url = format!("{}/auth/v1/admin/users", self.url);
-        let body = serde_json::json!({
+        let body = json!({
             "email": email,
             "password": password,
             "email_confirm": true,
+            "user_metadata": user_metadata,
+            "app_metadata": app_metadata,
         });
         let resp = self
             .http
@@ -145,18 +184,123 @@ impl SupabaseClient {
             .json(&body)
             .send()
             .await?;
-        let data: Value = resp.json().await?;
-        Ok(data)
+        let data = Self::parse_json_response(resp).await?;
+        serde_json::from_value(data).map_err(Into::into)
+    }
+
+    pub async fn auth_login_password(&self, email: &str, password: &str) -> Result<AuthSession> {
+        self.ensure_configured()?;
+        let url = format!("{}/auth/v1/token?grant_type=password", self.url);
+        let body = json!({
+            "email": email,
+            "password": password,
+        });
+        let resp = self
+            .http
+            .post(&url)
+            .header("apikey", &self.service_role_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let data = Self::parse_json_response(resp).await?;
+        serde_json::from_value(data).map_err(Into::into)
+    }
+
+    pub async fn auth_get_user(&self, user_id: &str) -> Result<AuthUserRecord> {
+        self.ensure_configured()?;
+        let url = format!("{}/auth/v1/admin/users/{}", self.url, user_id);
+        let resp = self
+            .http
+            .get(&url)
+            .header("apikey", &self.service_role_key)
+            .header("Authorization", format!("Bearer {}", self.service_role_key))
+            .send()
+            .await?;
+        let data = Self::parse_json_response(resp).await?;
+        serde_json::from_value(data).map_err(Into::into)
+    }
+
+    pub async fn auth_update_user(&self, user_id: &str, body: Value) -> Result<AuthUserRecord> {
+        self.ensure_configured()?;
+        let url = format!("{}/auth/v1/admin/users/{}", self.url, user_id);
+        let resp = self
+            .http
+            .put(&url)
+            .header("apikey", &self.service_role_key)
+            .header("Authorization", format!("Bearer {}", self.service_role_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let data = Self::parse_json_response(resp).await?;
+        serde_json::from_value(data).map_err(Into::into)
     }
 
     pub async fn auth_delete_user(&self, user_id: &str) -> Result<()> {
+        self.ensure_configured()?;
         let url = format!("{}/auth/v1/admin/users/{}", self.url, user_id);
-        self.http
+        let resp = self
+            .http
             .delete(&url)
             .header("apikey", &self.service_role_key)
             .header("Authorization", format!("Bearer {}", self.service_role_key))
             .send()
             .await?;
+        Self::parse_json_response(resp).await?;
         Ok(())
     }
+
+    pub async fn auth_find_user_by_email(&self, email: &str) -> Result<Option<AuthUserRecord>> {
+        self.ensure_configured()?;
+        let target = email.trim().to_lowercase();
+
+        for page in 1..=10 {
+            let url = format!("{}/auth/v1/admin/users", self.url);
+            let resp = self
+                .http
+                .get(&url)
+                .header("apikey", &self.service_role_key)
+                .header("Authorization", format!("Bearer {}", self.service_role_key))
+                .query(&[("page", page.to_string()), ("per_page", "100".to_string())])
+                .send()
+                .await?;
+            let data = Self::parse_json_response(resp).await?;
+            let users: Vec<AuthUserRecord> = if data.is_array() {
+                serde_json::from_value(data)?
+            } else {
+                serde_json::from_value(data["users"].clone()).unwrap_or_default()
+            };
+
+            if let Some(user) = users
+                .iter()
+                .find(|user| user.email.as_deref().map(str::to_lowercase) == Some(target.clone()))
+            {
+                return Ok(Some(user.clone()));
+            }
+
+            if users.len() < 100 {
+                break;
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthSession {
+    pub access_token: Option<String>,
+    pub user: AuthUserRecord,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthUserRecord {
+    pub id: String,
+    pub email: Option<String>,
+    #[serde(default)]
+    pub user_metadata: Value,
+    #[serde(default)]
+    pub app_metadata: Value,
+    pub created_at: Option<String>,
 }

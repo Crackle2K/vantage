@@ -1,4 +1,5 @@
 use crate::{
+    db::supabase::AuthUserRecord,
     errors::{AppError, Result},
     jwt,
     middleware::auth::AuthUser,
@@ -14,9 +15,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::Utc;
-use mongodb::bson::{doc, Document};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use validator::Validate;
@@ -56,40 +55,31 @@ async fn register(
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
     }
 
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
     let email = payload.email.trim().to_lowercase();
     let role = registration_role(payload.role.as_ref())?;
 
-    // Check for duplicate email
-    if users.find_one(doc! { "email": &email }).await?.is_some() {
-        return Err(AppError::Conflict("Email already registered".into()));
-    }
-
-    let hashed =
-        hash(&payload.password, DEFAULT_COST).map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let now = Utc::now();
     let full_name = security::sanitize_optional_text(payload.full_name.as_deref(), 120);
-    let user_doc = doc! {
-        "email": &email,
-        "full_name": full_name.clone().unwrap_or_default(),
-        "password_hash": hashed,
-        "role": role,
-        "is_active": true,
-        "created_at": now.to_rfc3339(),
-        "updated_at": now.to_rfc3339(),
-        "preferences": {},
-        "subscription_tier": "FREE",
-    };
+    let user = state
+        .db
+        .supabase
+        .auth_create_user(
+            &email,
+            &payload.password,
+            json!({
+                "full_name": full_name,
+                "name": full_name,
+                "profile_picture": Value::Null,
+                "auth_provider": "email",
+            }),
+            json!({
+                "role": role,
+                "subscription_tier": "FREE",
+            }),
+        )
+        .await
+        .map_err(map_supabase_auth_error)?;
 
-    let result = users.insert_one(user_doc).await?;
-    let user_id = result
-        .inserted_id
-        .as_object_id()
-        .map(|o| o.to_hex())
-        .unwrap_or_default();
-
-    let token = create_jwt(&user_id, &email, role, &state.config)?;
+    let token = create_jwt(&user.id, &email, role, &state.config)?;
     let cookie = session_cookie(&token, &state.config);
 
     Ok((
@@ -98,14 +88,7 @@ async fn register(
         Json(json!({
             "access_token": token,
             "token_type": "bearer",
-            "user": public_user_json(
-                &user_id,
-                &email,
-                full_name.as_deref(),
-                role,
-                "FREE",
-                None,
-            ),
+            "user": public_user_json(&user),
         })),
     ))
 }
@@ -118,34 +101,16 @@ async fn login(
         .validate()
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    let email_lower = payload.email.to_lowercase();
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-
-    let user = users
-        .find_one(doc! { "email": &email_lower })
-        .await?
-        .ok_or_else(|| AppError::Unauthorized("Invalid credentials".into()))?;
-
-    let password_hash = user.get_str("password_hash").unwrap_or("");
-    let is_valid = verify(&payload.password, password_hash)
+    let email = payload.email.trim().to_lowercase();
+    let session = state
+        .db
+        .supabase
+        .auth_login_password(&email, &payload.password)
+        .await
         .map_err(|_| AppError::Unauthorized("Invalid credentials".into()))?;
+    let role = metadata_str(&session.user.app_metadata, "role").unwrap_or("customer");
 
-    if !is_valid {
-        return Err(AppError::Unauthorized("Invalid credentials".into()));
-    }
-
-    let user_id = user
-        .get_object_id("_id")
-        .map(|o| o.to_hex())
-        .unwrap_or_default();
-    let role = user.get_str("role").unwrap_or("customer");
-    let full_name = user.get_str("full_name").ok().map(String::from);
-    let subscription_tier = user
-        .get_str("subscription_tier")
-        .unwrap_or("FREE")
-        .to_string();
-
-    let token = create_jwt(&user_id, &email_lower, role, &state.config)?;
+    let token = create_jwt(&session.user.id, &email, role, &state.config)?;
     let cookie = session_cookie(&token, &state.config);
 
     Ok((
@@ -153,14 +118,8 @@ async fn login(
         Json(json!({
             "access_token": token,
             "token_type": "bearer",
-            "user": public_user_json(
-                &user_id,
-                &email_lower,
-                full_name.as_deref(),
-                role,
-                &subscription_tier,
-                None,
-            ),
+            "supabase_access_token": session.access_token,
+            "user": public_user_json(&session.user),
         })),
     ))
 }
@@ -179,35 +138,14 @@ async fn logout(State(state): State<Arc<AppState>>) -> Response {
 }
 
 async fn me(State(state): State<Arc<AppState>>, auth_user: AuthUser) -> Result<impl IntoResponse> {
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-    let oid = mongodb::bson::oid::ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError::BadRequest("Invalid user ID".into()))?;
-    let user = users
-        .find_one(doc! { "_id": oid })
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+    let user = state
+        .db
+        .supabase
+        .auth_get_user(&auth_user.id)
+        .await
+        .map_err(map_supabase_auth_error)?;
 
-    let email = user.get_str("email").unwrap_or("").to_string();
-    let full_name = user
-        .get_str("full_name")
-        .or_else(|_| user.get_str("name"))
-        .ok()
-        .map(String::from);
-    let role = user.get_str("role").unwrap_or("customer").to_string();
-    let subscription_tier = user
-        .get_str("subscription_tier")
-        .unwrap_or("FREE")
-        .to_string();
-    let profile_picture = user.get_str("profile_picture").ok().map(String::from);
-
-    Ok(Json(public_user_json(
-        &auth_user.id,
-        &email,
-        full_name.as_deref(),
-        &role,
-        &subscription_tier,
-        profile_picture.as_deref(),
-    )))
+    Ok(Json(public_user_json(&user)))
 }
 
 async fn google_auth(
@@ -227,52 +165,62 @@ async fn google_auth(
     let picture = google_user["picture"].as_str().map(String::from);
     let google_id = google_user["sub"].as_str().unwrap_or("").to_string();
 
-    let users: mongodb::Collection<Document> = state.db.mongo.collection("users");
-    let now = Utc::now();
-
-    let existing = users.find_one(doc! { "email": &email }).await?;
-
-    let (user_id, role, subscription_tier) = if let Some(user) = existing {
-        let id = user
-            .get_object_id("_id")
-            .map(|o| o.to_hex())
-            .unwrap_or_default();
-        let r = user.get_str("role").unwrap_or("customer").to_string();
-        let tier = user
-            .get_str("subscription_tier")
-            .unwrap_or("FREE")
-            .to_string();
-        // Update google_id and profile_picture
-        users
-            .update_one(
-                doc! { "_id": mongodb::bson::oid::ObjectId::parse_str(&id).unwrap_or_default() },
-                doc! { "$set": { "google_id": &google_id, "profile_picture": picture.clone().unwrap_or_default(), "updated_at": now.to_rfc3339() } },
+    let user = if let Some(existing) = state
+        .db
+        .supabase
+        .auth_find_user_by_email(&email)
+        .await
+        .map_err(map_supabase_auth_error)?
+    {
+        let mut user_metadata = existing.user_metadata.clone();
+        merge_metadata(
+            &mut user_metadata,
+            json!({
+                "full_name": name,
+                "name": name,
+                "profile_picture": picture,
+                "google_id": google_id,
+                "auth_provider": "google",
+            }),
+        );
+        state
+            .db
+            .supabase
+            .auth_update_user(
+                &existing.id,
+                json!({
+                    "user_metadata": user_metadata,
+                }),
             )
-            .await?;
-        (id, r, tier)
+            .await
+            .map_err(map_supabase_auth_error)?
     } else {
-        let user_doc = doc! {
-            "email": &email,
-            "full_name": name.clone().unwrap_or_default(),
-            "google_id": &google_id,
-            "profile_picture": picture.clone().unwrap_or_default(),
-            "role": "customer",
-            "is_active": true,
-            "created_at": now.to_rfc3339(),
-            "updated_at": now.to_rfc3339(),
-            "preferences": {},
-            "subscription_tier": "FREE",
-        };
-        let result = users.insert_one(user_doc).await?;
-        let id = result
-            .inserted_id
-            .as_object_id()
-            .map(|o| o.to_hex())
-            .unwrap_or_default();
-        (id, "customer".into(), "FREE".into())
+        let generated_password =
+            format!("{}-{}-OAuth!", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+        state
+            .db
+            .supabase
+            .auth_create_user(
+                &email,
+                &generated_password,
+                json!({
+                    "full_name": name,
+                    "name": name,
+                    "profile_picture": picture,
+                    "google_id": google_id,
+                    "auth_provider": "google",
+                }),
+                json!({
+                    "role": "customer",
+                    "subscription_tier": "FREE",
+                }),
+            )
+            .await
+            .map_err(map_supabase_auth_error)?
     };
 
-    let token = create_jwt(&user_id, &email, &role, &state.config)?;
+    let role = metadata_str(&user.app_metadata, "role").unwrap_or("customer");
+    let token = create_jwt(&user.id, &email, role, &state.config)?;
     let cookie = session_cookie(&token, &state.config);
 
     Ok((
@@ -280,14 +228,7 @@ async fn google_auth(
         Json(json!({
             "access_token": token,
             "token_type": "bearer",
-            "user": public_user_json(
-                &user_id,
-                &email,
-                name.as_deref(),
-                &role,
-                &subscription_tier,
-                picture.as_deref(),
-            ),
+            "user": public_user_json(&user),
         })),
     ))
 }
@@ -359,26 +300,59 @@ fn registration_role(role: Option<&UserRole>) -> Result<&'static str> {
     }
 }
 
-fn public_user_json(
-    id: &str,
-    email: &str,
-    full_name: Option<&str>,
-    role: &str,
-    subscription_tier: &str,
-    profile_picture: Option<&str>,
-) -> Value {
+fn public_user_json(user: &AuthUserRecord) -> Value {
+    let email = user.email.as_deref().unwrap_or_default();
+    let full_name = metadata_str(&user.user_metadata, "full_name")
+        .or_else(|| metadata_str(&user.user_metadata, "name"));
     let name = full_name
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(email);
+    let role = metadata_str(&user.app_metadata, "role").unwrap_or("customer");
+    let subscription_tier = metadata_str(&user.app_metadata, "subscription_tier").unwrap_or("FREE");
+    let profile_picture = metadata_str(&user.user_metadata, "profile_picture");
 
     json!({
-        "id": id,
-        "_id": id,
+        "id": user.id,
+        "_id": user.id,
         "email": email,
         "name": name,
         "full_name": full_name,
         "role": role,
         "profile_picture": profile_picture,
         "subscription_tier": subscription_tier,
+        "created_at": user.created_at,
+        "auth_provider": metadata_str(&user.user_metadata, "auth_provider"),
     })
+}
+
+fn metadata_str<'a>(metadata: &'a Value, key: &str) -> Option<&'a str> {
+    metadata.get(key).and_then(Value::as_str)
+}
+
+fn merge_metadata(target: &mut Value, patch: Value) {
+    let Some(target) = target.as_object_mut() else {
+        *target = json!({});
+        return merge_metadata(target, patch);
+    };
+    if let Some(patch) = patch.as_object() {
+        for (key, value) in patch {
+            if !value.is_null() {
+                target.insert(key.clone(), value.clone());
+            }
+        }
+    }
+}
+
+fn map_supabase_auth_error(error: anyhow::Error) -> AppError {
+    let message = error.to_string();
+    let lowered = message.to_ascii_lowercase();
+    if lowered.contains("already") || lowered.contains("registered") || lowered.contains("exists") {
+        AppError::Conflict("Email already registered".into())
+    } else if lowered.contains("not configured") {
+        AppError::Internal("Supabase is not configured".into())
+    } else if lowered.contains("invalid login") || lowered.contains("invalid credentials") {
+        AppError::Unauthorized("Invalid credentials".into())
+    } else {
+        AppError::Internal("Authentication service unavailable".into())
+    }
 }
