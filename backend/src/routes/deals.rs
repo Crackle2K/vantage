@@ -14,7 +14,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -52,6 +52,7 @@ async fn list_deals(
         .select_json("deals", &query)
         .await?
         .into_iter()
+        .filter(deal_is_current)
         .map(normalize_deal)
         .collect::<Vec<_>>();
     Ok(Json(deals))
@@ -62,6 +63,7 @@ async fn list_business_deals(
     Path(business_id): Path<String>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse> {
+    let business_id = security::validate_uuid_id(&business_id, "business ID")?;
     let query: QueryParams = vec![
         select_all(),
         eq("business_id", business_id),
@@ -75,6 +77,7 @@ async fn list_business_deals(
         .select_json("deals", &query)
         .await?
         .into_iter()
+        .filter(deal_is_current)
         .map(normalize_deal)
         .collect::<Vec<_>>();
     Ok(Json(deals))
@@ -84,7 +87,11 @@ async fn get_deal(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    Ok(Json(normalize_deal(find_deal(&state, &id).await?)))
+    let row = find_deal(&state, &id).await?;
+    if !deal_is_current(&row) {
+        return Err(AppError::NotFound("Deal not found".into()));
+    }
+    Ok(Json(normalize_deal(row)))
 }
 
 #[derive(Deserialize)]
@@ -106,7 +113,8 @@ async fn create_deal(
     auth_user: AuthUser,
     Json(payload): Json<DealCreate>,
 ) -> Result<impl IntoResponse> {
-    let business = find_business(&state, &payload.business_id).await?;
+    let business_id = security::validate_uuid_id(&payload.business_id, "business ID")?;
+    let business = find_business(&state, &business_id).await?;
     ensure_business_owner(&business, &auth_user)?;
 
     let now = Utc::now();
@@ -115,12 +123,13 @@ async fn create_deal(
         .or(payload.discount_percent)
         .unwrap_or(0.0)
         .max(0.0);
-    let valid_until = payload
-        .valid_until
-        .unwrap_or_else(|| (now + Duration::days(30)).to_rfc3339());
+    let valid_until = match payload.valid_until {
+        Some(value) => validate_rfc3339("valid_until", &value)?,
+        None => (now + Duration::days(30)).to_rfc3339(),
+    };
 
     let mut body = Map::new();
-    body.insert("business_id".into(), json!(payload.business_id));
+    body.insert("business_id".into(), json!(&business_id));
     body.insert(
         "title".into(),
         json!(security::sanitize_text(&payload.title, 200)),
@@ -134,7 +143,7 @@ async fn create_deal(
     );
     body.insert(
         "discount_type".into(),
-        json!(payload.discount_type.unwrap_or_else(|| "percentage".into())),
+        json!(validate_discount_type(payload.discount_type.as_deref())?),
     );
     body.insert("discount_value".into(), json!(discount_value));
     body.insert("discount_percent".into(), json!(discount_value));
@@ -168,7 +177,7 @@ async fn create_deal(
         .supabase
         .update_json(
             "businesses",
-            &[eq("id", &payload.business_id)],
+            &[eq("id", &business_id)],
             json!({ "has_deals": true }),
         )
         .await
@@ -208,15 +217,18 @@ async fn update_deal(
         payload.description.as_deref(),
         1000,
     );
-    insert_optional(
-        &mut body,
-        "discount_type",
-        payload.discount_type.as_deref(),
-        40,
-    );
+    if payload.discount_type.is_some() {
+        body.insert(
+            "discount_type".into(),
+            json!(validate_discount_type(payload.discount_type.as_deref())?),
+        );
+    }
     insert_optional(&mut body, "code", payload.code.as_deref(), 60);
     if let Some(valid_until) = payload.valid_until {
-        body.insert("valid_until".into(), json!(valid_until));
+        body.insert(
+            "valid_until".into(),
+            json!(validate_rfc3339("valid_until", &valid_until)?),
+        );
     }
     if let Some(value) = payload.discount_value.or(payload.discount_percent) {
         if !value.is_finite() || value < 0.0 {
@@ -259,6 +271,7 @@ async fn delete_deal(
 }
 
 async fn find_deal(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "deal ID")?;
     state
         .db
         .supabase
@@ -268,6 +281,7 @@ async fn find_deal(state: &AppState, id: &str) -> Result<Value> {
 }
 
 async fn find_business(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "business ID")?;
     state
         .db
         .supabase
@@ -287,4 +301,36 @@ fn insert_optional(body: &mut Map<String, Value>, key: &str, value: Option<&str>
     if let Some(value) = value.and_then(|raw| security::sanitize_optional_text(Some(raw), max)) {
         body.insert(key.into(), json!(value));
     }
+}
+
+fn validate_discount_type(value: Option<&str>) -> Result<&'static str> {
+    match value
+        .unwrap_or("percentage")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "percentage" | "percent" => Ok("percentage"),
+        "fixed" | "fixed_amount" | "amount" => Ok("fixed"),
+        _ => Err(AppError::BadRequest("Invalid discount type".into())),
+    }
+}
+
+fn deal_is_current(row: &Value) -> bool {
+    if row.get("is_active").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    let valid_until = value_str(row, "valid_until");
+    if valid_until.is_empty() {
+        return true;
+    }
+    DateTime::parse_from_rfc3339(valid_until)
+        .map(|date| date.with_timezone(&Utc) > Utc::now())
+        .unwrap_or(false)
+}
+
+fn validate_rfc3339(label: &str, value: &str) -> Result<String> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|date| date.with_timezone(&Utc).to_rfc3339())
+        .map_err(|_| AppError::BadRequest(format!("{} must be an ISO-8601 timestamp", label)))
 }

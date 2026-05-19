@@ -271,7 +271,7 @@ export default function AccountPage() {
           <div className="card-surface rounded-2xl p-6 mb-6">
             <h3 className="font-semibold text-[hsl(var(--foreground))] mb-4">Quick Links</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Link to="/businesses" className="flex items-center gap-3 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))] transition-colors">
+              <Link to="/saved" className="flex items-center gap-3 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))] transition-colors">
                 <div className="w-10 h-10 rounded-lg bg-info flex items-center justify-center">
                   <Store className="w-5 h-5 text-info" />
                 </div>

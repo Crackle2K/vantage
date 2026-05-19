@@ -175,9 +175,38 @@ impl SupabaseClient {
     }
 
     pub async fn count(&self, table: &str, filter: &[(String, String)]) -> Result<usize> {
-        let mut query = vec![("select".to_string(), "id".to_string())];
-        query.extend_from_slice(filter);
-        Ok(self.select_json(table, &query).await?.len())
+        self.ensure_configured()?;
+        let mut req = self
+            .http
+            .get(self.table_url(table))
+            .header("Accept", "application/json")
+            .header("Prefer", "count=exact")
+            .header("Range-Unit", "items")
+            .header("Range", "0-0")
+            .query(&[("select", "id")]);
+        for (k, v) in self.auth_headers() {
+            req = req.header(k, v);
+        }
+        for (k, v) in filter {
+            req = req.query(&[(k, v)]);
+        }
+
+        let resp = req.send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            Self::parse_json_response(resp).await?;
+            return Ok(0);
+        }
+
+        let count = resp
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|value| value.split('/').next_back())
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+
+        Ok(count)
     }
 
     pub async fn select<T: DeserializeOwned>(
@@ -334,6 +363,43 @@ impl SupabaseClient {
         serde_json::from_value(data).map_err(Into::into)
     }
 
+    pub async fn auth_login_id_token(&self, provider: &str, token: &str) -> Result<AuthSession> {
+        self.ensure_configured()?;
+        let url = format!("{}/auth/v1/token?grant_type=id_token", self.url);
+        let body = json!({
+            "provider": provider,
+            "token": token,
+        });
+        let resp = self
+            .http
+            .post(&url)
+            .header("apikey", &self.service_role_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let data = Self::parse_json_response(resp).await?;
+        serde_json::from_value(data).map_err(Into::into)
+    }
+
+    pub async fn auth_refresh_token(&self, refresh_token: &str) -> Result<AuthSession> {
+        self.ensure_configured()?;
+        let url = format!("{}/auth/v1/token?grant_type=refresh_token", self.url);
+        let body = json!({
+            "refresh_token": refresh_token,
+        });
+        let resp = self
+            .http
+            .post(&url)
+            .header("apikey", &self.service_role_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let data = Self::parse_json_response(resp).await?;
+        serde_json::from_value(data).map_err(Into::into)
+    }
+
     pub async fn auth_get_user(&self, user_id: &str) -> Result<AuthUserRecord> {
         self.ensure_configured()?;
         let url = format!("{}/auth/v1/admin/users/{}", self.url, user_id);
@@ -377,47 +443,13 @@ impl SupabaseClient {
         Self::parse_json_response(resp).await?;
         Ok(())
     }
-
-    pub async fn auth_find_user_by_email(&self, email: &str) -> Result<Option<AuthUserRecord>> {
-        self.ensure_configured()?;
-        let target = email.trim().to_lowercase();
-
-        for page in 1..=10 {
-            let url = format!("{}/auth/v1/admin/users", self.url);
-            let resp = self
-                .http
-                .get(&url)
-                .header("apikey", &self.service_role_key)
-                .header("Authorization", format!("Bearer {}", self.service_role_key))
-                .query(&[("page", page.to_string()), ("per_page", "100".to_string())])
-                .send()
-                .await?;
-            let data = Self::parse_json_response(resp).await?;
-            let users: Vec<AuthUserRecord> = if data.is_array() {
-                serde_json::from_value(data)?
-            } else {
-                serde_json::from_value(data["users"].clone()).unwrap_or_default()
-            };
-
-            if let Some(user) = users
-                .iter()
-                .find(|user| user.email.as_deref().map(str::to_lowercase) == Some(target.clone()))
-            {
-                return Ok(Some(user.clone()));
-            }
-
-            if users.len() < 100 {
-                break;
-            }
-        }
-
-        Ok(None)
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthSession {
-    pub access_token: Option<String>,
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_in: Option<i64>,
     pub user: AuthUserRecord,
 }
 

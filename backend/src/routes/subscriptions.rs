@@ -2,6 +2,7 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{eq, normalize_id_alias, order, select_all, value_str},
+    security,
     state::AppState,
 };
 use axum::{
@@ -93,8 +94,20 @@ async fn my_subscriptions(
 
 async fn business_subscription(
     State(state): State<Arc<AppState>>,
+    auth_user: AuthUser,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let business_id = security::validate_uuid_id(&business_id, "business ID")?;
+    let business = state
+        .db
+        .supabase
+        .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
+        .await?
+        .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
+    if value_str(&business, "owner_id") != auth_user.id && auth_user.role != "admin" {
+        return Err(AppError::Forbidden("Not the business owner".into()));
+    }
+
     let row = state
         .db
         .supabase
@@ -128,6 +141,7 @@ async fn create_subscription(
     let business_id = payload["business_id"]
         .as_str()
         .ok_or_else(|| AppError::BadRequest("business_id required".into()))?;
+    let business_id = security::validate_uuid_id(business_id, "business ID")?;
 
     if !matches!(tier.as_str(), "free" | "starter" | "pro" | "premium") {
         return Err(AppError::BadRequest("Invalid subscription tier".into()));
@@ -139,7 +153,7 @@ async fn create_subscription(
     let business = state
         .db
         .supabase
-        .select_one_json("businesses", &[select_all(), eq("id", business_id)])
+        .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
         .await?
         .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
     if value_str(&business, "owner_id") != auth_user.id && auth_user.role != "admin" {
@@ -156,7 +170,12 @@ async fn create_subscription(
         if state.config.stripe_secret_key.is_empty() {
             return Err(AppError::BadRequest("Stripe not configured".into()));
         }
-        let price_id = price_id_for(&tier, &billing_cycle, payload["price_id"].as_str())?;
+        if auth_user.email.trim().is_empty() {
+            return Err(AppError::BadRequest(
+                "Account email required for billing".into(),
+            ));
+        }
+        let price_id = price_id_for(&tier, &billing_cycle)?;
         let stripe_result = crate::services::stripe::create_subscription(
             &state.config.stripe_secret_key,
             &auth_user.email,
@@ -186,7 +205,7 @@ async fn create_subscription(
             "subscriptions",
             &[
                 eq("user_id", &auth_user.id),
-                eq("business_id", business_id),
+                eq("business_id", &business_id),
                 eq("status", "active"),
             ],
             json!({ "status": "canceled", "updated_at": now.to_rfc3339() }),
@@ -273,11 +292,7 @@ async fn cancel_subscription(
     Ok(Json(json!({ "message": "Subscription cancelled" })))
 }
 
-fn price_id_for(tier: &str, billing_cycle: &str, explicit: Option<&str>) -> Result<String> {
-    if let Some(value) = explicit.filter(|value| !value.trim().is_empty()) {
-        return Ok(value.to_string());
-    }
-
+fn price_id_for(tier: &str, billing_cycle: &str) -> Result<String> {
     let key = format!(
         "STRIPE_PRICE_{}_{}",
         tier.to_ascii_uppercase(),

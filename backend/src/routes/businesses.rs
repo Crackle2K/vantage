@@ -61,6 +61,7 @@ async fn get_business(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let id = security::validate_uuid_id(&id, "business ID")?;
     let row = find_business(&state, &id).await?;
     Ok(Json(normalize_business(row)))
 }
@@ -134,6 +135,7 @@ async fn update_business(
     Path(id): Path<String>,
     Json(payload): Json<BusinessUpdate>,
 ) -> Result<impl IntoResponse> {
+    let id = security::validate_uuid_id(&id, "business ID")?;
     let existing = find_business(&state, &id).await?;
     ensure_business_owner(&existing, &auth_user)?;
 
@@ -192,6 +194,7 @@ async fn update_business_profile(
     Path(id): Path<String>,
     Json(payload): Json<Value>,
 ) -> Result<impl IntoResponse> {
+    let id = security::validate_uuid_id(&id, "business ID")?;
     let existing = find_business(&state, &id).await?;
     ensure_business_owner(&existing, &auth_user)?;
 
@@ -231,6 +234,7 @@ async fn delete_business(
     auth_user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let id = security::validate_uuid_id(&id, "business ID")?;
     let existing = find_business(&state, &id).await?;
     ensure_business_owner(&existing, &auth_user)?;
 
@@ -341,6 +345,10 @@ async fn query_businesses(
     params: &BusinessSearchQuery,
     limit_value: i64,
 ) -> Result<Vec<Value>> {
+    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
+        security::validate_lat_lng(lat, lng)?;
+    }
+
     let mut query: QueryParams = vec![
         select_all(),
         limit(if params.lat.is_some() && params.lng.is_some() {
@@ -355,7 +363,10 @@ async fn query_businesses(
         query.push(eq("category", security::sanitize_text(category, 80)));
     }
     if let Some(owner_id) = params.owner_id.as_ref().filter(|value| !value.is_empty()) {
-        query.push(eq("owner_id", security::sanitize_text(owner_id, 120)));
+        query.push(eq(
+            "owner_id",
+            security::validate_uuid_id(owner_id, "owner ID")?,
+        ));
     }
     if params.verified_only.unwrap_or(false) {
         query.push(is_true("is_verified"));
@@ -422,6 +433,7 @@ async fn query_businesses(
 }
 
 async fn find_business(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "business ID")?;
     state
         .db
         .supabase

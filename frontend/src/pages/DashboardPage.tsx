@@ -100,9 +100,15 @@ export default function DashboardPage() {
       return
     }
 
-    const startIso = new Date(eventStart).toISOString()
-    const endIso = new Date(eventEnd).toISOString()
-    if (!startIso || !endIso || new Date(endIso) <= new Date(startIso)) {
+    const startDate = new Date(eventStart)
+    const endDate = new Date(eventEnd)
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      setEventError('Add valid start and end times.')
+      return
+    }
+    const startIso = startDate.toISOString()
+    const endIso = endDate.toISOString()
+    if (endDate <= startDate) {
       setEventError('End time must be after start time.')
       return
     }

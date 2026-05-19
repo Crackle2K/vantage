@@ -41,6 +41,7 @@ async fn list_business_reviews(
     Path(business_id): Path<String>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse> {
+    let business_id = security::validate_uuid_id(&business_id, "business ID")?;
     let query: QueryParams = vec![
         select_all(),
         eq("business_id", business_id),
@@ -82,14 +83,12 @@ async fn create_review(
     Json(payload): Json<ReviewCreate>,
 ) -> Result<impl IntoResponse> {
     validate_rating(payload.rating)?;
+    let business_id = security::validate_uuid_id(&payload.business_id, "business ID")?;
 
     let business = state
         .db
         .supabase
-        .select_one_json(
-            "businesses",
-            &[select_all(), eq("id", &payload.business_id)],
-        )
+        .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
         .await?;
     if business.is_none() {
         return Err(AppError::NotFound("Business not found".into()));
@@ -102,7 +101,7 @@ async fn create_review(
             "reviews",
             &[
                 select_all(),
-                eq("business_id", &payload.business_id),
+                eq("business_id", &business_id),
                 eq("user_id", &auth_user.id),
             ],
         )
@@ -115,9 +114,9 @@ async fn create_review(
 
     let now = Utc::now().to_rfc3339();
     let mut body = Map::new();
-    body.insert("business_id".into(), json!(payload.business_id));
+    body.insert("business_id".into(), json!(business_id));
     body.insert("user_id".into(), json!(auth_user.id));
-    body.insert("user_name".into(), json!(auth_user.email));
+    body.insert("user_name".into(), json!(auth_user.display_name()));
     body.insert("rating".into(), json!(payload.rating));
     body.insert(
         "comment".into(),
@@ -137,7 +136,7 @@ async fn create_review(
         .insert_json("reviews", Value::Object(body))
         .await?;
 
-    update_business_rating(&state, &payload.business_id).await?;
+    update_business_rating(&state, &business_id).await?;
 
     Ok((StatusCode::CREATED, Json(normalize_review(created))))
 }
@@ -208,6 +207,7 @@ async fn delete_review(
 }
 
 async fn find_review(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "review ID")?;
     state
         .db
         .supabase

@@ -1,6 +1,6 @@
 # Vantage Performance Checklist
 
-Audited: May 18, 2026  
+Audited: May 19, 2026  
 Stack: React 19 + Vite + Rust Axum + Supabase + Vercel Serverless
 
 ## Completed In Current Baseline
@@ -10,6 +10,15 @@ Stack: React 19 + Vite + Rust Axum + Supabase + Vercel Serverless
 - [x] Added request timeout to the Supabase HTTP client.
 - [x] Added frontend route-level lazy loading.
 - [x] Added frontend GET response cache and in-flight request de-duping.
+- [x] Added cache-generation and auth-session guards to prevent stale in-flight
+  GET responses from restoring old auth/data state after mutations.
+- [x] Replaced full-row comment counting with PostgREST exact count headers.
+- [x] Added radius filtering for activity pulse and owner event reads.
+- [x] Removed Vantage-owned JWT minting; protected routes now verify
+  Supabase-signed access tokens and refresh through Supabase Auth.
+- [x] Tightened public data exposure for profiles, claims, subscriptions,
+  reviews, and activity display names.
+- [x] Added SPA catch-all routing so unknown client routes do not render blank.
 - [x] Split Vite vendor chunks for React, router, GSAP, Google OAuth, icons, and UI.
 - [x] Verified production frontend build.
 - [x] Verified backend workspace compile.

@@ -2,6 +2,7 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{eq, normalize_business, order, q, select_all, value_str},
+    security,
     state::AppState,
 };
 use axum::{
@@ -63,6 +64,7 @@ async fn save_business(
     auth_user: AuthUser,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let business_id = security::validate_uuid_id(&business_id, "business ID")?;
     let business = state
         .db
         .supabase
@@ -107,6 +109,7 @@ async fn unsave_business(
     auth_user: AuthUser,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let business_id = security::validate_uuid_id(&business_id, "business ID")?;
     state
         .db
         .supabase

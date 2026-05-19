@@ -5,7 +5,7 @@
  * persistence; this context exposes the user object and auth actions.
  */
 
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { api } from '../api';
 import type { User } from '../types';
 
@@ -22,7 +22,7 @@ interface AuthContextType {
     recaptchaAction: string
   ) => Promise<{ error: string | null }>;
   signInWithGoogle: (credential: string) => Promise<{ error: string | null }>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
   setUser: (user: User | null) => void;
   isAuthenticated: boolean;
 }
@@ -33,7 +33,7 @@ const AuthContext = createContext<AuthContextType>({
   signIn: async () => ({ error: null }),
   signUp: async () => ({ error: null }),
   signInWithGoogle: async () => ({ error: null }),
-  signOut: () => {},
+  signOut: async () => {},
   setUser: () => {},
   isAuthenticated: false,
 });
@@ -63,15 +63,23 @@ export const useAuth = () => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const sessionEpoch = useRef(0);
 
   const fetchUser = useCallback(async () => {
+    const epoch = sessionEpoch.current;
     try {
       const userData = await api.getMe();
-      setUser(userData);
+      if (sessionEpoch.current === epoch) {
+        setUser(userData);
+      }
     } catch {
-      setUser(null);
+      if (sessionEpoch.current === epoch) {
+        setUser(null);
+      }
     } finally {
-      setLoading(false);
+      if (sessionEpoch.current === epoch) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -82,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     try {
       const userData = await api.login(email, password);
+      sessionEpoch.current += 1;
       setUser(userData);
       return { error: null };
     } catch (err) {
@@ -99,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ) => {
     try {
       const userData = await api.register(name, email, password, role, recaptchaToken, recaptchaAction);
+      sessionEpoch.current += 1;
       setUser(userData);
       return { error: null };
     } catch (err) {
@@ -109,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = useCallback(async (credential: string) => {
     try {
       const userData = await api.googleAuth(credential);
+      sessionEpoch.current += 1;
       setUser(userData);
       return { error: null };
     } catch (err) {
@@ -117,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    sessionEpoch.current += 1;
     // Call backend logout endpoint to clear httpOnly cookie
     try {
       await api.logout();

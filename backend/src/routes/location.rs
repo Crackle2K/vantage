@@ -1,5 +1,6 @@
 use crate::{
     errors::{AppError, Result},
+    security,
     state::AppState,
 };
 use axum::{
@@ -26,11 +27,16 @@ async fn reverse_geocode(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ReverseGeoParams>,
 ) -> Result<impl IntoResponse> {
+    security::validate_lat_lng(params.lat, params.lng)?;
+
     if state.config.google_api_key.is_empty() {
+        let label = format!("{:.4}, {:.4}", params.lat, params.lng);
         return Ok(Json(json!({
-            "formatted_address": format!("{:.4}, {:.4}", params.lat, params.lng),
+            "formatted_address": label,
             "city": null,
             "state": null,
+            "region": null,
+            "label": label,
         })));
     }
 
@@ -49,7 +55,7 @@ async fn reverse_geocode(
     let results = resp["results"].as_array().cloned().unwrap_or_default();
     if results.is_empty() {
         return Ok(Json(
-            json!({ "formatted_address": null, "city": null, "state": null }),
+            json!({ "formatted_address": null, "city": null, "state": null, "region": null, "label": format!("{:.4}, {:.4}", params.lat, params.lng) }),
         ));
     }
 
@@ -65,11 +71,19 @@ async fn reverse_geocode(
         .unwrap_or_default();
     let city = find_component(&components, "locality");
     let state_name = find_component(&components, "administrative_area_level_1");
+    let label = match (&city, &state_name) {
+        (Some(city), Some(region)) => format!("{}, {}", city, region),
+        (Some(city), None) => city.clone(),
+        (None, Some(region)) => region.clone(),
+        (None, None) => formatted.clone(),
+    };
 
     Ok(Json(json!({
         "formatted_address": formatted,
         "city": city,
         "state": state_name,
+        "region": state_name,
+        "label": label,
         "lat": params.lat,
         "lng": params.lng,
     })))

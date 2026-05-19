@@ -99,8 +99,8 @@ export function Header() {
     }
   }, [isLandingPageRoute])
 
-  const handleSignOut = () => {
-    signOut()
+  const handleSignOut = async () => {
+    await signOut()
     setSideMenuOpen(false)
     navigate('/')
   }

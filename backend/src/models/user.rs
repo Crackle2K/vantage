@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -84,12 +85,15 @@ pub struct Token {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TokenClaims {
+pub struct SupabaseJwtClaims {
     pub sub: String,
-    pub email: String,
-    pub role: String,
+    pub email: Option<String>,
     pub exp: i64,
-    pub iat: i64,
+    pub iat: Option<i64>,
+    #[serde(default)]
+    pub app_metadata: Value,
+    #[serde(default)]
+    pub user_metadata: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

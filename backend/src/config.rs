@@ -2,16 +2,11 @@ use std::env;
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    // JWT
-    pub secret_key: String,
-    pub algorithm: String,
-    pub access_token_expire_minutes: i64,
+    // Auth session cookies
     pub refresh_token_expire_days: i64,
 
     // Google
     pub google_api_key: String,
-    pub google_client_id: String,
-    pub google_client_secret: String,
 
     // reCAPTCHA Enterprise
     pub recaptcha_project_id: String,
@@ -49,24 +44,13 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
-        let secret_key =
-            env::var("SECRET_KEY").expect("SECRET_KEY environment variable must be set");
-
         Config {
-            secret_key,
-            algorithm: env::var("ALGORITHM").unwrap_or_else(|_| "HS256".into()),
-            access_token_expire_minutes: env::var("ACCESS_TOKEN_EXPIRE_MINUTES")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(30),
             refresh_token_expire_days: env::var("REFRESH_TOKEN_EXPIRE_DAYS")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(7),
 
             google_api_key: env::var("GOOGLE_API_KEY").unwrap_or_default(),
-            google_client_id: env::var("GOOGLE_CLIENT_ID").unwrap_or_default(),
-            google_client_secret: env::var("GOOGLE_CLIENT_SECRET").unwrap_or_default(),
 
             recaptcha_project_id: env::var("RECAPTCHA_ENTERPRISE_PROJECT_ID").unwrap_or_default(),
             recaptcha_api_key: env::var("RECAPTCHA_ENTERPRISE_API_KEY").unwrap_or_default(),
@@ -121,6 +105,16 @@ impl Config {
         self.environment == "production"
     }
 
+    pub fn validate(&self) -> anyhow::Result<()> {
+        require_configured("SUPABASE_URL", &self.supabase_url)?;
+        require_configured("SUPABASE_SERVICE_ROLE_KEY", &self.supabase_service_role_key)?;
+        require_configured("SUPABASE_JWT_SECRET", &self.supabase_jwt_secret)?;
+        if self.refresh_token_expire_days <= 0 {
+            anyhow::bail!("REFRESH_TOKEN_EXPIRE_DAYS must be greater than zero");
+        }
+        Ok(())
+    }
+
     pub fn recaptcha_enabled(&self) -> bool {
         !self.recaptcha_project_id.is_empty()
             && !self.recaptcha_api_key.is_empty()
@@ -143,6 +137,13 @@ impl Config {
         }
         origins
     }
+}
+
+fn require_configured(name: &str, value: &str) -> anyhow::Result<()> {
+    if value.trim().is_empty() {
+        anyhow::bail!("{} environment variable must be set", name);
+    }
+    Ok(())
 }
 
 fn normalized_environment() -> String {

@@ -51,6 +51,7 @@ const API_URL = resolveApiUrl();
 const GET_CACHE_TTL_MS = 15_000;
 const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
 const inflightRequests = new Map<string, Promise<unknown>>();
+let cacheGeneration = 0;
 
 type ApiUser = Partial<User> & {
   id?: string;
@@ -178,14 +179,17 @@ async function request<T>(path: string, init: RequestInit | undefined, fallback:
       return inflight as Promise<T>;
     }
   } else {
+    cacheGeneration += 1;
     responseCache.clear();
+    inflightRequests.clear();
   }
 
+  const requestGeneration = cacheGeneration;
   const fetchPromise = (async () => {
     const response = await fetch(buildApiUrl(path), { ...init, credentials: 'include' });
     if (!response.ok) await throwApiError(response, fallback);
     const data = await response.json() as T;
-    if (method === 'GET') {
+    if (method === 'GET' && requestGeneration === cacheGeneration) {
       responseCache.set(cacheKey, { expiresAt: Date.now() + GET_CACHE_TTL_MS, data });
     }
     return data;
@@ -557,6 +561,7 @@ export const api = {
     try {
       response = await fetch(buildApiUrl(`/explore/lanes?${params}`), {
         headers: getAuthHeaders(),
+        credentials: 'include',
       });
     } catch {
       response = await fetch(buildApiUrl(`/explore/lanes?${params}`), { credentials: 'include' });

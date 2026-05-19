@@ -73,14 +73,12 @@ pub struct Subscription {
 pub struct SubscriptionCreate {
     pub tier: SubscriptionTier,
     pub business_id: Option<String>,
-    pub price_id: String,
     pub payment_method_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SubscriptionUpdate {
     pub tier: Option<SubscriptionTier>,
-    pub price_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

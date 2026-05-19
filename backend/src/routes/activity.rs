@@ -15,7 +15,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -44,6 +44,9 @@ struct FeedParams {
     page: Option<i64>,
     page_size: Option<i64>,
     business_id: Option<String>,
+    lat: Option<f64>,
+    lng: Option<f64>,
+    radius: Option<f64>,
 }
 
 async fn get_feed(
@@ -66,7 +69,10 @@ async fn get_feed(
         .as_ref()
         .filter(|value| !value.is_empty())
     {
-        query.push(eq("business_id", business_id));
+        query.push(eq(
+            "business_id",
+            security::validate_uuid_id(business_id, "business ID")?,
+        ));
     }
 
     let mut rows = state
@@ -138,16 +144,19 @@ async fn check_in(
         .await?;
 
     let title = if is_geo_verified {
-        format!("{} checked in with location verification", auth_user.email)
+        format!(
+            "{} checked in with location verification",
+            auth_user.display_name()
+        )
     } else {
-        format!("{} checked in", auth_user.email)
+        format!("{} checked in", auth_user.display_name())
     };
     insert_activity(
         &state,
         json!({
             "activity_type": "checkin",
             "user_id": auth_user.id,
-            "user_name": auth_user.email,
+            "user_name": auth_user.display_name(),
             "business_id": business_id,
             "business_name": value_str(&business, "name"),
             "business_category": value_str(&business, "category"),
@@ -177,6 +186,7 @@ async fn get_credibility(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let user_id = security::validate_uuid_id(&user_id, "user ID")?;
     credibility_response(&state, &user_id).await.map(Json)
 }
 
@@ -230,6 +240,7 @@ async fn get_comments(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let id = security::validate_uuid_id(&id, "activity ID")?;
     let comments = state
         .db
         .supabase
@@ -273,7 +284,7 @@ async fn add_comment(
             json!({
                 "activity_id": id,
                 "user_id": auth_user.id,
-                "user_name": auth_user.email,
+                "user_name": auth_user.display_name(),
                 "content": content,
                 "created_at": now,
             }),
@@ -329,7 +340,7 @@ async fn create_feed_post(
         json!({
             "activity_type": "user_post",
             "user_id": auth_user.id,
-            "user_name": auth_user.email,
+            "user_name": auth_user.display_name(),
             "business_id": business.as_ref().map(|row| value_str(row, "id")),
             "business_name": business.as_ref().map(|row| value_str(row, "name")).unwrap_or("Community"),
             "business_category": business.as_ref().map(|row| value_str(row, "category")),
@@ -350,6 +361,11 @@ async fn get_activity_pulse(
     State(state): State<Arc<AppState>>,
     Query(params): Query<FeedParams>,
 ) -> Result<impl IntoResponse> {
+    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
+        security::validate_lat_lng(lat, lng)?;
+    }
+
+    let limit_value = params.limit.unwrap_or(10).clamp(1, 30);
     let rows = state
         .db
         .supabase
@@ -358,34 +374,59 @@ async fn get_activity_pulse(
             &[
                 select_all(),
                 order("created_at.desc"),
-                limit(params.limit.unwrap_or(10).clamp(1, 30)),
+                limit(limit_value * 3),
             ],
         )
-        .await?
-        .into_iter()
-        .map(|row| {
-            json!({
-                "id": value_str(&row, "id"),
-                "type": value_str(&row, "activity_type"),
-                "summary": value_str(&row, "title"),
-                "detail": value_str(&row, "description"),
-                "timestamp": value_str(&row, "created_at"),
-                "business": {
-                    "business_id": value_str(&row, "business_id"),
-                    "name": value_str(&row, "business_name"),
-                    "category": value_str(&row, "business_category"),
-                }
-            })
-        })
-        .collect::<Vec<_>>();
+        .await?;
 
-    Ok(Json(json!({ "items": rows })))
+    let mut items = Vec::new();
+    for row in rows {
+        let business_id = value_str(&row, "business_id").to_string();
+        let business = if business_id.is_empty() {
+            None
+        } else {
+            find_business(&state, &business_id).await.ok()
+        };
+
+        if let (Some(lat), Some(lng), Some(business)) = (params.lat, params.lng, business.as_ref())
+        {
+            let Some((biz_lat, biz_lng)) = business_lat_lng(business) else {
+                continue;
+            };
+            let radius = params.radius.unwrap_or(5.0).clamp(0.1, 150.0);
+            let distance = crate::services::geo_service::haversine_km(lat, lng, biz_lat, biz_lng);
+            if distance > radius {
+                continue;
+            }
+        }
+
+        items.push(json!({
+            "id": value_str(&row, "id"),
+            "type": value_str(&row, "activity_type"),
+            "summary": value_str(&row, "title"),
+            "detail": value_str(&row, "description"),
+            "timestamp": value_str(&row, "created_at"),
+            "business": {
+                "business_id": value_str(&row, "business_id"),
+                "name": business.as_ref().map(|item| value_str(item, "name")).unwrap_or_else(|| value_str(&row, "business_name")),
+                "category": business.as_ref().map(|item| value_str(item, "category")).unwrap_or_else(|| value_str(&row, "business_category")),
+                "image_url": business.as_ref().and_then(|item| item.get("primary_image_url").or_else(|| item.get("image_url"))).cloned().unwrap_or(Value::Null),
+            }
+        }));
+
+        if items.len() >= limit_value as usize {
+            break;
+        }
+    }
+
+    Ok(Json(json!({ "items": items })))
 }
 
 async fn get_business_activity(
     State(state): State<Arc<AppState>>,
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let business_id = security::validate_uuid_id(&business_id, "business ID")?;
     let checkins = state
         .db
         .supabase
@@ -442,17 +483,28 @@ async fn list_owner_events(
     State(state): State<Arc<AppState>>,
     Query(params): Query<EventParams>,
 ) -> Result<impl IntoResponse> {
+    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
+        security::validate_lat_lng(lat, lng)?;
+    }
+
     let mut query = vec![
         select_all(),
         order("start_time.asc"),
-        limit(params.limit.unwrap_or(20).clamp(1, 100)),
+        limit(if params.lat.is_some() && params.lng.is_some() {
+            params.limit.unwrap_or(20).clamp(1, 100) * 3
+        } else {
+            params.limit.unwrap_or(20).clamp(1, 100)
+        }),
     ];
     if let Some(business_id) = params
         .business_id
         .as_ref()
         .filter(|value| !value.is_empty())
     {
-        query.push(eq("business_id", business_id));
+        query.push(eq(
+            "business_id",
+            security::validate_uuid_id(business_id, "business ID")?,
+        ));
     }
 
     let mut events = state
@@ -471,6 +523,19 @@ async fn list_owner_events(
 
     for event in &mut events {
         if let Ok(business) = find_business(&state, value_str(event, "business_id")).await {
+            if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
+                let Some((biz_lat, biz_lng)) = business_lat_lng(&business) else {
+                    event["__exclude"] = json!(true);
+                    continue;
+                };
+                let radius = params.radius.unwrap_or(5.0).clamp(0.1, 150.0);
+                let distance =
+                    crate::services::geo_service::haversine_km(lat, lng, biz_lat, biz_lng);
+                if distance > radius {
+                    event["__exclude"] = json!(true);
+                    continue;
+                }
+            }
             event["business_name"] = json!(value_str(&business, "name"));
             event["business_category"] = json!(value_str(&business, "category"));
             event["business_image_url"] = business
@@ -480,6 +545,8 @@ async fn list_owner_events(
                 .unwrap_or(Value::Null);
         }
     }
+    events.retain(|event| !event["__exclude"].as_bool().unwrap_or(false));
+    events.truncate(params.limit.unwrap_or(20).clamp(1, 100) as usize);
 
     Ok(Json(events))
 }
@@ -505,6 +572,13 @@ async fn create_owner_event(
     let end_time = payload["end_time"]
         .as_str()
         .ok_or_else(|| AppError::BadRequest("end_time required".into()))?;
+    let start_time = parse_event_time("start_time", start_time)?;
+    let end_time = parse_event_time("end_time", end_time)?;
+    if end_time <= start_time {
+        return Err(AppError::BadRequest(
+            "end_time must be after start_time".into(),
+        ));
+    }
     let image_url = security::normalize_url(payload["image_url"].as_str(), 500, true)?;
 
     let event = state
@@ -517,8 +591,8 @@ async fn create_owner_event(
                 "owner_id": auth_user.id,
                 "title": security::sanitize_text(title, 160),
                 "description": security::sanitize_text(description, 1000),
-                "start_time": start_time,
-                "end_time": end_time,
+                "start_time": start_time.to_rfc3339(),
+                "end_time": end_time.to_rfc3339(),
                 "image_url": image_url,
                 "created_at": Utc::now().to_rfc3339(),
                 "updated_at": Utc::now().to_rfc3339(),
@@ -531,7 +605,7 @@ async fn create_owner_event(
         json!({
             "activity_type": "event_created",
             "user_id": auth_user.id,
-            "user_name": auth_user.email,
+            "user_name": auth_user.display_name(),
             "business_id": business_id,
             "business_name": value_str(&business, "name"),
             "business_category": value_str(&business, "category"),
@@ -574,7 +648,7 @@ async fn create_business_activity_post(
         json!({
             "activity_type": "owner_post",
             "user_id": auth_user.id,
-            "user_name": auth_user.email,
+            "user_name": auth_user.display_name(),
             "business_id": business_id,
             "business_name": value_str(&business, "name"),
             "business_category": value_str(&business, "category"),
@@ -636,6 +710,7 @@ async fn credibility_response(state: &AppState, user_id: &str) -> Result<Value> 
 }
 
 async fn find_business(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "business ID")?;
     state
         .db
         .supabase
@@ -645,6 +720,7 @@ async fn find_business(state: &AppState, id: &str) -> Result<Value> {
 }
 
 async fn find_activity(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "activity ID")?;
     state
         .db
         .supabase
@@ -705,4 +781,10 @@ fn normalize_checkin(mut row: Value) -> Value {
         row["confirmed_by"] = json!([]);
     }
     row
+}
+
+fn parse_event_time(label: &str, value: &str) -> Result<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|date| date.with_timezone(&Utc))
+        .map_err(|_| AppError::BadRequest(format!("{} must be an ISO-8601 timestamp", label)))
 }

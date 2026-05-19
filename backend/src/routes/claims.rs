@@ -29,14 +29,21 @@ async fn submit_claim(
     auth_user: AuthUser,
     Json(payload): Json<Value>,
 ) -> Result<impl IntoResponse> {
+    if auth_user.role != "business_owner" && auth_user.role != "admin" {
+        return Err(AppError::Forbidden(
+            "Business owner account required".into(),
+        ));
+    }
+
     let business_id = payload["business_id"]
         .as_str()
         .ok_or_else(|| AppError::BadRequest("business_id required".into()))?;
+    let business_id = security::validate_uuid_id(business_id, "business ID")?;
 
     let business = state
         .db
         .supabase
-        .select_one_json("businesses", &[q("select", "id"), eq("id", business_id)])
+        .select_one_json("businesses", &[q("select", "id"), eq("id", &business_id)])
         .await?;
     if business.is_none() {
         return Err(AppError::NotFound("Business not found".into()));
@@ -49,7 +56,7 @@ async fn submit_claim(
             "claims",
             &[
                 select_all(),
-                eq("business_id", business_id),
+                eq("business_id", &business_id),
                 eq("user_id", &auth_user.id),
                 eq("status", "pending"),
             ],
@@ -105,9 +112,11 @@ async fn submit_claim(
 
 async fn get_claim(
     State(state): State<Arc<AppState>>,
+    auth_user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let claim = find_claim(&state, &id).await?;
+    ensure_claim_access(&claim, &auth_user)?;
     Ok(Json(normalize_id_alias(claim)))
 }
 
@@ -200,12 +209,20 @@ async fn review_claim(
 }
 
 async fn find_claim(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "claim ID")?;
     state
         .db
         .supabase
         .select_one_json("claims", &[select_all(), eq("id", id)])
         .await?
         .ok_or_else(|| AppError::NotFound("Claim not found".into()))
+}
+
+fn ensure_claim_access(claim: &Value, auth_user: &AuthUser) -> Result<()> {
+    if auth_user.role == "admin" || value_str(claim, "user_id") == auth_user.id {
+        return Ok(());
+    }
+    Err(AppError::Forbidden("Not your claim".into()))
 }
 
 fn insert_optional(body: &mut Map<String, Value>, key: &str, value: Option<&str>, max: usize) {

@@ -1,21 +1,19 @@
 use crate::{
     db::supabase::AuthUserRecord,
     errors::{AppError, Result},
-    jwt,
-    middleware::auth::AuthUser,
-    models::user::{GoogleAuthRequest, TokenClaims, UserCreate, UserLogin, UserRole},
+    middleware::auth::{self, AuthUser},
+    models::user::{GoogleAuthRequest, UserCreate, UserLogin, UserRole},
     security,
     services::recaptcha,
     state::AppState,
 };
 use axum::{
     extract::State,
-    http::{header::SET_COOKIE, StatusCode},
+    http::{header::SET_COOKIE, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
-use chrono::Utc;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use validator::Validate;
@@ -59,7 +57,7 @@ async fn register(
     let role = registration_role(payload.role.as_ref())?;
 
     let full_name = security::sanitize_optional_text(payload.full_name.as_deref(), 120);
-    let user = state
+    state
         .db
         .supabase
         .auth_create_user(
@@ -79,14 +77,20 @@ async fn register(
         .await
         .map_err(map_supabase_auth_error)?;
 
-    let token = create_jwt(&user.id, &email, role, &state.config)?;
-    let cookie = session_cookie(&token, &state.config);
+    let session = state
+        .db
+        .supabase
+        .auth_login_password(&email, &payload.password)
+        .await
+        .map_err(map_supabase_auth_error)?;
+    let user =
+        ensure_auth_defaults(&state, session.user.clone(), Some(role), Some("email")).await?;
 
     Ok((
         StatusCode::CREATED,
-        [(SET_COOKIE, cookie)],
+        session_headers(&session, &state.config),
         Json(json!({
-            "access_token": token,
+            "access_token": session.access_token,
             "token_type": "bearer",
             "user": public_user_json(&user),
         })),
@@ -108,30 +112,21 @@ async fn login(
         .auth_login_password(&email, &payload.password)
         .await
         .map_err(|_| AppError::Unauthorized("Invalid credentials".into()))?;
-    let role = metadata_str(&session.user.app_metadata, "role").unwrap_or("customer");
-
-    let token = create_jwt(&session.user.id, &email, role, &state.config)?;
-    let cookie = session_cookie(&token, &state.config);
+    let user = ensure_auth_defaults(&state, session.user.clone(), None, Some("email")).await?;
 
     Ok((
-        [(SET_COOKIE, cookie)],
+        session_headers(&session, &state.config),
         Json(json!({
-            "access_token": token,
+            "access_token": session.access_token,
             "token_type": "bearer",
-            "supabase_access_token": session.access_token,
-            "user": public_user_json(&session.user),
+            "user": public_user_json(&user),
         })),
     ))
 }
 
 async fn logout(State(state): State<Arc<AppState>>) -> Response {
-    let is_prod = state.config.is_production();
-    let clear = format!(
-        "session=; Path=/; HttpOnly; SameSite=Lax{}; Max-Age=0",
-        if is_prod { "; Secure" } else { "" }
-    );
     (
-        [(SET_COOKIE, clear)],
+        clear_session_headers(&state.config),
         Json(json!({ "message": "Logged out successfully" })),
     )
         .into_response()
@@ -152,142 +147,102 @@ async fn google_auth(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<GoogleAuthRequest>,
 ) -> Result<impl IntoResponse> {
-    // Verify Google ID token
-    let google_user = verify_google_token(&payload.credential, &state.config.google_client_id)
-        .await
-        .map_err(|e| AppError::Unauthorized(format!("Invalid Google token: {}", e)))?;
+    let credential = payload.credential.trim();
+    if credential.is_empty() {
+        return Err(AppError::BadRequest("Google credential required".into()));
+    }
 
-    let email = google_user["email"]
-        .as_str()
-        .ok_or_else(|| AppError::BadRequest("No email in Google token".into()))?
-        .to_lowercase();
-    let name = google_user["name"].as_str().map(String::from);
-    let picture = google_user["picture"].as_str().map(String::from);
-    let google_id = google_user["sub"].as_str().unwrap_or("").to_string();
-
-    let user = if let Some(existing) = state
+    let session = state
         .db
         .supabase
-        .auth_find_user_by_email(&email)
+        .auth_login_id_token("google", credential)
         .await
-        .map_err(map_supabase_auth_error)?
-    {
-        let mut user_metadata = existing.user_metadata.clone();
-        merge_metadata(
-            &mut user_metadata,
-            json!({
-                "full_name": name,
-                "name": name,
-                "profile_picture": picture,
-                "google_id": google_id,
-                "auth_provider": "google",
-            }),
-        );
-        state
-            .db
-            .supabase
-            .auth_update_user(
-                &existing.id,
-                json!({
-                    "user_metadata": user_metadata,
-                }),
-            )
-            .await
-            .map_err(map_supabase_auth_error)?
-    } else {
-        let generated_password =
-            format!("{}-{}-OAuth!", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
-        state
-            .db
-            .supabase
-            .auth_create_user(
-                &email,
-                &generated_password,
-                json!({
-                    "full_name": name,
-                    "name": name,
-                    "profile_picture": picture,
-                    "google_id": google_id,
-                    "auth_provider": "google",
-                }),
-                json!({
-                    "role": "customer",
-                    "subscription_tier": "FREE",
-                }),
-            )
-            .await
-            .map_err(map_supabase_auth_error)?
-    };
-
-    let role = metadata_str(&user.app_metadata, "role").unwrap_or("customer");
-    let token = create_jwt(&user.id, &email, role, &state.config)?;
-    let cookie = session_cookie(&token, &state.config);
+        .map_err(map_supabase_auth_error)?;
+    let user = ensure_auth_defaults(
+        &state,
+        session.user.clone(),
+        Some("customer"),
+        Some("google"),
+    )
+    .await?;
 
     Ok((
-        [(SET_COOKIE, cookie)],
+        session_headers(&session, &state.config),
         Json(json!({
-            "access_token": token,
+            "access_token": session.access_token,
             "token_type": "bearer",
             "user": public_user_json(&user),
         })),
     ))
 }
 
-fn session_cookie(token: &str, config: &crate::config::Config) -> String {
-    let is_prod = config.is_production();
-    let expires = 60 * 60 * 24 * config.refresh_token_expire_days;
-    format!(
-        "session={}; Path=/; HttpOnly; SameSite=Lax{}; Max-Age={}",
-        token,
-        if is_prod { "; Secure" } else { "" },
-        expires
-    )
-}
-
-fn create_jwt(
-    user_id: &str,
-    email: &str,
-    role: &str,
+fn session_headers(
+    session: &crate::db::supabase::AuthSession,
     config: &crate::config::Config,
-) -> Result<String> {
-    let now = Utc::now().timestamp();
-    let claims = TokenClaims {
-        sub: user_id.to_string(),
-        email: email.to_string(),
-        role: role.to_string(),
-        exp: now + config.access_token_expire_minutes * 60,
-        iat: now,
-    };
-    jwt::encode(&claims, &config.secret_key)
+) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    for cookie in auth::session_cookies(session, config) {
+        if let Ok(value) = HeaderValue::from_str(&cookie) {
+            headers.append(SET_COOKIE, value);
+        }
+    }
+    headers
 }
 
-async fn verify_google_token(credential: &str, client_id: &str) -> anyhow::Result<Value> {
-    if client_id.trim().is_empty() {
-        anyhow::bail!("Google OAuth is not configured");
+fn clear_session_headers(config: &crate::config::Config) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    for cookie in auth::clear_session_cookies(config) {
+        if let Ok(value) = HeaderValue::from_str(&cookie) {
+            headers.append(SET_COOKIE, value);
+        }
+    }
+    headers
+}
+
+async fn ensure_auth_defaults(
+    state: &AppState,
+    user: AuthUserRecord,
+    default_role: Option<&str>,
+    auth_provider: Option<&str>,
+) -> Result<AuthUserRecord> {
+    let mut app_metadata = user.app_metadata.clone();
+    let mut user_metadata = user.user_metadata.clone();
+    let mut changed = false;
+
+    if metadata_str(&app_metadata, "role").is_none() {
+        merge_metadata(
+            &mut app_metadata,
+            json!({ "role": default_role.unwrap_or("customer") }),
+        );
+        changed = true;
+    }
+    if metadata_str(&app_metadata, "subscription_tier").is_none() {
+        merge_metadata(&mut app_metadata, json!({ "subscription_tier": "FREE" }));
+        changed = true;
+    }
+    if let Some(provider) = auth_provider {
+        if metadata_str(&user_metadata, "auth_provider") != Some(provider) {
+            merge_metadata(&mut user_metadata, json!({ "auth_provider": provider }));
+            changed = true;
+        }
     }
 
-    // Decode the JWT without verification first to get kid, then verify with Google certs
-    // For simplicity, use Google's tokeninfo endpoint for validation
-    let url = format!(
-        "https://oauth2.googleapis.com/tokeninfo?id_token={}",
-        urlencoding::encode(credential)
-    );
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()?;
-    let resp = client.get(&url).send().await?;
-    if !resp.status().is_success() {
-        anyhow::bail!("Google token verification failed");
-    }
-    let info: Value = resp.json().await?;
-
-    // Verify audience
-    let aud = info["aud"].as_str().unwrap_or("");
-    if !client_id.is_empty() && aud != client_id {
-        anyhow::bail!("Token audience mismatch");
+    if !changed {
+        return Ok(user);
     }
 
-    Ok(info)
+    state
+        .db
+        .supabase
+        .auth_update_user(
+            &user.id,
+            json!({
+                "app_metadata": app_metadata,
+                "user_metadata": user_metadata,
+            }),
+        )
+        .await
+        .map_err(map_supabase_auth_error)
 }
 
 fn registration_role(role: Option<&UserRole>) -> Result<&'static str> {

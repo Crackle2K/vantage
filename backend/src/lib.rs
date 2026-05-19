@@ -29,6 +29,7 @@ pub async fn build_app() -> anyhow::Result<Router> {
     }
 
     let config = Config::from_env();
+    config.validate()?;
     let db = Database::new(&config).await;
     let state = Arc::new(AppState {
         config: config.clone(),
@@ -123,16 +124,16 @@ async fn health_check(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
 
     fn test_config() -> Config {
         Config {
-            secret_key: "test-secret-key-minimum-32-characters".into(),
-            algorithm: "HS256".into(),
-            access_token_expire_minutes: 30,
             refresh_token_expire_days: 7,
             google_api_key: String::new(),
-            google_client_id: String::new(),
-            google_client_secret: String::new(),
             recaptcha_project_id: String::new(),
             recaptcha_api_key: String::new(),
             recaptcha_site_key: String::new(),
@@ -147,7 +148,7 @@ mod tests {
             rate_limit_per_minute: 120,
             supabase_url: "https://example.supabase.co".into(),
             supabase_service_role_key: "test-service-role-key".into(),
-            supabase_jwt_secret: String::new(),
+            supabase_jwt_secret: "test-supabase-jwt-secret".into(),
             stripe_secret_key: String::new(),
             stripe_publishable_key: String::new(),
             stripe_webhook_secret: String::new(),
@@ -157,17 +158,64 @@ mod tests {
         }
     }
 
-    #[test]
-    fn router_builds_without_route_conflicts() {
+    fn test_state() -> Arc<AppState> {
         let config = test_config();
-        let state = Arc::new(AppState {
+        Arc::new(AppState {
             db: Database {
                 supabase: db::SupabaseClient::new(&config),
             },
             config,
             rate_limiter: security::RateLimiter::new(),
-        });
+        })
+    }
 
-        let _router = build_router(state);
+    #[test]
+    fn router_builds_without_route_conflicts() {
+        let _router = build_router(test_state());
+    }
+
+    #[tokio::test]
+    async fn invalid_business_id_returns_bad_request_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/businesses/not-a-uuid")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn invalid_reverse_geocode_coordinates_return_bad_request() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/location/reverse?lat=999&lng=0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn invalid_public_user_id_returns_bad_request_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/users/not-a-uuid")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }

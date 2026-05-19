@@ -68,7 +68,6 @@ Add these values in `backend/.env` (see `backend/.env.example`):
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_JWT_SECRET`
-- `SECRET_KEY`
 
 Apply the database/storage/realtime schema from:
 
@@ -79,7 +78,10 @@ scripts/supabase/migrations/202605180001_supabase_single_source.sql
 ### Notes
 
 - The active deployment backend is Rust + Axum via `api/index.rs`.
-- User auth and account profile storage use Supabase Auth metadata through the Rust API.
+- User auth uses Supabase Auth access/refresh tokens in httpOnly cookies; profile
+  data lives in Supabase Auth metadata.
+- Google sign-in requires the Google provider to be enabled in Supabase Auth;
+  the frontend still needs `VITE_GOOGLE_CLIENT_ID` for the Google button.
 - Business, discovery, activity, saved businesses, claims, deals, reviews, and subscriptions use Supabase PostgREST through the Rust API.
 - Business claiming does not contribute to Live Visibility Score; this invariant remains enforced in `backend/src/services/visibility_score.rs`.
 

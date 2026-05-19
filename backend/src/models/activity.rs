@@ -76,15 +76,29 @@ pub struct UserCredibility {
 
 pub fn credibility_tier(score: f64) -> &'static str {
     match score as u32 {
-        0..=9 => "NEW",
-        10..=24 => "REGULAR",
-        25..=49 => "TRUSTED",
-        50..=79 => "LOCAL_GUIDE",
-        _ => "AMBASSADOR",
+        0..=9 => "new",
+        10..=24 => "regular",
+        25..=49 => "trusted",
+        50..=79 => "local_guide",
+        _ => "ambassador",
     }
 }
 
 pub fn calculate_credibility_score(check_ins: i32, reviews: i32, helpful: i32) -> f64 {
     let base = (check_ins as f64 * 1.0) + (reviews as f64 * 3.0) + (helpful as f64 * 0.5);
     base.min(100.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::credibility_tier;
+
+    #[test]
+    fn credibility_tiers_match_frontend_contract() {
+        assert_eq!(credibility_tier(0.0), "new");
+        assert_eq!(credibility_tier(10.0), "regular");
+        assert_eq!(credibility_tier(25.0), "trusted");
+        assert_eq!(credibility_tier(50.0), "local_guide");
+        assert_eq!(credibility_tier(80.0), "ambassador");
+    }
 }

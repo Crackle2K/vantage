@@ -94,6 +94,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/account" element={<AccountPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/user/:userId" element={<UserProfilePage />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
           </RootLayout>

@@ -131,6 +131,13 @@ pub fn validate_lat_lng(lat: f64, lng: f64) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_uuid_id(value: &str, label: &str) -> Result<String> {
+    let cleaned = sanitize_text(value, 80);
+    let parsed = uuid::Uuid::parse_str(&cleaned)
+        .map_err(|_| AppError::BadRequest(format!("Invalid {}", label)))?;
+    Ok(parsed.to_string())
+}
+
 pub fn validate_password_strength(password: &str) -> Result<()> {
     if password.len() < 8 || password.len() > 128 {
         return Err(AppError::BadRequest(
@@ -246,7 +253,7 @@ fn truncate_chars(value: &str, max_len: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_url, sanitize_text, validate_password_strength};
+    use super::{normalize_url, sanitize_text, validate_password_strength, validate_uuid_id};
 
     #[test]
     fn sanitize_text_strips_html_and_control_chars() {
@@ -267,5 +274,11 @@ mod tests {
     fn password_strength_requires_complexity() {
         assert!(validate_password_strength("password").is_err());
         assert!(validate_password_strength("Passw0rd!").is_ok());
+    }
+
+    #[test]
+    fn uuid_validation_rejects_bad_ids() {
+        assert!(validate_uuid_id("not-a-uuid", "business ID").is_err());
+        assert!(validate_uuid_id("550e8400-e29b-41d4-a716-446655440000", "business ID").is_ok());
     }
 }

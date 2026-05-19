@@ -38,8 +38,12 @@ function readLocalItems(): Business[] {
 }
 
 function saveLocal(ids: string[], items: Business[]) {
-  localStorage.setItem(LOCAL_IDS_KEY, JSON.stringify(ids));
-  localStorage.setItem(LOCAL_ITEMS_KEY, JSON.stringify(items));
+  try {
+    localStorage.setItem(LOCAL_IDS_KEY, JSON.stringify(ids));
+    localStorage.setItem(LOCAL_ITEMS_KEY, JSON.stringify(items));
+  } catch {
+    // Local persistence is best-effort for guest saves.
+  }
 }
 
 function applyLocalState(setSavedIds: (ids: string[]) => void, setSavedBusinesses: (items: Business[]) => void) {
