@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api'
+import { logger } from '@/lib/logger'
 import type { ActivityFeedItem, UserCredibility, CredibilityTier, ActivityComment } from '../types'
 import {
   MapPin, Star, Tag, Calendar, Award, TrendingUp,
@@ -113,7 +114,7 @@ export default function ActivityFeedPage() {
       }
       setPage(pageNum)
     } catch (err) {
-      console.error('Failed to load feed:', err)
+      logger.error('Failed to load feed:', err)
       if (pageNum === 1) {
         setError('Unable to load activity feed. The server may be unavailable.')
         setFeedItems([])
@@ -133,7 +134,7 @@ export default function ActivityFeedPage() {
       const comments = await api.getActivityComments(activityId)
       setCommentsByItem(prev => ({ ...prev, [activityId]: comments }))
     } catch (err) {
-      console.error('Failed to load comments:', err)
+      logger.error('Failed to load comments:', err)
       setActionError('Could not load comments right now.')
     }
   }, [])
@@ -161,7 +162,7 @@ export default function ActivityFeedPage() {
           : item
       )))
     } catch (err) {
-      console.error('Failed to toggle like:', err)
+      logger.error('Failed to toggle like:', err)
       setActionError(err instanceof Error ? err.message : 'Could not update like.')
     } finally {
       setPendingLikes(prev => {
@@ -212,7 +213,7 @@ export default function ActivityFeedPage() {
           : item
       )))
     } catch (err) {
-      console.error('Failed to add comment:', err)
+      logger.error('Failed to add comment:', err)
       setActionError(err instanceof Error ? err.message : 'Could not post comment.')
     } finally {
       setPendingComments(prev => {

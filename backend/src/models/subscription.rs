@@ -61,6 +61,7 @@ pub struct Subscription {
     pub tier: SubscriptionTier,
     pub stripe_customer_id: Option<String>,
     pub stripe_subscription_id: Option<String>,
+    pub stripe_checkout_session_id: Option<String>,
     pub stripe_price_id: Option<String>,
     pub status: String,
     pub current_period_start: Option<DateTime<Utc>>,

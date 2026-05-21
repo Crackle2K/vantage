@@ -9,11 +9,16 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams, Link } from 'react-router-dom'
 import { api } from '../api'
+import { logger } from '@/lib/logger'
 import type { Business } from '../types'
 import {
   Store, Search, CheckCircle2, AlertCircle, ArrowRight,
   MapPin, Shield, FileText, Phone, Mail, User
 } from 'lucide-react'
+
+function isClaimableBusiness(business: Business) {
+  return !business.is_claimed && !business.owner_id?.trim()
+}
 
 export default function ClaimBusinessPage() {
   const { user, isAuthenticated } = useAuth()
@@ -37,8 +42,13 @@ export default function ClaimBusinessPage() {
   useEffect(() => {
     if (preselectedId) {
       api.getBusiness(preselectedId).then(biz => {
-        setSelectedBiz(biz)
-        setStep('claim')
+        if (isClaimableBusiness(biz)) {
+          setSelectedBiz(biz)
+          setStep('claim')
+        } else {
+          setError('This business is already managed and cannot be claimed.')
+          setStep('search')
+        }
       }).catch(() => setStep('search'))
     }
   }, [preselectedId])
@@ -50,19 +60,23 @@ export default function ClaimBusinessPage() {
       const results = await api.getBusinesses(undefined, undefined, searchQuery)
       
       const sorted = results.sort((a, b) => {
-        if (a.is_claimed && !b.is_claimed) return 1
-        if (!a.is_claimed && b.is_claimed) return -1
+        if (!isClaimableBusiness(a) && isClaimableBusiness(b)) return 1
+        if (isClaimableBusiness(a) && !isClaimableBusiness(b)) return -1
         return 0
       })
       setBusinesses(sorted)
     } catch (err) {
-      console.error('Search failed:', err)
+      logger.error('Search failed:', err)
     } finally {
       setSearching(false)
     }
   }
 
   const handleSelectBusiness = (biz: Business) => {
+    if (!isClaimableBusiness(biz)) {
+      setError('This business is already managed and cannot be claimed.')
+      return
+    }
     setSelectedBiz(biz)
     setStep('claim')
     setError('')
@@ -204,48 +218,53 @@ export default function ClaimBusinessPage() {
               </button>
             </div>
             <div className="space-y-3">
-              {businesses.map(biz => (
-                <div
-                  key={biz.id || biz._id}
-                  className="card-surface rounded-xl p-4 flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => !biz.is_claimed && handleSelectBusiness(biz)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-light to-brand flex items-center justify-center">
-                      <span className="text-body font-bold text-brand-on-primary">{biz.name[0]}</span>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-ui font-semibold text-[hsl(var(--foreground))]">{biz.name}</h3>
-                        {biz.is_claimed && (
-                          <span className="flex items-center gap-1 text-caption text-success">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Claimed
+              {businesses.map(biz => {
+                const claimable = isClaimableBusiness(biz)
+                return (
+                  <div
+                    key={biz.id || biz._id}
+                    className={`card-surface rounded-xl p-4 flex items-center justify-between transition-shadow ${
+                      claimable ? 'hover:shadow-md cursor-pointer' : 'opacity-75'
+                    }`}
+                    onClick={() => handleSelectBusiness(biz)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-light to-brand flex items-center justify-center">
+                        <span className="text-body font-bold text-brand-on-primary">{biz.name[0]}</span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-ui font-semibold text-[hsl(var(--foreground))]">{biz.name}</h3>
+                          {!claimable && (
+                            <span className="flex items-center gap-1 text-caption text-success">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Managed
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-caption text-[hsl(var(--muted-foreground))] capitalize">{biz.category}</span>
+                          <span className="text-caption text-[hsl(var(--muted-foreground))] flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {biz.address}
                           </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-caption text-[hsl(var(--muted-foreground))] capitalize">{biz.category}</span>
-                        <span className="text-caption text-[hsl(var(--muted-foreground))] flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {biz.address}
-                        </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {!biz.is_claimed ? (
-                    <button className="flex items-center gap-1 px-4 py-2 rounded-lg text-caption font-medium gradient-primary text-on-primary shadow-md shadow-brand/20">
-                      Claim
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
-                  ) : (
-                    <span className="text-caption text-[hsl(var(--muted-foreground))] px-3 py-1.5 rounded-lg bg-[hsl(var(--secondary))]">
-                      Already claimed
-                    </span>
-                  )}
-                </div>
-              ))}
+                    {claimable ? (
+                      <button className="flex items-center gap-1 px-4 py-2 rounded-lg text-caption font-medium gradient-primary text-on-primary shadow-md shadow-brand/20">
+                        Claim
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    ) : (
+                      <span className="text-caption text-[hsl(var(--muted-foreground))] px-3 py-1.5 rounded-lg bg-[hsl(var(--secondary))]">
+                        Already managed
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
 
               {businesses.length === 0 && searchQuery && !searching && (
                 <div className="text-center py-10">

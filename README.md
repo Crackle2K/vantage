@@ -69,20 +69,49 @@ Add these values in `backend/.env` (see `backend/.env.example`):
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_JWT_SECRET`
 
-Apply the database/storage/realtime schema from:
+Feature-specific integrations use the optional Google, reCAPTCHA, and Stripe
+values shown in `backend/.env.example`. In production, set `FRONTEND_URL` or
+`PRODUCTION_URL` to the public frontend origin so Stripe Checkout redirects do
+not fall back to localhost.
+
+Apply the database/storage/realtime schema migrations in order:
 
 ```bash
 scripts/supabase/migrations/202605180001_supabase_single_source.sql
+scripts/supabase/migrations/202605200001_postgis_geo_queries.sql
+scripts/supabase/migrations/202605200002_review_summary_rpc.sql
+scripts/supabase/migrations/202605200003_deal_status_consistency.sql
 ```
 
 ### Notes
 
 - The active deployment backend is Rust + Axum via `api/index.rs`.
 - User auth uses Supabase Auth access/refresh tokens in httpOnly cookies; profile
-  data lives in Supabase Auth metadata.
+  data lives in Supabase Auth metadata. Auth responses return user data only and
+  do not expose bearer tokens to frontend JavaScript.
 - Google sign-in requires the Google provider to be enabled in Supabase Auth;
   the frontend still needs `VITE_GOOGLE_CLIENT_ID` for the Google button.
 - Business, discovery, activity, saved businesses, claims, deals, reviews, and subscriptions use Supabase PostgREST through the Rust API.
+- Subscription cancellation is business-scoped when needed and auth
+  subscription metadata is recomputed from the user's highest active business
+  subscription.
+- Owner workflows authorize against `businesses.owner_id`; claims cannot take
+  over already claimed or owner-linked listings.
+- Owners cannot review their own listings; review aggregates are platform-owned
+  and update as part of review writes through a Supabase RPC after migrations
+  are applied.
+- Business deal badges are platform-owned; `businesses.has_deals` is refreshed
+  by a Supabase RPC/trigger after deal writes and has an API fallback before
+  deployments apply the migration.
+- Check-ins require either no coordinates or a complete valid latitude/longitude
+  pair.
+- Paid subscriptions start Stripe Checkout Sessions as `pending_checkout` and
+  activate only after signed Stripe webhook payment confirmation.
+- Discovery, nearby business search, activity pulse, and owner-event radius
+  reads use PostGIS RPCs after the geo migration is applied, with backend
+  compatibility fallbacks before deployment migration.
+- Static Vercel responses and backend API responses apply security headers;
+  private user, owner, and billing API responses use `no-store` cache-control.
 - Business claiming does not contribute to Live Visibility Score; this invariant remains enforced in `backend/src/services/visibility_score.rs`.
 
 ## Next Steps
@@ -90,4 +119,7 @@ scripts/supabase/migrations/202605180001_supabase_single_source.sql
 - Consolidate repeated frontend view helpers into shared utilities.
 - Add route-level backend tests for ranking, auth guards, and saved/check-in flows.
 - Add stronger moderation tooling for fake reviews and coordinated engagement.
+- Smoke-test signed Stripe webhook delivery against the deployed
+  `/api/stripe/webhook` endpoint.
+- Link or pull Vercel project settings locally before rerunning `npx vercel build`.
 - Separate demo-only operational scripts from production deployment docs more aggressively.

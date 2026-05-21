@@ -6,7 +6,8 @@
  * cookies) for session-based authentication.
  */
 
-import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, TierInfo, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse, ReverseGeocodeResponse } from './types';
+import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, SubscriptionCancel, TierInfo, StripeCheckoutResponse, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse, ReverseGeocodeResponse } from './types';
+import { logger } from './lib/logger';
 
 /**
  * Determines the API base URL based on environment variables and the
@@ -62,8 +63,6 @@ type ApiUser = Partial<User> & {
 };
 
 type AuthResponse = {
-  access_token?: string;
-  token_type?: string;
   user: ApiUser;
 };
 
@@ -112,7 +111,7 @@ async function throwApiError(response: Response, fallback: string): Promise<neve
   } catch {
     // Ignore non-JSON error bodies and use the HTTP fallback message.
   }
-  console.error('API request failed', {
+  logger.error('API request failed', {
     endpoint: response.url,
     status: response.status,
     body: responseBody,
@@ -385,12 +384,20 @@ export const api = {
     return request<TierInfo[]>('/subscriptions/tiers', undefined, 'Failed to fetch tiers');
   },
 
-  async createSubscription(sub: SubscriptionCreate): Promise<Subscription | { checkout_url: string; checkout_session_id?: string; status: string }> {
-    return request<Subscription | { checkout_url: string; checkout_session_id?: string; status: string }>('/subscriptions', {
+  async createSubscription(sub: SubscriptionCreate): Promise<Subscription | StripeCheckoutResponse> {
+    return request<Subscription | StripeCheckoutResponse>('/subscriptions', {
       method: 'POST',
       headers: getAuthHeaders(true),
       body: JSON.stringify(sub),
     }, 'Failed to create subscription');
+  },
+
+  async cancelSubscription(cancel: SubscriptionCancel = {}): Promise<{ message: string }> {
+    return request<{ message: string }>('/subscriptions/cancel', {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(cancel),
+    }, 'Failed to cancel subscription');
   },
 
   async getMySubscriptions(): Promise<Subscription[]> {

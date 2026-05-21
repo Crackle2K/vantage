@@ -1,7 +1,7 @@
 use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
-    routes::support::{eq, normalize_id_alias, order, q, select_all, value_str},
+    routes::support::{eq, normalize_id_alias, order, select_all, value_str},
     security,
     state::AppState,
 };
@@ -43,11 +43,10 @@ async fn submit_claim(
     let business = state
         .db
         .supabase
-        .select_one_json("businesses", &[q("select", "id"), eq("id", &business_id)])
+        .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
         .await?;
-    if business.is_none() {
-        return Err(AppError::NotFound("Business not found".into()));
-    }
+    let business = business.ok_or_else(|| AppError::NotFound("Business not found".into()))?;
+    ensure_business_open_for_claim_submission(&business)?;
 
     let existing = state
         .db
@@ -167,6 +166,31 @@ async fn review_claim(
     };
 
     let existing = find_claim(&state, &id).await?;
+    if normalized_status == "verified" {
+        let business_id = value_str(&existing, "business_id").to_string();
+        let claimant_id = value_str(&existing, "user_id").to_string();
+        let business = state
+            .db
+            .supabase
+            .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
+            .await?
+            .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
+        ensure_business_can_be_verified_for_claim(&business, &claimant_id)?;
+        state
+            .db
+            .supabase
+            .update_json(
+                "businesses",
+                &[eq("id", &business_id)],
+                json!({
+                    "is_claimed": true,
+                    "owner_id": claimant_id,
+                    "updated_at": Utc::now().to_rfc3339(),
+                }),
+            )
+            .await?;
+    }
+
     let now = Utc::now().to_rfc3339();
     let updated = state
         .db
@@ -183,23 +207,6 @@ async fn review_claim(
             }),
         )
         .await?;
-
-    if normalized_status == "verified" {
-        state
-            .db
-            .supabase
-            .update_json(
-                "businesses",
-                &[eq("id", value_str(&existing, "business_id"))],
-                json!({
-                    "is_claimed": true,
-                    "owner_id": value_str(&existing, "user_id"),
-                    "updated_at": Utc::now().to_rfc3339(),
-                }),
-            )
-            .await
-            .ok();
-    }
 
     let claim = updated
         .into_iter()
@@ -225,8 +232,82 @@ fn ensure_claim_access(claim: &Value, auth_user: &AuthUser) -> Result<()> {
     Err(AppError::Forbidden("Not your claim".into()))
 }
 
+fn ensure_business_open_for_claim_submission(business: &Value) -> Result<()> {
+    if business["is_claimed"].as_bool().unwrap_or(false)
+        || !value_str(business, "owner_id").is_empty()
+    {
+        return Err(AppError::Conflict("Business is already claimed".into()));
+    }
+    Ok(())
+}
+
+fn ensure_business_can_be_verified_for_claim(business: &Value, claimant_id: &str) -> Result<()> {
+    let owner_id = value_str(business, "owner_id");
+    if !owner_id.is_empty() && owner_id != claimant_id {
+        return Err(AppError::Conflict("Business is already claimed".into()));
+    }
+    Ok(())
+}
+
 fn insert_optional(body: &mut Map<String, Value>, key: &str, value: Option<&str>, max: usize) {
     if let Some(value) = value.and_then(|raw| security::sanitize_optional_text(Some(raw), max)) {
         body.insert(key.into(), json!(value));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claim_submission_rejects_already_claimed_businesses() {
+        let claimed = json!({
+            "is_claimed": true,
+            "owner_id": "550e8400-e29b-41d4-a716-446655440000"
+        });
+        let owner_linked = json!({
+            "is_claimed": false,
+            "owner_id": "550e8400-e29b-41d4-a716-446655440000"
+        });
+        let unclaimed = json!({
+            "is_claimed": false,
+            "owner_id": Value::Null
+        });
+
+        assert!(ensure_business_open_for_claim_submission(&claimed).is_err());
+        assert!(ensure_business_open_for_claim_submission(&owner_linked).is_err());
+        assert!(ensure_business_open_for_claim_submission(&unclaimed).is_ok());
+    }
+
+    #[test]
+    fn claim_verification_rejects_takeover_of_owner_linked_business() {
+        let owned_by_other = json!({
+            "is_claimed": false,
+            "owner_id": "550e8400-e29b-41d4-a716-446655440000"
+        });
+        let owned_by_same = json!({
+            "is_claimed": true,
+            "owner_id": "660e8400-e29b-41d4-a716-446655440000"
+        });
+        let unclaimed = json!({
+            "is_claimed": false,
+            "owner_id": Value::Null
+        });
+
+        assert!(ensure_business_can_be_verified_for_claim(
+            &owned_by_other,
+            "660e8400-e29b-41d4-a716-446655440000"
+        )
+        .is_err());
+        assert!(ensure_business_can_be_verified_for_claim(
+            &owned_by_same,
+            "660e8400-e29b-41d4-a716-446655440000"
+        )
+        .is_ok());
+        assert!(ensure_business_can_be_verified_for_claim(
+            &unclaimed,
+            "660e8400-e29b-41d4-a716-446655440000"
+        )
+        .is_ok());
     }
 }

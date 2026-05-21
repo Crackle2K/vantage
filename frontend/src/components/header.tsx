@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import { cn } from '@/lib/utils'
 
 /**
@@ -39,21 +40,11 @@ export function Header() {
 
   const isLandingPageRoute = location.pathname === '/'
 
+  useBodyScrollLock(sideMenuOpen)
+
   useEffect(() => {
     setSideMenuOpen(false)
   }, [location.pathname])
-
-  useEffect(() => {
-    if (sideMenuOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [sideMenuOpen])
 
   useEffect(() => {
     if (!isLandingPageRoute) {

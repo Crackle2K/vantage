@@ -131,6 +131,19 @@ pub fn validate_lat_lng(lat: f64, lng: f64) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_optional_lat_lng(lat: Option<f64>, lng: Option<f64>) -> Result<Option<(f64, f64)>> {
+    match (lat, lng) {
+        (Some(lat), Some(lng)) => {
+            validate_lat_lng(lat, lng)?;
+            Ok(Some((lat, lng)))
+        }
+        (None, None) => Ok(None),
+        _ => Err(AppError::BadRequest(
+            "latitude and longitude must be provided together".into(),
+        )),
+    }
+}
+
 pub fn validate_uuid_id(value: &str, label: &str) -> Result<String> {
     let cleaned = sanitize_text(value, 80);
     let parsed = uuid::Uuid::parse_str(&cleaned)
@@ -253,7 +266,10 @@ fn truncate_chars(value: &str, max_len: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_url, sanitize_text, validate_password_strength, validate_uuid_id};
+    use super::{
+        normalize_url, sanitize_text, validate_optional_lat_lng, validate_password_strength,
+        validate_uuid_id,
+    };
 
     #[test]
     fn sanitize_text_strips_html_and_control_chars() {
@@ -280,5 +296,16 @@ mod tests {
     fn uuid_validation_rejects_bad_ids() {
         assert!(validate_uuid_id("not-a-uuid", "business ID").is_err());
         assert!(validate_uuid_id("550e8400-e29b-41d4-a716-446655440000", "business ID").is_ok());
+    }
+
+    #[test]
+    fn optional_coordinates_must_be_complete_and_valid() {
+        assert_eq!(validate_optional_lat_lng(None, None).unwrap(), None);
+        assert_eq!(
+            validate_optional_lat_lng(Some(43.65), Some(-79.38)).unwrap(),
+            Some((43.65, -79.38))
+        );
+        assert!(validate_optional_lat_lng(Some(43.65), None).is_err());
+        assert!(validate_optional_lat_lng(Some(91.0), Some(-79.38)).is_err());
     }
 }

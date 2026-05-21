@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api'
+import { logger } from '@/lib/logger'
 import type { TierInfo, Business, Subscription } from '../types'
 import { Check, Zap, Crown, Star, ArrowRight, Sparkles } from 'lucide-react'
 
@@ -58,13 +59,13 @@ export default function PricingPage() {
           api.getBusinesses(undefined, undefined, undefined, user.id),
           api.getMySubscriptions(),
         ])
-        const owned = businesses.filter(b => b.is_claimed)
+        const owned = businesses.filter(b => b.owner_id === user.id)
         setMyBusinesses(owned)
         setMySubscriptions(subs)
         if (owned.length > 0) setSelectedBusiness(owned[0].id || owned[0]._id || '')
       }
     } catch (err) {
-      console.error('Failed to load pricing data:', err)
+      logger.error('Failed to load pricing data:', err)
     } finally {
       setLoading(false)
     }
@@ -93,10 +94,15 @@ export default function PricingPage() {
       return
     }
 
-    if (tier === 'free') return
-
     setSubscribing(true)
     try {
+      if (tier === 'free') {
+        await api.cancelSubscription({ business_id: selectedBusiness })
+        setSuccess('Successfully switched to the Free plan.')
+        loadData()
+        return
+      }
+
       const result = await api.createSubscription({
         business_id: selectedBusiness,
         tier: tier as 'starter' | 'pro' | 'premium',
@@ -212,6 +218,14 @@ export default function PricingPage() {
             const price = billingCycle === 'monthly' ? tier.monthly_price : tier.yearly_price
             const monthlyEquivalent = billingCycle === 'yearly' ? price / 12 : price
             const delayClass = ['motion-delay-0', 'motion-delay-100', 'motion-delay-200', 'motion-delay-300'][index] || 'motion-delay-300'
+            const isFreeTier = tier.monthly_price === 0
+            const buttonLabel = isCurrent
+              ? 'Current Plan'
+              : isFreeTier && currentTier !== 'free'
+                ? 'Switch to Free'
+                : isFreeTier
+                  ? 'Get Started Free'
+                  : 'Subscribe'
 
             return (
               <div
@@ -269,12 +283,12 @@ export default function PricingPage() {
                       ? 'gradient-primary text-on-primary shadow-lg shadow-brand/25 hover:shadow-xl hover:shadow-brand/30'
                       : isCurrent
                         ? 'bg-success text-success cursor-default'
-                        : tier.monthly_price === 0
+                        : isFreeTier
                           ? 'bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]/80'
                           : 'border border-[hsl(var(--border))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : tier.monthly_price === 0 ? 'Get Started Free' : 'Subscribe'}
+                  {buttonLabel}
                   {!isCurrent && <ArrowRight className="w-4 h-4" />}
                 </button>
               </div>

@@ -1,134 +1,143 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with the Vantage
+repository.
 
 ## Project Overview
 
-Vantage is a trust-first local business discovery app that ranks businesses by verified activity, credibility-weighted reviews, and recency. It is a full-stack app with a React/TypeScript frontend and a FastAPI/Python backend, deployed to Vercel.
+Vantage is a trust-first local business discovery platform. It ranks businesses
+by verified activity, credibility-weighted reviews, recency, and community
+signals via the Live Visibility Score (LVS). Business claiming has zero effect
+on LVS.
 
 ## Commands
 
 ### Backend
 
 ```bash
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/Scripts/activate # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run dev server (from repo root)
-uvicorn backend.main:app --reload
-# Backend runs on http://localhost:8000
+cargo run -p vantage-backend --bin vantage
+cargo check
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
 ```
+
+Backend dev runs on `http://localhost:8000`.
 
 ### Frontend
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
-# Frontend runs on http://localhost:5173
-
-# Lint
 npm run lint
-
-# Build
 npm run build
+npm audit --audit-level=high
 ```
+
+Frontend dev runs on `http://localhost:5173`.
+
+### Deployment Verification
+
+```bash
+npx vercel build
+```
+
+This requires linked local Vercel project settings. If settings are missing,
+run `vercel pull --yes --environment preview` or `vercel build --yes`.
 
 ## Architecture
 
-### Full-Stack Layout
-
-```
+```text
 /
-├── backend/          # FastAPI app (local dev / uvicorn)
-│   ├── main.py       # App factory, CORS, rate limiting, route mounting
-│   ├── config.py     # Settings from .env (JWT, MongoDB, Google APIs, Stripe, Supabase)
-│   ├── database/     # document_store.py (unified async DB layer) + supabase.py client
-│   ├── models/       # Pydantic request/response models
-│   ├── routes/       # FastAPI routers (one file per domain)
-│   └── services/     # Business logic (ranking, geo, Google Places, scoring, payments)
-├── api/
-│   └── index.py      # Thin Vercel serverless wrapper around backend app
-├── data/
-│   └── demo_businesses.json  # Seed data for demo/offline mode
+├── backend/                 # Rust + Axum backend crate
+│   ├── src/lib.rs           # App factory, CORS, middleware, route mounting
+│   ├── src/config.rs        # Environment settings
+│   ├── src/db/supabase.rs   # Supabase PostgREST/Auth client
+│   ├── src/models/          # Rust domain/request models
+│   ├── src/routes/          # Axum route modules
+│   └── src/services/        # LVS, Google, Stripe, geo services
+├── api/index.rs             # Vercel Rust serverless wrapper
 ├── frontend/src/
-│   ├── main.tsx      # React root: GoogleOAuthProvider, Router, AuthContext, ThemeContext
-│   ├── api.ts        # Central fetch client; resolves base URL by environment
-│   ├── pages/        # One component per route
-│   ├── components/   # Shared UI and feature components
-│   ├── contexts/     # AuthContext (JWT + Google OAuth state), ThemeContext
-│   ├── hooks/        # useSavedBusinesses and other custom hooks
-│   ├── lib/          # Shared utilities
-│   └── types/        # TypeScript type definitions
-└── vercel.json       # Routes /api/* → serverless function; SPA fallback
+│   ├── main.tsx             # React root/router/providers
+│   ├── api.ts               # Central fetch client
+│   ├── contexts/            # Auth and theme state
+│   ├── pages/               # Route components
+│   ├── components/          # Shared UI/feature components
+│   ├── hooks/               # Frontend hooks
+│   ├── lib/                 # Shared utilities/logger
+│   └── types.ts             # API/domain TypeScript types
+├── scripts/supabase/migrations/
+└── vercel.json              # /api/* Rust function routing + SPA fallback
 ```
 
-### Backend API Routes
+## Data And Auth
 
-Mounted under `/api/` prefix in `backend/main.py`:
+Supabase is the single source of truth for authentication, relational data,
+storage buckets, realtime publication tables, and user metadata. MongoDB has
+been removed from runtime code and dependencies.
 
-| Router module  | Path prefix          |
+Authoritative migrations are applied in order:
+
+```text
+scripts/supabase/migrations/202605180001_supabase_single_source.sql
+scripts/supabase/migrations/202605200001_postgis_geo_queries.sql
+scripts/supabase/migrations/202605200002_review_summary_rpc.sql
+```
+
+Protected backend routes verify Supabase-signed access tokens from httpOnly
+cookies. Auth JSON responses must not expose bearer tokens to frontend
+JavaScript. Frontend API calls must go through `frontend/src/api.ts`.
+
+## API Surface
+
+Routes are mounted in `backend/src/lib.rs` under `/api`:
+
+| Domain | Routes |
 |---|---|
-| auth           | `/api/auth`          |
-| businesses     | `/api/businesses`    |
-| reviews        | `/api/reviews`       |
-| deals          | `/api/deals`         |
-| claims         | `/api/claims`        |
-| subscriptions  | `/api/subscriptions` |
-| activity       | `/api/activity`      |
-| discovery      | `/api/discovery`     |
-| saved          | `/api/saved`         |
-| users          | `/api/users`         |
-| location       | `/api/location`      |
+| Auth | `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/me`, `/auth/google` |
+| Users | `/users/me`, `/users/me/preferences`, `/users/me/password`, `/users/:id` |
+| Businesses | `/businesses`, `/businesses/nearby`, `/businesses/:id`, `/businesses/:id/profile`, `/photos` |
+| Discovery | `/discover`, `/decide`, `/explore/lanes` |
+| Saved | `/saved`, `/saved/:business_id` |
+| Reviews | `/reviews`, `/reviews/:id`, `/reviews/business/:id`, `/businesses/:id/reviews` |
+| Claims | `/claims`, `/claims/my`, `/claims/:id` |
+| Deals | `/deals`, `/deals/:id`, `/deals/business/:id`, `/businesses/:id/deals` |
+| Subscriptions | `/subscriptions/tiers`, `/subscriptions/my`, `/subscriptions/business/:business_id`, `/subscriptions`, `/subscriptions/cancel`, `/subscriptions/webhook/stripe`, `/stripe/webhook` |
+| Activity | `/feed`, `/activity`, `/checkins`, `/activity/pulse`, `/feed/:id/like`, `/feed/:id/comments`, `/feed/posts`, `/credibility/me`, `/events`, `/businesses/:id/activity` |
+| Location | `/location/reverse` |
 
-### Key Architectural Decisions
+## Invariants
 
-- **Demo mode**: `config.py` exposes `DEMO_MODE` flag; `database/document_store.py` seeds from `data/demo_businesses.json` when enabled. Routes fall back to demo data if Supabase document storage is unreachable (`DatabaseUnavailableError`).
-- **Document store**: `database/document_store.py` is the unified async database layer. It wraps Supabase with a Motor-compatible cursor/aggregation API, making the storage backend swappable without touching route logic.
-- **Supabase**: `database/supabase.py` provides the Supabase client with retry/timeout logic and service-role key auth. User auth, profiles, and password management are backed by Supabase; remaining collections still use MongoDB via Motor.
-- **Ranking**: `services/visibility_score.py` and `services/match_score.py` compute per-business scores used by `routes/discovery.py`.
-- **Google Places**: `services/google_places.py` enriches business data; results are cached in the `geo_cache` MongoDB collection. `services/photo_proxy.py` caches Place photos and serves SVG fallbacks.
-- **Location**: `routes/location.py` exposes `/api/location/reverse` for reverse geocoding via the Google Geocoding API. `services/geo_service.py` provides shared geolocation utilities.
-- **Auth flow**: Frontend stores JWT in context (`AuthContext`). Backend issues JWTs via `routes/auth.py` using PyJWT. Google OAuth is handled both client-side (`@react-oauth/google`) and server-side (`google-auth`). Stripe customer IDs are stored alongside user records for subscription context.
-- **Payments**: `services/stripe_service.py` handles subscription lifecycle with Stripe. `routes/subscriptions.py` exposes the billing API. Subscription models include `customer_id`, `subscription_id`, and `price_id` fields.
-- **Rate limiting**: `slowapi` is configured in `main.py` to throttle endpoints by IP.
-- **Frontend API client**: `frontend/src/api.ts` automatically picks the correct base URL (`localhost:8000` for dev, relative `/api` for Vercel production).
+- Never modify LVS to favor claimed businesses, paid businesses, or ad spend.
+- Never commit `.env` files, API keys, or secrets.
+- Never add Rust dependencies without checking `Cargo.lock`.
+- Use Supabase/PostgREST helpers for data access; do not reintroduce MongoDB or
+  local JWT session storage.
+- Owner workflows authorize with `businesses.owner_id` plus owner/admin role.
+- Owners cannot review their own listings.
+- Paid subscriptions activate only after signed Stripe webhook confirmation.
+- API URLs in components must be resolved through `frontend/src/api.ts`.
+- Applied Supabase migrations should not be edited; add follow-up migrations.
 
-### Services
+## Key Services
 
-| Service file                  | Responsibility                                      |
-|-------------------------------|-----------------------------------------------------|
-| `visibility_score.py`         | Live Visibility Score computation                   |
-| `match_score.py`              | Query-to-business relevance scoring                 |
-| `google_places.py`            | Google Places API enrichment + geo_cache writes     |
-| `photo_proxy.py`              | Place photo caching and SVG fallback generation     |
-| `geo_service.py`              | Geolocation utilities (distance, cell hashing)      |
-| `stripe_service.py`           | Stripe subscription and customer lifecycle          |
-| `local_business_classifier.py`| ML-based business category classification           |
-| `business_metadata.py`        | Metadata normalization (known_for, descriptions)    |
-
-### MongoDB Collections
-
-`users`, `businesses`, `reviews`, `deals`, `claims`, `checkins`, `activity_feed`, `owner_posts`, `credibility`, `subscriptions`, `visits`, `geo_cache`, `api_usage_log`, `saved`
-
-User auth and profiles are now primarily stored in Supabase; the `users` collection retains legacy fields and Stripe metadata.
+| File | Responsibility |
+|---|---|
+| `backend/src/services/visibility_score.rs` | LVS scoring invariant |
+| `backend/src/services/google_places.rs` | Google Places/photo/geocode integration |
+| `backend/src/services/stripe.rs` | Stripe Checkout and subscription calls |
+| `backend/src/routes/discovery.rs` | Discovery, Decide, explore lanes |
+| `backend/src/routes/activity.rs` | Feed, check-ins, comments, events, pulse |
+| `backend/src/routes/subscriptions.rs` | Subscription tiers, checkout, cancellation, webhooks |
 
 ## Commit Conventions
 
-Follow the Conventional Commits format (see `COMMIT.md`):
+Use Conventional Commits:
 
-```
+```text
 <type>(<scope>): <description>
 ```
 
-Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `build`, `chore`
-
-Breaking changes: append `!` to the type or add `BREAKING CHANGE:` footer.
+Common types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `build`,
+`chore`.

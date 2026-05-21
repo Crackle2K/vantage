@@ -92,8 +92,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = await api.login(email, password);
       sessionEpoch.current += 1;
       setUser(userData);
+      setLoading(false);
       return { error: null };
     } catch (err) {
+      setLoading(false);
       return { error: err instanceof Error ? err.message : 'Login failed' };
     }
   }, []);
@@ -110,8 +112,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = await api.register(name, email, password, role, recaptchaToken, recaptchaAction);
       sessionEpoch.current += 1;
       setUser(userData);
+      setLoading(false);
       return { error: null };
     } catch (err) {
+      setLoading(false);
       return { error: err instanceof Error ? err.message : 'Registration failed' };
     }
   }, []);
@@ -121,8 +125,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = await api.googleAuth(credential);
       sessionEpoch.current += 1;
       setUser(userData);
+      setLoading(false);
       return { error: null };
     } catch (err) {
+      setLoading(false);
       return { error: err instanceof Error ? err.message : 'Google sign-in failed' };
     }
   }, []);
@@ -136,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Continue local sign-out even if the network request fails.
     }
     setUser(null);
+    setLoading(false);
   }, []);
 
   const value = useMemo(() => ({

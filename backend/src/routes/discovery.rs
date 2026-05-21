@@ -1,8 +1,8 @@
 use crate::{
     errors::Result,
     routes::support::{
-        business_lat_lng, eq, ilike_or_filter, is_true, limit, normalize_business, offset, order,
-        select_all, QueryParams,
+        business_lat_lng, eq, geo_rpc_unavailable, ilike_or_filter, is_true, limit,
+        normalize_business, offset, order, select_all, unwrap_rpc_items, QueryParams,
     },
     security,
     services::{geo_service, visibility_score},
@@ -103,9 +103,8 @@ async fn explore_lanes(
     State(state): State<Arc<AppState>>,
     Query(params): Query<DiscoverParams>,
 ) -> Result<impl IntoResponse> {
-    let lat = params.lat.unwrap_or(state.config.demo_lat);
-    let lng = params.lng.unwrap_or(state.config.demo_lng);
-    security::validate_lat_lng(lat, lng)?;
+    let (lat, lng) = security::validate_optional_lat_lng(params.lat, params.lng)?
+        .unwrap_or((state.config.demo_lat, state.config.demo_lng));
 
     let lane_specs = [
         ("for_you", "For You", None),
@@ -170,9 +169,7 @@ async fn decide_from_params(state: &AppState, mut params: DiscoverParams) -> Res
 }
 
 async fn discover_rows(state: &AppState, params: &DiscoverParams) -> Result<Vec<Value>> {
-    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
-        security::validate_lat_lng(lat, lng)?;
-    }
+    let has_coordinates = security::validate_optional_lat_lng(params.lat, params.lng)?.is_some();
 
     let limit_value = params.limit.unwrap_or(50).clamp(1, 200);
     let radius_km = params
@@ -181,9 +178,22 @@ async fn discover_rows(state: &AppState, params: &DiscoverParams) -> Result<Vec<
         .unwrap_or(25.0)
         .clamp(0.1, 150.0);
 
+    if has_coordinates {
+        match discover_rows_geo(state, params, limit_value, radius_km).await {
+            Ok(rows) => return Ok(rows),
+            Err(err) if geo_rpc_unavailable(&err.to_string()) => {
+                tracing::warn!(
+                    error = %err,
+                    "PostGIS discovery RPC unavailable; falling back to Rust distance filtering"
+                );
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+
     let mut query: QueryParams = vec![
         select_all(),
-        limit(if params.lat.is_some() && params.lng.is_some() {
+        limit(if has_coordinates {
             limit_value * 3
         } else {
             limit_value
@@ -232,6 +242,100 @@ async fn discover_rows(state: &AppState, params: &DiscoverParams) -> Result<Vec<
         .collect::<Vec<_>>();
 
     match params.sort.as_deref().or(params.sort_mode.as_deref()) {
+        Some("distance") => results.sort_by(|a, b| {
+            a["distance_km"]
+                .as_f64()
+                .unwrap_or(f64::MAX)
+                .partial_cmp(&b["distance_km"].as_f64().unwrap_or(f64::MAX))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+        Some("rating") | Some("most_reviewed") => results.sort_by(|a, b| {
+            let left = (
+                b["rating"].as_f64().unwrap_or(0.0),
+                b["review_count"].as_i64().unwrap_or(0),
+            );
+            let right = (
+                a["rating"].as_f64().unwrap_or(0.0),
+                a["review_count"].as_i64().unwrap_or(0),
+            );
+            left.partial_cmp(&right)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+        Some("newest") => results.sort_by(|a, b| {
+            b["created_at"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(a["created_at"].as_str().unwrap_or(""))
+        }),
+        _ => results.sort_by(|a, b| {
+            b["visibility_score"]
+                .as_f64()
+                .unwrap_or(0.0)
+                .partial_cmp(&a["visibility_score"].as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+    }
+
+    results.truncate(limit_value as usize);
+    Ok(results)
+}
+
+async fn discover_rows_geo(
+    state: &AppState,
+    params: &DiscoverParams,
+    limit_value: i64,
+    radius_km: f64,
+) -> anyhow::Result<Vec<Value>> {
+    let lat = params.lat.expect("validated before geospatial query");
+    let lng = params.lng.expect("validated before geospatial query");
+    let sort = params
+        .sort
+        .as_deref()
+        .or(params.sort_mode.as_deref())
+        .unwrap_or("canonical");
+    let category = params
+        .category
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| security::sanitize_text(value, 80));
+    let search = params
+        .q
+        .as_deref()
+        .or(params.search.as_deref())
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| security::sanitize_text(value, 120));
+
+    let rows = state
+        .db
+        .supabase
+        .rpc_json(
+            "search_businesses_geo",
+            json!({
+                "p_lat": lat,
+                "p_lng": lng,
+                "p_radius_km": radius_km,
+                "p_limit": (limit_value * 3).clamp(1, 600),
+                "p_offset": params.offset.unwrap_or(0).max(0),
+                "p_category": category,
+                "p_search": search,
+                "p_verified_only": params.verified_only.unwrap_or(false),
+                "p_sort": sort,
+            }),
+        )
+        .await?;
+
+    let mut results = unwrap_rpc_items(rows)
+        .into_iter()
+        .map(normalize_business)
+        .map(|mut row| {
+            let score = visibility_score::compute(&row);
+            row["visibility_score"] = json!(score);
+            row["live_visibility_score"] = json!(score);
+            row
+        })
+        .collect::<Vec<_>>();
+
+    match Some(sort) {
         Some("distance") => results.sort_by(|a, b| {
             a["distance_km"]
                 .as_f64()

@@ -3,8 +3,8 @@ use crate::{
     middleware::auth::AuthUser,
     models::business::{BusinessCreate, BusinessSearchQuery, BusinessUpdate},
     routes::support::{
-        business_lat_lng, eq, ilike_or_filter, is_true, limit, normalize_business, offset, order,
-        select_all, value_str, QueryParams,
+        business_lat_lng, eq, geo_rpc_unavailable, ilike_or_filter, is_true, limit,
+        normalize_business, offset, order, select_all, unwrap_rpc_items, value_str, QueryParams,
     },
     security,
     state::AppState,
@@ -71,13 +71,12 @@ async fn create_business(
     auth_user: AuthUser,
     Json(payload): Json<BusinessCreate>,
 ) -> Result<impl IntoResponse> {
+    ensure_business_owner_role(&auth_user)?;
     payload
         .validate()
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
-        security::validate_lat_lng(lat, lng)?;
-    }
+    let coordinates = security::validate_optional_lat_lng(payload.lat, payload.lng)?;
     let website = security::normalize_url(payload.website.as_deref(), 500, false)?;
     let now = Utc::now().to_rfc3339();
 
@@ -113,7 +112,7 @@ async fn create_business(
     if let Some(website) = website {
         body.insert("website".into(), json!(website));
     }
-    if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
+    if let Some((lat, lng)) = coordinates {
         body.insert(
             "location".into(),
             json!({ "type": "Point", "coordinates": [lng, lat] }),
@@ -139,9 +138,7 @@ async fn update_business(
     let existing = find_business(&state, &id).await?;
     ensure_business_owner(&existing, &auth_user)?;
 
-    if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
-        security::validate_lat_lng(lat, lng)?;
-    }
+    let coordinates = security::validate_optional_lat_lng(payload.lat, payload.lng)?;
     let website = security::normalize_url(payload.website.as_deref(), 500, false)?;
 
     let mut body = Map::new();
@@ -168,7 +165,7 @@ async fn update_business(
             serde_json::to_value(hours).unwrap_or(Value::Null),
         );
     }
-    if let (Some(lat), Some(lng)) = (payload.lat, payload.lng) {
+    if let Some((lat, lng)) = coordinates {
         body.insert(
             "location".into(),
             json!({ "type": "Point", "coordinates": [lng, lat] }),
@@ -276,7 +273,7 @@ async fn get_google_place_photo(
     let details =
         crate::services::google_places::get_place_details(&state.config.google_api_key, &place_id)
             .await
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+            .map_err(|_| AppError::BadRequest("Google place details are unavailable".into()))?;
     let photo_ref = details["photos"]
         .as_array()
         .and_then(|photos| photos.first())
@@ -310,9 +307,12 @@ async fn proxy_google_photo(
     )
     .await;
 
-    let response = reqwest::get(&url)
+    let response = crate::services::google_places::google_http_client()
+        .map_err(|_| AppError::Internal("Google HTTP client unavailable".into()))?
+        .get(&url)
+        .send()
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|_| AppError::BadRequest("Photo is unavailable".into()))?;
     if !response.status().is_success() {
         return Err(AppError::BadRequest("Photo is unavailable".into()));
     }
@@ -325,7 +325,7 @@ async fn proxy_google_photo(
     let body: Bytes = response
         .bytes()
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|_| AppError::BadRequest("Photo is unavailable".into()))?;
 
     Ok((
         [
@@ -345,13 +345,24 @@ async fn query_businesses(
     params: &BusinessSearchQuery,
     limit_value: i64,
 ) -> Result<Vec<Value>> {
-    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
-        security::validate_lat_lng(lat, lng)?;
+    let has_coordinates = security::validate_optional_lat_lng(params.lat, params.lng)?.is_some();
+
+    if has_coordinates {
+        match query_businesses_geo(state, params, limit_value).await {
+            Ok(rows) => return Ok(rows),
+            Err(err) if geo_rpc_unavailable(&err.to_string()) => {
+                tracing::warn!(
+                    error = %err,
+                    "PostGIS business search RPC unavailable; falling back to Rust distance filtering"
+                );
+            }
+            Err(err) => return Err(err.into()),
+        }
     }
 
     let mut query: QueryParams = vec![
         select_all(),
-        limit(if params.lat.is_some() && params.lng.is_some() {
+        limit(if has_coordinates {
             limit_value * 3
         } else {
             limit_value
@@ -432,6 +443,76 @@ async fn query_businesses(
     Ok(businesses)
 }
 
+async fn query_businesses_geo(
+    state: &AppState,
+    params: &BusinessSearchQuery,
+    limit_value: i64,
+) -> anyhow::Result<Vec<Value>> {
+    let lat = params.lat.expect("validated before geospatial query");
+    let lng = params.lng.expect("validated before geospatial query");
+    let sort = params
+        .sort
+        .as_deref()
+        .or(params.sort_by.as_deref())
+        .unwrap_or("distance");
+    let category = params
+        .category
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| security::sanitize_text(value, 80));
+    let search = params
+        .q
+        .as_deref()
+        .or(params.search.as_deref())
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| security::sanitize_text(value, 120));
+
+    let rows = state
+        .db
+        .supabase
+        .rpc_json(
+            "search_businesses_geo",
+            json!({
+                "p_lat": lat,
+                "p_lng": lng,
+                "p_radius_km": params.radius_km.or(params.radius).unwrap_or(25.0).clamp(0.1, 150.0),
+                "p_limit": (limit_value * 3).clamp(1, 600),
+                "p_offset": params.offset.unwrap_or(0).max(0),
+                "p_category": category,
+                "p_search": search,
+                "p_verified_only": params.verified_only.unwrap_or(false),
+                "p_sort": sort,
+            }),
+        )
+        .await?;
+
+    let mut businesses = unwrap_rpc_items(rows)
+        .into_iter()
+        .map(normalize_business)
+        .collect::<Vec<_>>();
+
+    match Some(sort) {
+        Some("distance") => businesses.sort_by(|a, b| {
+            a["distance_km"]
+                .as_f64()
+                .unwrap_or(f64::MAX)
+                .partial_cmp(&b["distance_km"].as_f64().unwrap_or(f64::MAX))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+        Some("rating") => businesses.sort_by(|a, b| {
+            b["rating"]
+                .as_f64()
+                .unwrap_or(0.0)
+                .partial_cmp(&a["rating"].as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }),
+        _ => {}
+    }
+
+    businesses.truncate(limit_value as usize);
+    Ok(businesses)
+}
+
 async fn find_business(state: &AppState, id: &str) -> Result<Value> {
     let id = security::validate_uuid_id(id, "business ID")?;
     state
@@ -443,15 +524,52 @@ async fn find_business(state: &AppState, id: &str) -> Result<Value> {
 }
 
 fn ensure_business_owner(row: &Value, auth_user: &AuthUser) -> Result<()> {
+    ensure_business_owner_role(auth_user)?;
+    if auth_user.role == "admin" {
+        return Ok(());
+    }
     let owner_id = value_str(row, "owner_id");
-    if owner_id != auth_user.id && auth_user.role != "admin" {
+    if owner_id != auth_user.id {
         return Err(AppError::Forbidden("Not the business owner".into()));
     }
     Ok(())
 }
 
+fn ensure_business_owner_role(auth_user: &AuthUser) -> Result<()> {
+    if auth_user.role == "business_owner" || auth_user.role == "admin" {
+        return Ok(());
+    }
+    Err(AppError::Forbidden(
+        "Business owner account required".into(),
+    ))
+}
+
 fn insert_optional_text(body: &mut Map<String, Value>, key: &str, value: Option<&str>, max: usize) {
     if let Some(value) = value.and_then(|raw| security::sanitize_optional_text(Some(raw), max)) {
         body.insert(key.into(), json!(value));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn auth_user(role: &str) -> AuthUser {
+        AuthUser {
+            id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            email: "owner@example.com".into(),
+            name: "Owner".into(),
+            role: role.into(),
+        }
+    }
+
+    #[test]
+    fn business_owner_checks_require_owner_role() {
+        let business = json!({
+            "owner_id": "550e8400-e29b-41d4-a716-446655440000"
+        });
+
+        assert!(ensure_business_owner(&business, &auth_user("business_owner")).is_ok());
+        assert!(ensure_business_owner(&business, &auth_user("customer")).is_err());
     }
 }

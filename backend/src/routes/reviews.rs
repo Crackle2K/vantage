@@ -2,7 +2,8 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{
-        eq, limit, normalize_review, offset, order, q, select_all, value_str, QueryParams,
+        eq, limit, normalize_review, offset, order, q, select_all, unwrap_rpc_items, value_str,
+        QueryParams,
     },
     security,
     state::AppState,
@@ -90,9 +91,8 @@ async fn create_review(
         .supabase
         .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
         .await?;
-    if business.is_none() {
-        return Err(AppError::NotFound("Business not found".into()));
-    }
+    let business = business.ok_or_else(|| AppError::NotFound("Business not found".into()))?;
+    ensure_not_owned_business_review(&business, &auth_user)?;
 
     let existing = state
         .db
@@ -157,6 +157,16 @@ async fn update_review(
     if value_str(&existing, "user_id") != auth_user.id {
         return Err(AppError::Forbidden("Not your review".into()));
     }
+    let business = state
+        .db
+        .supabase
+        .select_one_json(
+            "businesses",
+            &[select_all(), eq("id", value_str(&existing, "business_id"))],
+        )
+        .await?
+        .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
+    ensure_not_owned_business_review(&business, &auth_user)?;
 
     let mut body = Map::new();
     body.insert("updated_at".into(), json!(Utc::now().to_rfc3339()));
@@ -217,6 +227,41 @@ async fn find_review(state: &AppState, id: &str) -> Result<Value> {
 }
 
 async fn update_business_rating(state: &AppState, business_id: &str) -> Result<()> {
+    let business_id = security::validate_uuid_id(business_id, "business ID")?;
+    match refresh_business_review_summary(state, &business_id).await {
+        Ok(()) => return Ok(()),
+        Err(err) if review_summary_rpc_unavailable(&err.to_string()) => {
+            tracing::warn!(
+                error = %err,
+                "Review summary RPC unavailable; falling back to API-side aggregate refresh"
+            );
+        }
+        Err(err) => return Err(err.into()),
+    }
+
+    update_business_rating_fallback(state, &business_id).await
+}
+
+async fn refresh_business_review_summary(
+    state: &AppState,
+    business_id: &str,
+) -> anyhow::Result<()> {
+    let rows = state
+        .db
+        .supabase
+        .rpc_json(
+            "refresh_business_review_summary",
+            json!({ "p_business_id": business_id }),
+        )
+        .await?;
+    let updated = unwrap_rpc_items(rows);
+    if updated.is_empty() {
+        anyhow::bail!("Business not found");
+    }
+    Ok(())
+}
+
+async fn update_business_rating_fallback(state: &AppState, business_id: &str) -> Result<()> {
     let reviews = state
         .db
         .supabase
@@ -249,10 +294,16 @@ async fn update_business_rating(state: &AppState, business_id: &str) -> Result<(
                 "updated_at": Utc::now().to_rfc3339(),
             }),
         )
-        .await
-        .ok();
+        .await?;
 
     Ok(())
+}
+
+fn review_summary_rpc_unavailable(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    (lowered.contains("refresh_business_review_summary") && lowered.contains("does not exist"))
+        || lowered.contains("could not find the function")
+        || lowered.contains("schema cache")
 }
 
 fn validate_rating(rating: f64) -> Result<()> {
@@ -262,4 +313,58 @@ fn validate_rating(rating: f64) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+fn ensure_not_owned_business_review(business: &Value, auth_user: &AuthUser) -> Result<()> {
+    if value_str(business, "owner_id") == auth_user.id {
+        return Err(AppError::Forbidden(
+            "Business owners cannot review their own listing".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn auth_user(id: &str) -> AuthUser {
+        AuthUser {
+            id: id.into(),
+            email: "owner@example.com".into(),
+            name: "Owner".into(),
+            role: "business_owner".into(),
+        }
+    }
+
+    #[test]
+    fn review_summary_rpc_unavailable_detects_missing_migration_only() {
+        assert!(review_summary_rpc_unavailable(
+            "Could not find the function public.refresh_business_review_summary in the schema cache"
+        ));
+        assert!(review_summary_rpc_unavailable(
+            "function refresh_business_review_summary(uuid) does not exist"
+        ));
+        assert!(!review_summary_rpc_unavailable(
+            "permission denied for function refresh_business_review_summary"
+        ));
+    }
+
+    #[test]
+    fn business_owners_cannot_review_their_own_listing() {
+        let business = json!({
+            "owner_id": "550e8400-e29b-41d4-a716-446655440000"
+        });
+
+        assert!(ensure_not_owned_business_review(
+            &business,
+            &auth_user("550e8400-e29b-41d4-a716-446655440000")
+        )
+        .is_err());
+        assert!(ensure_not_owned_business_review(
+            &business,
+            &auth_user("660e8400-e29b-41d4-a716-446655440000")
+        )
+        .is_ok());
+    }
 }

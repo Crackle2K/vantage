@@ -6,14 +6,21 @@ use crate::{
     state::AppState,
 };
 use axum::{
+    body::Bytes,
     extract::{Path, State},
+    http::HeaderMap,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use chrono::{Duration, Utc};
+use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
+use sha2::Sha256;
 use std::{env, sync::Arc};
+
+type HmacSha256 = Hmac<Sha256>;
+const STRIPE_WEBHOOK_TOLERANCE_SECS: i64 = 300;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -26,6 +33,8 @@ pub fn router() -> Router<Arc<AppState>> {
         )
         .route("/subscriptions", post(create_subscription))
         .route("/subscriptions/cancel", post(cancel_subscription))
+        .route("/subscriptions/webhook/stripe", post(stripe_webhook))
+        .route("/stripe/webhook", post(stripe_webhook))
 }
 
 async fn get_tiers() -> impl IntoResponse {
@@ -98,13 +107,14 @@ async fn business_subscription(
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let business_id = security::validate_uuid_id(&business_id, "business ID")?;
+    ensure_business_owner_role(&auth_user)?;
     let business = state
         .db
         .supabase
         .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
         .await?
         .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
-    if value_str(&business, "owner_id") != auth_user.id && auth_user.role != "admin" {
+    if auth_user.role != "admin" && value_str(&business, "owner_id") != auth_user.id {
         return Err(AppError::Forbidden("Not the business owner".into()));
     }
 
@@ -149,6 +159,7 @@ async fn create_subscription(
     if !matches!(billing_cycle.as_str(), "monthly" | "yearly") {
         return Err(AppError::BadRequest("Invalid billing cycle".into()));
     }
+    ensure_business_owner_role(&auth_user)?;
 
     let business = state
         .db
@@ -156,16 +167,11 @@ async fn create_subscription(
         .select_one_json("businesses", &[select_all(), eq("id", &business_id)])
         .await?
         .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
-    if value_str(&business, "owner_id") != auth_user.id && auth_user.role != "admin" {
+    if auth_user.role != "admin" && value_str(&business, "owner_id") != auth_user.id {
         return Err(AppError::Forbidden("Not the business owner".into()));
     }
 
     let now = Utc::now();
-    let mut stripe_customer_id = Value::Null;
-    let mut stripe_subscription_id = Value::Null;
-    let mut stripe_price_id = Value::Null;
-    let mut status = "active".to_string();
-
     if tier != "free" {
         if state.config.stripe_secret_key.is_empty() {
             return Err(AppError::BadRequest("Stripe not configured".into()));
@@ -176,27 +182,85 @@ async fn create_subscription(
             ));
         }
         let price_id = price_id_for(&tier, &billing_cycle)?;
-        let stripe_result = crate::services::stripe::create_subscription(
-            &state.config.stripe_secret_key,
-            &auth_user.email,
-            &price_id,
+        let success_url = checkout_return_url(&state, "success");
+        let cancel_url = checkout_return_url(&state, "cancel");
+        let checkout = crate::services::stripe::create_checkout_session(
+            crate::services::stripe::CheckoutSessionRequest {
+                secret_key: &state.config.stripe_secret_key,
+                email: &auth_user.email,
+                price_id: &price_id,
+                success_url: &success_url,
+                cancel_url: &cancel_url,
+                user_id: &auth_user.id,
+                business_id: &business_id,
+                tier: &tier,
+                billing_cycle: &billing_cycle,
+            },
         )
         .await
         .map_err(|e| AppError::Internal(format!("Stripe error: {}", e)))?;
 
-        stripe_customer_id = json!(stripe_result["customer"].as_str().unwrap_or(""));
-        stripe_subscription_id = json!(stripe_result["id"].as_str().unwrap_or(""));
-        stripe_price_id = json!(price_id);
-        status = stripe_result["status"]
+        let checkout_url = checkout["url"]
             .as_str()
-            .unwrap_or("active")
-            .to_string();
+            .ok_or_else(|| AppError::Internal("Stripe checkout URL missing".into()))?;
+        let checkout_session_id = checkout["id"].as_str().unwrap_or_default();
+
+        let period_end = match billing_cycle.as_str() {
+            "yearly" => now + Duration::days(365),
+            _ => now + Duration::days(30),
+        };
+        let pending = state
+            .db
+            .supabase
+            .insert_json(
+                "subscriptions",
+                json!({
+                    "user_id": auth_user.id,
+                    "business_id": business_id,
+                    "tier": tier,
+                    "billing_cycle": billing_cycle,
+                    "status": "pending_checkout",
+                    "current_period_start": now.to_rfc3339(),
+                    "current_period_end": period_end.to_rfc3339(),
+                    "cancel_at_period_end": false,
+                    "stripe_checkout_session_id": checkout_session_id,
+                    "stripe_price_id": price_id,
+                    "billing_provider": "stripe_checkout",
+                    "created_at": now.to_rfc3339(),
+                    "updated_at": now.to_rfc3339(),
+                }),
+            )
+            .await?;
+
+        return Ok(Json(json!({
+            "checkout_url": checkout_url,
+            "checkout_session_id": checkout_session_id,
+            "status": "pending_checkout",
+            "subscription": normalize_id_alias(pending),
+        })));
     }
 
     let period_end = match billing_cycle.as_str() {
         "yearly" => now + Duration::days(365),
         _ => now + Duration::days(30),
     };
+
+    let active_for_business = state
+        .db
+        .supabase
+        .select_json(
+            "subscriptions",
+            &[
+                select_all(),
+                eq("user_id", &auth_user.id),
+                eq("business_id", &business_id),
+                eq("status", "active"),
+            ],
+        )
+        .await?;
+    for subscription in &active_for_business {
+        cancel_stripe_subscription_if_needed(&state, subscription).await?;
+    }
 
     state
         .db
@@ -211,7 +275,7 @@ async fn create_subscription(
             json!({ "status": "canceled", "updated_at": now.to_rfc3339() }),
         )
         .await
-        .ok();
+        .map_err(AppError::from)?;
 
     let created = state
         .db
@@ -223,13 +287,10 @@ async fn create_subscription(
                 "business_id": business_id,
                 "tier": tier,
                 "billing_cycle": billing_cycle,
-                "status": status,
+                "status": "active",
                 "current_period_start": now.to_rfc3339(),
                 "current_period_end": period_end.to_rfc3339(),
                 "cancel_at_period_end": false,
-                "stripe_customer_id": stripe_customer_id,
-                "stripe_subscription_id": stripe_subscription_id,
-                "stripe_price_id": stripe_price_id,
                 "billing_provider": if tier == "free" { "manual" } else { "stripe" },
                 "created_at": now.to_rfc3339(),
                 "updated_at": now.to_rfc3339(),
@@ -237,9 +298,7 @@ async fn create_subscription(
         )
         .await?;
 
-    update_auth_subscription_tier(&state, &auth_user.id, &tier)
-        .await
-        .ok();
+    refresh_auth_subscription_tier_from_active_subscriptions(&state, &auth_user.id).await?;
 
     Ok(Json(normalize_id_alias(created)))
 }
@@ -247,28 +306,40 @@ async fn create_subscription(
 async fn cancel_subscription(
     State(state): State<Arc<AppState>>,
     auth_user: AuthUser,
+    payload: Option<Json<Value>>,
 ) -> Result<impl IntoResponse> {
-    let sub = state
+    let business_id = payload
+        .as_ref()
+        .and_then(|Json(value)| value["business_id"].as_str())
+        .map(|value| security::validate_uuid_id(value, "business ID"))
+        .transpose()?;
+
+    let mut query = vec![
+        select_all(),
+        eq("user_id", &auth_user.id),
+        eq("status", "active"),
+        order("created_at.desc"),
+    ];
+    if let Some(business_id) = business_id.as_ref() {
+        query.push(eq("business_id", business_id));
+    }
+
+    let subscriptions = state
         .db
         .supabase
-        .select_one_json(
-            "subscriptions",
-            &[
-                select_all(),
-                eq("user_id", &auth_user.id),
-                eq("status", "active"),
-                order("created_at.desc"),
-            ],
-        )
-        .await?
-        .ok_or_else(|| AppError::NotFound("No active subscription".into()))?;
+        .select_json("subscriptions", &query)
+        .await?;
+    let sub = match subscriptions.as_slice() {
+        [] => return Err(AppError::NotFound("No active subscription".into())),
+        [subscription] => subscription.clone(),
+        _ => {
+            return Err(AppError::BadRequest(
+                "business_id required when multiple active subscriptions exist".into(),
+            ));
+        }
+    };
 
-    let sub_id = value_str(&sub, "stripe_subscription_id").to_string();
-    if !sub_id.is_empty() && !state.config.stripe_secret_key.is_empty() {
-        crate::services::stripe::cancel_subscription(&state.config.stripe_secret_key, &sub_id)
-            .await
-            .ok();
-    }
+    cancel_stripe_subscription_if_needed(&state, &sub).await?;
 
     state
         .db
@@ -285,11 +356,234 @@ async fn cancel_subscription(
         )
         .await?;
 
-    update_auth_subscription_tier(&state, &auth_user.id, "free")
-        .await
-        .ok();
+    refresh_auth_subscription_tier_from_active_subscriptions(&state, &auth_user.id).await?;
 
     Ok(Json(json!({ "message": "Subscription cancelled" })))
+}
+
+async fn stripe_webhook(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<impl IntoResponse> {
+    let signature = headers
+        .get("stripe-signature")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| AppError::BadRequest("Missing Stripe signature".into()))?;
+
+    verify_stripe_signature(
+        &state.config.stripe_webhook_secret,
+        signature,
+        &body,
+        Utc::now().timestamp(),
+    )?;
+
+    let event: Value = serde_json::from_slice(&body)
+        .map_err(|_| AppError::BadRequest("Invalid Stripe webhook payload".into()))?;
+    let event_type = event["type"].as_str().unwrap_or_default();
+    let object = &event["data"]["object"];
+
+    let result = match event_type {
+        "checkout.session.completed" | "checkout.session.async_payment_succeeded" => {
+            activate_checkout_subscription(&state, object, event_type).await?
+        }
+        "customer.subscription.deleted" => {
+            cancel_stripe_subscription_from_webhook(&state, object).await?
+        }
+        _ => json!({ "status": "ignored", "event_type": event_type }),
+    };
+
+    Ok(Json(result))
+}
+
+async fn activate_checkout_subscription(
+    state: &AppState,
+    session: &Value,
+    event_type: &str,
+) -> Result<Value> {
+    let session_id = stripe_ref_id(&session["id"])
+        .ok_or_else(|| AppError::BadRequest("Stripe checkout session id missing".into()))?;
+
+    if !checkout_session_payment_confirmed(event_type, session) {
+        return Ok(json!({
+            "status": "ignored",
+            "reason": "checkout_payment_not_confirmed",
+            "checkout_session_id": session_id,
+        }));
+    }
+
+    let Some(subscription) = state
+        .db
+        .supabase
+        .select_one_json(
+            "subscriptions",
+            &[
+                select_all(),
+                eq("stripe_checkout_session_id", &session_id),
+                order("created_at.desc"),
+            ],
+        )
+        .await?
+    else {
+        return Ok(json!({
+            "status": "ignored",
+            "reason": "subscription_not_found",
+            "checkout_session_id": session_id,
+        }));
+    };
+
+    let user_id = security::validate_uuid_id(value_str(&subscription, "user_id"), "user ID")?;
+    let business_id =
+        security::validate_uuid_id(value_str(&subscription, "business_id"), "business ID")?;
+    let tier = subscription_or_metadata_value(&subscription, session, "tier");
+    if !matches!(tier.as_str(), "starter" | "pro" | "premium") {
+        return Err(AppError::BadRequest(
+            "Invalid paid subscription tier".into(),
+        ));
+    }
+
+    if value_str(&subscription, "status") == "active" {
+        refresh_auth_subscription_tier_from_active_subscriptions(state, &user_id).await?;
+        return Ok(json!({
+            "status": "already_active",
+            "subscription": normalize_id_alias(subscription),
+        }));
+    }
+
+    if value_str(&subscription, "status") != "pending_checkout" {
+        return Ok(json!({
+            "status": "ignored",
+            "reason": "subscription_not_pending_checkout",
+            "checkout_session_id": session_id,
+        }));
+    }
+
+    let active_for_business = state
+        .db
+        .supabase
+        .select_json(
+            "subscriptions",
+            &[
+                select_all(),
+                eq("user_id", &user_id),
+                eq("business_id", &business_id),
+                eq("status", "active"),
+            ],
+        )
+        .await?;
+    for active_subscription in &active_for_business {
+        cancel_stripe_subscription_if_needed(state, active_subscription).await?;
+    }
+
+    let now = Utc::now().to_rfc3339();
+    state
+        .db
+        .supabase
+        .update_json(
+            "subscriptions",
+            &[
+                eq("user_id", &user_id),
+                eq("business_id", &business_id),
+                eq("status", "active"),
+            ],
+            json!({ "status": "canceled", "updated_at": now }),
+        )
+        .await?;
+
+    let subscription_id = value_str(&subscription, "id").to_string();
+    let updated = state
+        .db
+        .supabase
+        .update_json(
+            "subscriptions",
+            &[eq("id", &subscription_id)],
+            json!({
+                "status": "active",
+                "tier": tier,
+                "billing_provider": "stripe",
+                "stripe_customer_id": stripe_ref_id(&session["customer"]),
+                "stripe_subscription_id": stripe_ref_id(&session["subscription"]),
+                "updated_at": Utc::now().to_rfc3339(),
+            }),
+        )
+        .await?;
+
+    let activated = updated
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::Internal("Subscription activation updated no rows".into()))?;
+
+    refresh_auth_subscription_tier_from_active_subscriptions(state, &user_id).await?;
+
+    Ok(json!({
+        "status": "activated",
+        "subscription": normalize_id_alias(activated),
+    }))
+}
+
+async fn cancel_stripe_subscription_from_webhook(
+    state: &AppState,
+    stripe_subscription: &Value,
+) -> Result<Value> {
+    let stripe_subscription_id = stripe_ref_id(&stripe_subscription["id"])
+        .ok_or_else(|| AppError::BadRequest("Stripe subscription id missing".into()))?;
+
+    let Some(subscription) = state
+        .db
+        .supabase
+        .select_one_json(
+            "subscriptions",
+            &[
+                select_all(),
+                eq("stripe_subscription_id", &stripe_subscription_id),
+                order("created_at.desc"),
+            ],
+        )
+        .await?
+    else {
+        return Ok(json!({
+            "status": "ignored",
+            "reason": "subscription_not_found",
+            "stripe_subscription_id": stripe_subscription_id,
+        }));
+    };
+
+    let user_id = security::validate_uuid_id(value_str(&subscription, "user_id"), "user ID")?;
+
+    if value_str(&subscription, "status") == "canceled" {
+        refresh_auth_subscription_tier_from_active_subscriptions(state, &user_id).await?;
+        return Ok(json!({
+            "status": "already_canceled",
+            "subscription": normalize_id_alias(subscription),
+        }));
+    }
+
+    let updated = state
+        .db
+        .supabase
+        .update_json(
+            "subscriptions",
+            &[eq("id", value_str(&subscription, "id"))],
+            json!({
+                "status": "canceled",
+                "tier": "free",
+                "cancel_at_period_end": true,
+                "updated_at": Utc::now().to_rfc3339(),
+            }),
+        )
+        .await?;
+
+    let canceled = updated
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::Internal("Subscription cancellation updated no rows".into()))?;
+
+    refresh_auth_subscription_tier_from_active_subscriptions(state, &user_id).await?;
+
+    Ok(json!({
+        "status": "canceled",
+        "subscription": normalize_id_alias(canceled),
+    }))
 }
 
 fn price_id_for(tier: &str, billing_cycle: &str) -> Result<String> {
@@ -299,6 +593,17 @@ fn price_id_for(tier: &str, billing_cycle: &str) -> Result<String> {
         billing_cycle.to_ascii_uppercase()
     );
     env::var(&key).map_err(|_| AppError::BadRequest(format!("{} is not configured", key)))
+}
+
+fn checkout_return_url(state: &AppState, result: &str) -> String {
+    let base = if state.config.is_production() && !state.config.production_url.trim().is_empty() {
+        state.config.production_url.trim()
+    } else {
+        state.config.frontend_url.trim()
+    }
+    .trim_end_matches('/');
+
+    format!("{}/pricing?checkout={}", base, result)
 }
 
 async fn update_auth_subscription_tier(state: &AppState, user_id: &str, tier: &str) -> Result<()> {
@@ -316,4 +621,254 @@ async fn update_auth_subscription_tier(state: &AppState, user_id: &str, tier: &s
         .auth_update_user(user_id, json!({ "app_metadata": app_metadata }))
         .await?;
     Ok(())
+}
+
+async fn refresh_auth_subscription_tier_from_active_subscriptions(
+    state: &AppState,
+    user_id: &str,
+) -> Result<()> {
+    let rows = state
+        .db
+        .supabase
+        .select_json(
+            "subscriptions",
+            &[select_all(), eq("user_id", user_id), eq("status", "active")],
+        )
+        .await?;
+    let tier = highest_subscription_tier(&rows);
+    update_auth_subscription_tier(state, user_id, tier).await
+}
+
+async fn cancel_stripe_subscription_if_needed(
+    state: &AppState,
+    subscription: &Value,
+) -> Result<()> {
+    let sub_id = value_str(subscription, "stripe_subscription_id");
+    if sub_id.is_empty() {
+        return Ok(());
+    }
+    if state.config.stripe_secret_key.is_empty() {
+        return Err(AppError::BadRequest("Stripe not configured".into()));
+    }
+    crate::services::stripe::cancel_subscription(&state.config.stripe_secret_key, sub_id)
+        .await
+        .map_err(|_| AppError::BadRequest("Stripe subscription cancellation failed".into()))?;
+    Ok(())
+}
+
+fn highest_subscription_tier(rows: &[Value]) -> &'static str {
+    rows.iter()
+        .filter_map(|row| row.get("tier").and_then(Value::as_str))
+        .filter_map(normalize_subscription_tier)
+        .max_by_key(|tier| subscription_tier_rank(tier))
+        .unwrap_or("free")
+}
+
+fn normalize_subscription_tier(tier: &str) -> Option<&'static str> {
+    match tier.to_ascii_lowercase().as_str() {
+        "premium" => Some("premium"),
+        "pro" => Some("pro"),
+        "starter" => Some("starter"),
+        "free" => Some("free"),
+        _ => None,
+    }
+}
+
+fn subscription_tier_rank(tier: &str) -> u8 {
+    match tier.to_ascii_lowercase().as_str() {
+        "premium" => 3,
+        "pro" => 2,
+        "starter" => 1,
+        _ => 0,
+    }
+}
+
+fn ensure_business_owner_role(auth_user: &AuthUser) -> Result<()> {
+    if auth_user.role == "business_owner" || auth_user.role == "admin" {
+        return Ok(());
+    }
+    Err(AppError::Forbidden(
+        "Business owner account required".into(),
+    ))
+}
+
+fn verify_stripe_signature(
+    secret: &str,
+    header: &str,
+    payload: &[u8],
+    now_timestamp: i64,
+) -> Result<()> {
+    if secret.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "Stripe webhook secret is not configured".into(),
+        ));
+    }
+
+    let (timestamp, signatures) = parse_stripe_signature_header(header)?;
+    if (now_timestamp - timestamp).abs() > STRIPE_WEBHOOK_TOLERANCE_SECS {
+        return Err(AppError::BadRequest(
+            "Stripe webhook timestamp outside tolerance".into(),
+        ));
+    }
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| AppError::Internal("Invalid Stripe webhook secret".into()))?;
+    mac.update(timestamp.to_string().as_bytes());
+    mac.update(b".");
+    mac.update(payload);
+
+    let matches = signatures
+        .iter()
+        .filter_map(|signature| decode_hex(signature).ok())
+        .any(|signature| mac.clone().verify_slice(&signature).is_ok());
+
+    if matches {
+        return Ok(());
+    }
+
+    Err(AppError::BadRequest("Invalid Stripe signature".into()))
+}
+
+fn parse_stripe_signature_header(header: &str) -> Result<(i64, Vec<String>)> {
+    let mut timestamp = None;
+    let mut signatures = Vec::new();
+
+    for part in header.split(',') {
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "t" => timestamp = value.trim().parse::<i64>().ok(),
+            "v1" => signatures.push(value.trim().to_string()),
+            _ => {}
+        }
+    }
+
+    let timestamp = timestamp
+        .ok_or_else(|| AppError::BadRequest("Stripe signature timestamp missing".into()))?;
+    if signatures.is_empty() {
+        return Err(AppError::BadRequest("Stripe v1 signature missing".into()));
+    }
+
+    Ok((timestamp, signatures))
+}
+
+fn decode_hex(value: &str) -> std::result::Result<Vec<u8>, ()> {
+    if !value.len().is_multiple_of(2) {
+        return Err(());
+    }
+
+    (0..value.len())
+        .step_by(2)
+        .map(|idx| u8::from_str_radix(&value[idx..idx + 2], 16).map_err(|_| ()))
+        .collect()
+}
+
+#[cfg(test)]
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{:02x}", byte)).collect()
+}
+
+fn stripe_ref_id(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .or_else(|| value.get("id").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn subscription_or_metadata_value(subscription: &Value, session: &Value, key: &str) -> String {
+    let row_value = value_str(subscription, key);
+    if !row_value.trim().is_empty() {
+        return row_value.to_string();
+    }
+    session["metadata"][key]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn checkout_session_payment_confirmed(event_type: &str, session: &Value) -> bool {
+    if event_type == "checkout.session.async_payment_succeeded" {
+        return true;
+    }
+
+    let payment_status = session["payment_status"].as_str().unwrap_or_default();
+    matches!(payment_status, "paid" | "no_payment_required")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn signed_header(secret: &str, timestamp: i64, payload: &[u8]) -> String {
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(timestamp.to_string().as_bytes());
+        mac.update(b".");
+        mac.update(payload);
+        let signature = to_hex(&mac.finalize().into_bytes());
+        format!("t={},v1={}", timestamp, signature)
+    }
+
+    #[test]
+    fn stripe_signature_verification_accepts_valid_signature() {
+        let secret = "whsec_test";
+        let timestamp = 1_700_000_000;
+        let payload = br#"{"id":"evt_test"}"#;
+        let header = signed_header(secret, timestamp, payload);
+
+        assert!(verify_stripe_signature(secret, &header, payload, timestamp + 30).is_ok());
+    }
+
+    #[test]
+    fn stripe_signature_verification_rejects_tampering_and_old_timestamps() {
+        let secret = "whsec_test";
+        let timestamp = 1_700_000_000;
+        let payload = br#"{"id":"evt_test"}"#;
+        let header = signed_header(secret, timestamp, payload);
+
+        assert!(
+            verify_stripe_signature(secret, &header, br#"{"id":"evt_bad"}"#, timestamp + 30)
+                .is_err()
+        );
+        assert!(verify_stripe_signature(secret, &header, payload, timestamp + 1_000).is_err());
+    }
+
+    #[test]
+    fn checkout_session_activation_requires_confirmed_payment() {
+        assert!(checkout_session_payment_confirmed(
+            "checkout.session.completed",
+            &json!({ "payment_status": "paid" })
+        ));
+        assert!(checkout_session_payment_confirmed(
+            "checkout.session.async_payment_succeeded",
+            &json!({ "payment_status": "unpaid" })
+        ));
+        assert!(!checkout_session_payment_confirmed(
+            "checkout.session.completed",
+            &json!({ "payment_status": "unpaid" })
+        ));
+    }
+
+    #[test]
+    fn highest_subscription_tier_prefers_highest_active_tier() {
+        assert_eq!(highest_subscription_tier(&[]), "free");
+        assert_eq!(
+            highest_subscription_tier(&[
+                json!({ "tier": "starter" }),
+                json!({ "tier": "premium" }),
+                json!({ "tier": "pro" }),
+            ]),
+            "premium"
+        );
+        assert_eq!(
+            highest_subscription_tier(&[json!({ "tier": "unknown" }), json!({ "tier": "free" })]),
+            "free"
+        );
+        assert_eq!(
+            highest_subscription_tier(&[json!({ "tier": "STARTER" }), json!({ "tier": "PRO" }),]),
+            "pro"
+        );
+    }
 }

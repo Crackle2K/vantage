@@ -36,13 +36,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 hmac = "0.12"
 sha2 = "0.10"
 
-# Redis (rate limiting / lockout)
-redis = { version = "0.25", features = ["tokio-comp"] }
-
-# Rate limiting
-governor = "0.6"
-nonzero_ext = "0.3"
-
 # Config / env
 dotenvy = "0.15"
 

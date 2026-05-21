@@ -4,7 +4,7 @@
  * title, date/time, description, and a "View business" button.
  */
 
-import { memo, type KeyboardEvent } from 'react';
+import { memo } from 'react';
 import { CalendarDays, Clock3, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BusinessImage } from './BusinessImage';
@@ -45,22 +45,9 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
   const dateLabel = eventDateLabel(event.start_time, event.end_time);
   const businessName = event.business_name || 'Claimed business';
   const category = event.business_category || 'Owner event';
-  const handleKeyDown = (eventTrigger: KeyboardEvent<HTMLElement>) => {
-    if (eventTrigger.key === 'Enter' || eventTrigger.key === ' ') {
-      eventTrigger.preventDefault();
-      onViewBusiness();
-    }
-  };
 
   return (
-    <article
-      onClick={onViewBusiness}
-      onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={0}
-      aria-label={`View ${businessName}`}
-      className="explore-rail-card"
-    >
+    <article className="explore-rail-card">
       <div className="explore-rail-card__media aspect-[4/5] h-auto">
         <BusinessImage
           primaryImage={event.image_url || event.business_image_url}
@@ -69,11 +56,17 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
           className="explore-rail-card__image"
         />
         <div className="absolute inset-0 bg-black/42" />
-        <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-md border border-white/20 bg-black/35 px-3 py-1 text-caption text-white">
+        <button
+          type="button"
+          onClick={onViewBusiness}
+          className="absolute inset-0 z-10 rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/75"
+          aria-label={`View ${businessName}`}
+        />
+        <div className="pointer-events-none absolute left-3 top-3 z-20 inline-flex items-center gap-2 rounded-md border border-white/20 bg-black/35 px-3 py-1 text-caption text-white">
           <Sparkles className="h-3.5 w-3.5" />
           Owner event
         </div>
-        <div className="absolute bottom-3 left-3 right-3">
+        <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-20">
           <p className="text-caption uppercase tracking-[0.14em] text-white/75">{category}</p>
           <h3 className="line-clamp-2 text-xl font-semibold text-white">{event.title}</h3>
         </div>
@@ -99,10 +92,7 @@ export const OwnerEventCard = memo(function OwnerEventCard({ event, onViewBusine
         <Button
           type="button"
           variant="outline"
-          onClick={(eventTrigger) => {
-            eventTrigger.stopPropagation();
-            onViewBusiness();
-          }}
+          onClick={onViewBusiness}
           className="w-full focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--card))]"
         >
           View business

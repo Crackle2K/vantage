@@ -129,7 +129,13 @@ fn user_json(user: &AuthUserRecord, include_private: bool) -> Value {
     let email = user.email.as_deref().unwrap_or_default();
     let full_name = metadata_str(&user.user_metadata, "full_name")
         .or_else(|| metadata_str(&user.user_metadata, "name"));
-    let name = full_name.unwrap_or(email);
+    let name = full_name
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(if include_private {
+            email
+        } else {
+            "Vantage user"
+        });
     let preferences = user
         .user_metadata
         .get("preferences")
@@ -193,6 +199,16 @@ mod tests {
         }
     }
 
+    fn nameless_user() -> AuthUserRecord {
+        AuthUserRecord {
+            id: "550e8400-e29b-41d4-a716-446655440001".into(),
+            email: Some("hidden@example.com".into()),
+            user_metadata: json!({}),
+            app_metadata: json!({ "role": "customer" }),
+            created_at: None,
+        }
+    }
+
     #[test]
     fn public_profile_json_excludes_email() {
         let value = user_json(&sample_user(), false);
@@ -205,5 +221,12 @@ mod tests {
     fn private_profile_json_includes_email() {
         let value = user_json(&sample_user(), true);
         assert_eq!(value["email"], "private@example.com");
+    }
+
+    #[test]
+    fn public_profile_without_name_does_not_fallback_to_email() {
+        let value = user_json(&nameless_user(), false);
+        assert!(value.get("email").is_none());
+        assert_eq!(value["name"], "Vantage user");
     }
 }

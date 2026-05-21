@@ -63,11 +63,13 @@ pub async fn add_security_headers(req: Request<Body>, next: Next) -> Response {
                 "Content-Security-Policy",
                 HeaderValue::from_static(
                     "default-src 'self'; \
-                     script-src 'self' 'unsafe-inline' https://accounts.google.com; \
+                     script-src 'self' 'unsafe-inline' https://accounts.google.com https://www.google.com https://www.gstatic.com; \
                      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
                      img-src 'self' data: https: blob:; \
                      font-src 'self' https://fonts.gstatic.com; \
-                     connect-src 'self' https://accounts.google.com; \
+                     connect-src 'self' https://accounts.google.com https://www.google.com https://www.gstatic.com; \
+                     frame-src https://accounts.google.com https://www.google.com; \
+                     form-action 'self'; \
                      frame-ancestors 'none'",
                 ),
             );
@@ -75,14 +77,23 @@ pub async fn add_security_headers(req: Request<Body>, next: Next) -> Response {
 
         let is_json = content_type.starts_with("application/json");
         let is_api_path = path.starts_with("/api/");
-        let is_auth_or_private = path.starts_with("/api/auth")
-            || path.starts_with("/api/users")
-            || path.starts_with("/api/saved");
+        let is_private_api = is_private_api_path(&path);
+
+        if is_json
+            && is_api_path
+            && is_private_api
+            && !response.headers().contains_key("cache-control")
+        {
+            response.headers_mut().insert(
+                "Cache-Control",
+                HeaderValue::from_static("no-store, max-age=0"),
+            );
+        }
 
         if method == Method::GET
             && is_json
             && is_api_path
-            && !is_auth_or_private
+            && !is_private_api
             && !response.headers().contains_key("cache-control")
         {
             response.headers_mut().insert(
@@ -95,4 +106,31 @@ pub async fn add_security_headers(req: Request<Body>, next: Next) -> Response {
     }
 
     response
+}
+
+fn is_private_api_path(path: &str) -> bool {
+    path.starts_with("/api/auth")
+        || path.starts_with("/api/users")
+        || path.starts_with("/api/saved")
+        || path.starts_with("/api/claims")
+        || path.starts_with("/api/subscriptions/my")
+        || path.starts_with("/api/subscriptions/mine")
+        || path.starts_with("/api/subscriptions/business")
+        || path.starts_with("/api/credibility/me")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_private_api_path;
+
+    #[test]
+    fn private_api_path_detection_covers_owner_and_user_data() {
+        assert!(is_private_api_path("/api/claims/my"));
+        assert!(is_private_api_path(
+            "/api/subscriptions/business/550e8400-e29b-41d4-a716-446655440000"
+        ));
+        assert!(is_private_api_path("/api/saved"));
+        assert!(!is_private_api_path("/api/subscriptions/tiers"));
+        assert!(!is_private_api_path("/api/discover"));
+    }
 }

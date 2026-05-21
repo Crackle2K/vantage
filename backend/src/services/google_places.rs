@@ -2,6 +2,7 @@ use anyhow::Result;
 use serde_json::Value;
 
 const PLACES_API: &str = "https://maps.googleapis.com/maps/api/place";
+const GOOGLE_HTTP_TIMEOUT_SECS: u64 = 10;
 
 pub async fn search_nearby(
     api_key: &str,
@@ -19,7 +20,7 @@ pub async fn search_nearby(
         url.push_str(&format!("&keyword={}", urlencoding::encode(kw)));
     }
 
-    let resp: Value = reqwest::get(&url).await?.json().await?;
+    let resp = get_google_json(&url).await?;
 
     let results = resp["results"].as_array().cloned().unwrap_or_default();
 
@@ -32,8 +33,17 @@ pub async fn get_place_details(api_key: &str, place_id: &str) -> Result<Value> {
         PLACES_API, place_id, api_key
     );
 
-    let resp: Value = reqwest::get(&url).await?.json().await?;
+    let resp = get_google_json(&url).await?;
     Ok(resp["result"].clone())
+}
+
+pub async fn reverse_geocode(api_key: &str, lat: f64, lng: f64) -> Result<Value> {
+    let url = format!(
+        "https://maps.googleapis.com/maps/api/geocode/json?latlng={},{}&key={}",
+        lat, lng, api_key
+    );
+
+    get_google_json(&url).await
 }
 
 pub async fn get_photo_url(api_key: &str, photo_reference: &str, max_width: u32) -> String {
@@ -41,6 +51,22 @@ pub async fn get_photo_url(api_key: &str, photo_reference: &str, max_width: u32)
         "{}/photo?maxwidth={}&photo_reference={}&key={}",
         PLACES_API, max_width, photo_reference, api_key
     )
+}
+
+pub fn google_http_client() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(GOOGLE_HTTP_TIMEOUT_SECS))
+        .build()?)
+}
+
+async fn get_google_json(url: &str) -> Result<Value> {
+    let resp = google_http_client()?.get(url).send().await?;
+    let status = resp.status();
+    let data: Value = resp.json().await?;
+    if !status.is_success() {
+        anyhow::bail!("Google API request failed with HTTP {}", status.as_u16());
+    }
+    Ok(data)
 }
 
 /// Map a Google Places type to our internal category.

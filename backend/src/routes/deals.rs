@@ -2,7 +2,8 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{
-        eq, is_true, limit, normalize_deal, order, select_all, value_str, QueryParams,
+        eq, is_true, limit, normalize_deal, order, q, select_all, unwrap_rpc_items, value_str,
+        QueryParams,
     },
     security,
     state::AppState,
@@ -171,17 +172,7 @@ async fn create_deal(
         .supabase
         .insert_json("deals", Value::Object(body))
         .await?;
-
-    state
-        .db
-        .supabase
-        .update_json(
-            "businesses",
-            &[eq("id", &business_id)],
-            json!({ "has_deals": true }),
-        )
-        .await
-        .ok();
+    update_business_deal_status(&state, &business_id).await?;
 
     Ok((StatusCode::CREATED, Json(normalize_deal(created))))
 }
@@ -250,6 +241,7 @@ async fn update_deal(
         .into_iter()
         .next()
         .ok_or_else(|| AppError::NotFound("Deal not found".into()))?;
+    update_business_deal_status(&state, value_str(&existing, "business_id")).await?;
     Ok(Json(normalize_deal(row)))
 }
 
@@ -267,7 +259,87 @@ async fn delete_deal(
         .supabase
         .delete_json("deals", &[eq("id", &id)])
         .await?;
+    update_business_deal_status(&state, value_str(&existing, "business_id")).await?;
     Ok(Json(json!({ "message": "Deal deleted" })))
+}
+
+async fn update_business_deal_status(state: &AppState, business_id: &str) -> Result<()> {
+    let business_id = security::validate_uuid_id(business_id, "business ID")?;
+    match refresh_business_has_deals(state, &business_id).await {
+        Ok(()) => return Ok(()),
+        Err(err) if deal_status_rpc_unavailable(&err.to_string()) => {
+            tracing::warn!(
+                error = %err,
+                "Deal status RPC unavailable; falling back to API-side deal status refresh"
+            );
+        }
+        Err(err) => return Err(err.into()),
+    }
+
+    update_business_deal_status_fallback(state, &business_id).await
+}
+
+async fn refresh_business_has_deals(state: &AppState, business_id: &str) -> anyhow::Result<()> {
+    let rows = state
+        .db
+        .supabase
+        .rpc_json(
+            "refresh_business_has_deals",
+            json!({ "p_business_id": business_id }),
+        )
+        .await?;
+    let updated = unwrap_rpc_items(rows);
+    if updated.is_empty() {
+        anyhow::bail!("Business not found");
+    }
+    Ok(())
+}
+
+async fn update_business_deal_status_fallback(state: &AppState, business_id: &str) -> Result<()> {
+    let rows = state
+        .db
+        .supabase
+        .select_json(
+            "deals",
+            &[
+                q("select", "id"),
+                eq("business_id", business_id),
+                is_true("is_active"),
+                current_deals_filter(Utc::now()),
+                limit(1),
+            ],
+        )
+        .await?;
+    let has_current_deals = !rows.is_empty();
+
+    state
+        .db
+        .supabase
+        .update_json(
+            "businesses",
+            &[
+                eq("id", business_id),
+                q("has_deals", format!("neq.{}", has_current_deals)),
+            ],
+            json!({ "has_deals": has_current_deals }),
+        )
+        .await?;
+
+    Ok(())
+}
+
+fn current_deals_filter(now: DateTime<Utc>) -> (String, String) {
+    q(
+        "or",
+        format!("(valid_until.is.null,valid_until.gt.{})", now.to_rfc3339()),
+    )
+}
+
+fn deal_status_rpc_unavailable(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    (lowered.contains("refresh_business_has_deals") && lowered.contains("does not exist"))
+        || lowered.contains("could not find the function")
+        || lowered.contains("schema cache")
 }
 
 async fn find_deal(state: &AppState, id: &str) -> Result<Value> {
@@ -291,7 +363,15 @@ async fn find_business(state: &AppState, id: &str) -> Result<Value> {
 }
 
 fn ensure_business_owner(row: &Value, auth_user: &AuthUser) -> Result<()> {
-    if value_str(row, "owner_id") != auth_user.id && auth_user.role != "admin" {
+    if auth_user.role != "business_owner" && auth_user.role != "admin" {
+        return Err(AppError::Forbidden(
+            "Business owner account required".into(),
+        ));
+    }
+    if auth_user.role == "admin" {
+        return Ok(());
+    }
+    if value_str(row, "owner_id") != auth_user.id {
         return Err(AppError::Forbidden("Not the business owner".into()));
     }
     Ok(())
@@ -333,4 +413,44 @@ fn validate_rfc3339(label: &str, value: &str) -> Result<String> {
     DateTime::parse_from_rfc3339(value)
         .map(|date| date.with_timezone(&Utc).to_rfc3339())
         .map_err(|_| AppError::BadRequest(format!("{} must be an ISO-8601 timestamp", label)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deal_is_current_requires_active_unexpired_rows() {
+        let future = (Utc::now() + Duration::days(1)).to_rfc3339();
+        let past = (Utc::now() - Duration::days(1)).to_rfc3339();
+
+        assert!(deal_is_current(&json!({ "is_active": true })));
+        assert!(deal_is_current(&json!({
+            "is_active": true,
+            "valid_until": future,
+        })));
+        assert!(!deal_is_current(&json!({
+            "is_active": false,
+            "valid_until": future,
+        })));
+        assert!(!deal_is_current(&json!({
+            "is_active": true,
+            "valid_until": past,
+        })));
+    }
+
+    #[test]
+    fn current_deals_filter_targets_open_or_future_deals() {
+        let now = DateTime::parse_from_rfc3339("2026-05-20T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        assert_eq!(
+            current_deals_filter(now),
+            (
+                "or".to_string(),
+                "(valid_until.is.null,valid_until.gt.2026-05-20T12:00:00+00:00)".to_string()
+            )
+        );
+    }
 }

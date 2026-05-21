@@ -77,13 +77,6 @@ pub struct UserLogin {
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
-pub struct Token {
-    pub access_token: String,
-    pub token_type: String,
-    pub user: UserPublic,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SupabaseJwtClaims {
     pub sub: String,
@@ -94,16 +87,6 @@ pub struct SupabaseJwtClaims {
     pub app_metadata: Value,
     #[serde(default)]
     pub user_metadata: Value,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UserPublic {
-    pub id: String,
-    pub email: String,
-    pub full_name: Option<String>,
-    pub role: UserRole,
-    pub profile_picture: Option<String>,
-    pub subscription_tier: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

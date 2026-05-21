@@ -39,7 +39,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     applyTheme(theme);
-    localStorage.setItem(STORAGE_KEY, theme);
+    try {
+      localStorage.setItem(STORAGE_KEY, theme);
+    } catch {
+      // Theme persistence is best-effort; blocked storage should not break boot.
+    }
   }, [theme]);
 
   const setTheme = () => {

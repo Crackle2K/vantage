@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { logger } from '@/lib/logger'
 import type { Business, Deal, Review, Subscription, BusinessActivityStatus, BusinessClaim, OwnerEvent } from '../types'
 import {
   Store, Star, Tag, TrendingUp, Plus,
@@ -60,7 +61,7 @@ export default function DashboardPage() {
       setSubscription(bizSub)
       setActivityStatus(bizActivity)
     } catch (err) {
-      console.error('Failed to load business data:', err)
+      logger.error('Failed to load business data:', err)
     }
   }, [])
 
@@ -72,7 +73,7 @@ export default function DashboardPage() {
         api.getMyClaims(),
       ])
 
-      const owned = businesses.filter(b => b.is_claimed)
+      const owned = businesses.filter(b => b.owner_id === user?.id)
       setMyBusinesses(owned)
       setMyClaims(claims)
 
@@ -80,7 +81,7 @@ export default function DashboardPage() {
         selectBusiness(owned[0])
       }
     } catch (err) {
-      console.error('Dashboard load failed:', err)
+      logger.error('Dashboard load failed:', err)
     } finally {
       setLoading(false)
     }

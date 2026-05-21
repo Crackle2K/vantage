@@ -22,8 +22,7 @@ pub struct Config {
     pub production_url: String,
     pub environment: String,
 
-    // Redis
-    pub redis_url: String,
+    // Rate limiting
     pub rate_limit_per_minute: u32,
 
     // Supabase
@@ -33,7 +32,6 @@ pub struct Config {
 
     // Stripe
     pub stripe_secret_key: String,
-    pub stripe_publishable_key: String,
     pub stripe_webhook_secret: String,
 
     // Misc
@@ -72,7 +70,6 @@ impl Config {
             production_url: env::var("PRODUCTION_URL").unwrap_or_default(),
             environment: normalized_environment(),
 
-            redis_url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379/0".into()),
             rate_limit_per_minute: env::var("RATE_LIMIT_PER_MINUTE")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -83,7 +80,6 @@ impl Config {
             supabase_jwt_secret: env::var("SUPABASE_JWT_SECRET").unwrap_or_default(),
 
             stripe_secret_key: env::var("STRIPE_SECRET_KEY").unwrap_or_default(),
-            stripe_publishable_key: env::var("STRIPE_PUBLISHABLE_KEY").unwrap_or_default(),
             stripe_webhook_secret: env::var("STRIPE_WEBHOOK_SECRET").unwrap_or_default(),
 
             demo_mode: matches!(
@@ -111,6 +107,17 @@ impl Config {
         require_configured("SUPABASE_JWT_SECRET", &self.supabase_jwt_secret)?;
         if self.refresh_token_expire_days <= 0 {
             anyhow::bail!("REFRESH_TOKEN_EXPIRE_DAYS must be greater than zero");
+        }
+        if self.is_production() {
+            let frontend_origin = if !self.production_url.trim().is_empty() {
+                self.production_url.trim()
+            } else {
+                self.frontend_url.trim()
+            };
+            require_public_origin("FRONTEND_URL or PRODUCTION_URL", frontend_origin)?;
+            if !self.stripe_secret_key.trim().is_empty() {
+                require_configured("STRIPE_WEBHOOK_SECRET", &self.stripe_webhook_secret)?;
+            }
         }
         Ok(())
     }
@@ -146,6 +153,18 @@ fn require_configured(name: &str, value: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn require_public_origin(name: &str, value: &str) -> anyhow::Result<()> {
+    require_configured(name, value)?;
+    if !(value.starts_with("https://") || value.starts_with("http://")) {
+        anyhow::bail!("{} must be an absolute URL", name);
+    }
+    let lowered = value.to_ascii_lowercase();
+    if lowered.contains("localhost") || lowered.contains("127.0.0.1") {
+        anyhow::bail!("{} must not point to localhost in production", name);
+    }
+    Ok(())
+}
+
 fn normalized_environment() -> String {
     let raw = env::var("ENVIRONMENT")
         .or_else(|_| env::var("VERCEL_ENV"))
@@ -167,5 +186,64 @@ fn push_origin(origins: &mut Vec<String>, origin: impl AsRef<str>) {
     let normalized = value.to_string();
     if !origins.contains(&normalized) {
         origins.push(normalized);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    fn config(environment: &str, production_url: &str, frontend_url: &str) -> Config {
+        Config {
+            refresh_token_expire_days: 7,
+            google_api_key: String::new(),
+            recaptcha_project_id: String::new(),
+            recaptcha_api_key: String::new(),
+            recaptcha_site_key: String::new(),
+            recaptcha_signup_action: "SIGNUP".into(),
+            recaptcha_min_score: 0.5,
+            recaptcha_verify_timeout_secs: 10,
+            api_url: "http://localhost:8000".into(),
+            frontend_url: frontend_url.into(),
+            production_url: production_url.into(),
+            environment: environment.into(),
+            rate_limit_per_minute: 120,
+            supabase_url: "https://example.supabase.co".into(),
+            supabase_service_role_key: "service-role".into(),
+            supabase_jwt_secret: "jwt-secret".into(),
+            stripe_secret_key: String::new(),
+            stripe_webhook_secret: String::new(),
+            demo_mode: false,
+            demo_lat: 37.7749,
+            demo_lng: -122.4194,
+        }
+    }
+
+    #[test]
+    fn production_rejects_localhost_frontend_origin() {
+        assert!(config("production", "", "http://localhost:5173")
+            .validate()
+            .is_err());
+    }
+
+    #[test]
+    fn production_accepts_public_frontend_origin() {
+        assert!(config(
+            "production",
+            "https://vantage.example",
+            "http://localhost:5173"
+        )
+        .validate()
+        .is_ok());
+    }
+
+    #[test]
+    fn production_requires_stripe_webhook_secret_when_stripe_is_enabled() {
+        let mut config = config("production", "https://vantage.example", "");
+        config.stripe_secret_key = "sk_live_test".into();
+        assert!(config.validate().is_err());
+
+        config.stripe_webhook_secret = "whsec_test".into();
+        assert!(config.validate().is_ok());
     }
 }

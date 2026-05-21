@@ -22,6 +22,7 @@ import { PreferenceOnboardingModal } from '@/components/preferences/PreferenceOn
 import { useSavedBusinesses } from '@/hooks/useSavedBusinesses';
 import type { Business, ExploreLane, ExploreSortMode, OwnerEvent, User } from '@/types';
 import { api } from '@/api';
+import { logger } from '@/lib/logger';
 import { useAuth } from '@/contexts/AuthContext';
 
 const CACHE_VERSION = 'v5';
@@ -91,6 +92,14 @@ function setCache(key: string, businesses: Business[], lanes: ExploreLane[]) {
     sessionStorage.setItem(key, JSON.stringify({ businesses, lanes, ts: Date.now() }));
   } catch {
     // Session storage may be unavailable; cache writes are optional.
+  }
+}
+
+function removeCached(key: string) {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Blocked session storage should not prevent refresh.
   }
 }
 
@@ -277,7 +286,7 @@ export default function Businesses() {
 
   const fetchExploreData = useCallback(async (lat: number, lng: number, radiusValue: number, forceRefresh = false, requestedSortMode: ExploreSortMode = 'canonical') => {
     const key = cacheKey(lat, lng, radiusValue, requestedSortMode);
-    if (forceRefresh) sessionStorage.removeItem(key);
+    if (forceRefresh) removeCached(key);
     void fetchOwnerEvents(lat, lng, radiusValue);
     const cached = getCached(key);
     if (!forceRefresh && cached && (cached.businesses.length > 0 || cached.lanes.length > 0)) {
@@ -302,7 +311,7 @@ export default function Businesses() {
     const loadFallbackBusinesses = async () => {
       const fallbackItems = await api.getBusinesses();
       if (fallbackItems.length > 0) {
-        console.warn('Explore discovery returned no usable businesses; using /api/businesses fallback', {
+        logger.warn('Explore discovery returned no usable businesses; using /api/businesses fallback', {
           lat,
           lng,
           radius: radiusValue,
@@ -337,7 +346,7 @@ export default function Businesses() {
       }
       storeResults(items, nextLanes);
     } catch (discoveryError) {
-      console.error('Explore discovery failed before fallback', {
+      logger.error('Explore discovery failed before fallback', {
         endpoint: '/api/discover',
         lat,
         lng,

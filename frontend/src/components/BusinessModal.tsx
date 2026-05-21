@@ -11,8 +11,10 @@ import { useNavigate } from 'react-router-dom'
 import { X, Star, MapPin, Phone, Mail, Globe, Tag, Send, Loader2, MessageSquare, Clock, CheckCircle2, Award, Zap, Edit3, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { BusinessImage } from '@/components/explore/BusinessImage'
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
 import type { Business, Review, Deal, BusinessActivityStatus } from '../types'
 import { api, buildApiUrl } from '../api'
+import { logger } from '@/lib/logger'
 import { useAuth } from '@/contexts/AuthContext'
 
 /** Props for the BusinessModal component. */
@@ -41,6 +43,10 @@ function parseKnownFor(value: string) {
     .filter(Boolean)
 }
 
+function hasOwnerLink(business: Business) {
+  return Boolean(business.owner_id?.trim())
+}
+
 /**
  * Renders a business detail modal with three tabs (Details, Reviews, Deals).
  *
@@ -58,6 +64,7 @@ function parseKnownFor(value: string) {
 export function BusinessModal({ business, onClose, onBusinessUpdated }: BusinessModalProps) {
   const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
+  useBodyScrollLock(true)
   const [reviews, setReviews] = useState<Review[]>([])
   const [deals, setDeals] = useState<Deal[]>([])
   const [activityStatus, setActivityStatus] = useState<BusinessActivityStatus | null>(null)
@@ -80,7 +87,16 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   const [knownForInput, setKnownForInput] = useState((business.known_for || []).join(', '))
 
   const businessId = getBusinessId(business)
-  const isClaimedOwner = !!(isAuthenticated && business.is_claimed && user?.id === business.owner_id)
+  const isOwner = !!(isAuthenticated && user?.id && user.id === business.owner_id)
+  const canManageProfile = isOwner
+  const canWriteReview = isAuthenticated && !isOwner
+  const isOwnerLinked = hasOwnerLink(business)
+  const canClaimBusiness =
+    business.is_seed !== false &&
+    !business.is_claimed &&
+    !isOwnerLinked &&
+    isAuthenticated &&
+    user?.role === 'business_owner'
   const gradient = categoryGradients[business.category] || 'from-brand-light to-brand'
   const displayShortDescription = shortDescription || business.short_description || business.description || ''
   const displayKnownFor = knownFor.length > 0 ? knownFor : business.known_for || []
@@ -108,7 +124,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
       if (dealsData.status === 'fulfilled') setDeals(dealsData.value)
       if (activityData.status === 'fulfilled') setActivityStatus(activityData.value)
     } catch (err) {
-      console.error('Failed to load data:', err)
+      logger.error('Failed to load data:', err)
     } finally {
       setLoading(false)
     }
@@ -134,11 +150,6 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
-  }, [])
-
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitError('')
@@ -161,7 +172,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   }
 
   const handleSaveProfile = async () => {
-    if (!isClaimedOwner) return
+    if (!canManageProfile) return
 
     setProfileError('')
     setProfileSaving(true)
@@ -314,7 +325,12 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                   <CheckCircle2 className="w-4 h-4" />
                   <span className="font-medium">Verified Business</span>
                 </div>
-              ) : business.is_seed !== false && isAuthenticated && user?.role === 'business_owner' ? (
+              ) : isOwnerLinked ? (
+                <div className="flex items-center gap-2 text-ui text-success">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span className="font-medium">Owner Managed</span>
+                </div>
+              ) : canClaimBusiness ? (
                 <button
                   onClick={handleClaimBusiness}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-brand/30 text-brand hover:bg-brand/5 transition-colors text-ui font-medium"
@@ -353,7 +369,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                     </p>
                     <p className="text-ui text-[hsl(var(--foreground))]">{displayShortDescription}</p>
                   </div>
-                  {isClaimedOwner && (
+                  {canManageProfile && (
                     <button
                       type="button"
                       onClick={() => {
@@ -381,7 +397,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                   </div>
                 )}
 
-                {editingProfile && isClaimedOwner && (
+                {editingProfile && canManageProfile && (
                   <div className="space-y-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4">
                     <div>
                       <label className="mb-1.5 block text-ui font-medium text-[hsl(var(--foreground))]">
@@ -481,7 +497,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
 
           {activeTab === 'reviews' && (
             <div className="space-y-5 animate-fade-in">
-              {isAuthenticated && !showReviewForm && (
+              {canWriteReview && !showReviewForm && (
                 <button
                   onClick={() => setShowReviewForm(true)}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))] transition-colors"
@@ -495,6 +511,14 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 <div className="p-4 rounded-xl bg-[hsl(var(--secondary))] text-center">
                   <p className="text-ui text-[hsl(var(--muted-foreground))]">
                     <a href="/login" className="text-[hsl(var(--primary))] font-medium hover:underline">Sign in</a> to write a review
+                  </p>
+                </div>
+              )}
+
+              {isOwner && (
+                <div className="p-4 rounded-xl bg-[hsl(var(--secondary))] text-center">
+                  <p className="text-ui text-[hsl(var(--muted-foreground))]">
+                    Owners cannot review their own listings.
                   </p>
                 </div>
               )}

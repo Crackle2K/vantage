@@ -27,8 +27,6 @@ impl AuthUser {
     pub fn display_name(&self) -> &str {
         if !self.name.trim().is_empty() {
             &self.name
-        } else if !self.email.trim().is_empty() {
-            &self.email
         } else {
             "Vantage user"
         }

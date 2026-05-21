@@ -208,12 +208,6 @@ export interface UserPreferencesUpdate {
   preferences_completed?: boolean;
 }
 
-/** JWT auth tokens (used internally by the backend; frontend relies on cookies). */
-export interface AuthTokens {
-  access_token: string;
-  token_type: string;
-}
-
 /** A business ownership claim submission with verification status. */
 export interface BusinessClaim {
   id: string;
@@ -261,6 +255,7 @@ export interface Subscription {
   updated_at?: string;
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
+  stripe_checkout_session_id?: string | null;
   stripe_price_id?: string | null;
   billing_provider?: string;
 }
@@ -277,6 +272,11 @@ export interface SubscriptionCreate {
   business_id: string;
   tier: SubscriptionTier;
   billing_cycle: BillingCycle;
+}
+
+/** Payload for canceling a subscription, scoped to a business when needed. */
+export interface SubscriptionCancel {
+  business_id?: string;
 }
 
 /** Describes a subscription tier's name, pricing, and feature list. */

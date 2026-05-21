@@ -89,11 +89,7 @@ async fn register(
     Ok((
         StatusCode::CREATED,
         session_headers(&session, &state.config),
-        Json(json!({
-            "access_token": session.access_token,
-            "token_type": "bearer",
-            "user": public_user_json(&user),
-        })),
+        Json(auth_response_json(&user)),
     ))
 }
 
@@ -116,11 +112,7 @@ async fn login(
 
     Ok((
         session_headers(&session, &state.config),
-        Json(json!({
-            "access_token": session.access_token,
-            "token_type": "bearer",
-            "user": public_user_json(&user),
-        })),
+        Json(auth_response_json(&user)),
     ))
 }
 
@@ -168,11 +160,7 @@ async fn google_auth(
 
     Ok((
         session_headers(&session, &state.config),
-        Json(json!({
-            "access_token": session.access_token,
-            "token_type": "bearer",
-            "user": public_user_json(&user),
-        })),
+        Json(auth_response_json(&user)),
     ))
 }
 
@@ -291,6 +279,10 @@ fn public_user_json(user: &AuthUserRecord) -> Value {
     })
 }
 
+fn auth_response_json(user: &AuthUserRecord) -> Value {
+    json!({ "user": public_user_json(user) })
+}
+
 fn metadata_str<'a>(metadata: &'a Value, key: &str) -> Option<&'a str> {
     metadata.get(key).and_then(Value::as_str)
 }
@@ -320,5 +312,36 @@ fn map_supabase_auth_error(error: anyhow::Error) -> AppError {
         AppError::Unauthorized("Invalid credentials".into())
     } else {
         AppError::Internal("Authentication service unavailable".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn auth_record() -> AuthUserRecord {
+        AuthUserRecord {
+            id: "11111111-1111-1111-1111-111111111111".into(),
+            email: Some("owner@example.com".into()),
+            user_metadata: json!({
+                "full_name": "Vantage Owner",
+                "auth_provider": "email"
+            }),
+            app_metadata: json!({
+                "role": "business_owner",
+                "subscription_tier": "FREE"
+            }),
+            created_at: Some("2026-05-19T00:00:00Z".into()),
+        }
+    }
+
+    #[test]
+    fn auth_response_does_not_expose_bearer_tokens() {
+        let response = auth_response_json(&auth_record());
+
+        assert!(response.get("access_token").is_none());
+        assert!(response.get("refresh_token").is_none());
+        assert!(response.get("token_type").is_none());
+        assert_eq!(response["user"]["email"], "owner@example.com");
     }
 }

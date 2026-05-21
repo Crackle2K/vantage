@@ -137,6 +137,7 @@ create table if not exists public.subscriptions (
   cancel_at_period_end boolean not null default false,
   stripe_customer_id text,
   stripe_subscription_id text,
+  stripe_checkout_session_id text,
   stripe_price_id text,
   billing_provider text not null default 'stripe',
   created_at timestamptz not null default now(),
@@ -242,6 +243,9 @@ alter table public.activity_feed enable row level security;
 alter table public.activity_comments enable row level security;
 alter table public.owner_events enable row level security;
 
+drop policy if exists "Users manage own claims" on public.claims;
+drop policy if exists "Users manage own checkins" on public.checkins;
+
 do $$
 begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'businesses' and policyname = 'Public can read businesses') then
@@ -266,14 +270,39 @@ begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'saved_businesses' and policyname = 'Users manage own saved businesses') then
     create policy "Users manage own saved businesses" on public.saved_businesses for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
   end if;
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'claims' and policyname = 'Users manage own claims') then
-    create policy "Users manage own claims" on public.claims for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'claims' and policyname = 'Users read own claims') then
+    create policy "Users read own claims" on public.claims for select using (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'claims' and policyname = 'Users submit pending claims') then
+    create policy "Users submit pending claims" on public.claims for insert with check (
+      auth.uid() = user_id
+      and status = 'pending'
+      and review_notes is null
+      and reviewed_by is null
+      and reviewed_at is null
+    );
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'claims' and policyname = 'Admins manage claims') then
+    create policy "Admins manage claims" on public.claims for all using (
+      auth.jwt() -> 'app_metadata' ->> 'role' = 'admin'
+    ) with check (
+      auth.jwt() -> 'app_metadata' ->> 'role' = 'admin'
+    );
   end if;
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'subscriptions' and policyname = 'Users read own subscriptions') then
     create policy "Users read own subscriptions" on public.subscriptions for select using (auth.uid() = user_id);
   end if;
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'checkins' and policyname = 'Users manage own checkins') then
-    create policy "Users manage own checkins" on public.checkins for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'checkins' and policyname = 'Users read own checkins') then
+    create policy "Users read own checkins" on public.checkins for select using (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'checkins' and policyname = 'Users submit self-reported checkins') then
+    create policy "Users submit self-reported checkins" on public.checkins for insert with check (
+      auth.uid() = user_id
+      and status = 'self_reported'
+      and is_geo_verified = false
+      and confirmations = 0
+      and cardinality(confirmed_by) = 0
+    );
   end if;
 end $$;
 

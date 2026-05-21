@@ -51,6 +51,23 @@ pub fn normalize_id_alias(mut row: Value) -> Value {
     row
 }
 
+pub fn unwrap_rpc_items(rows: Vec<Value>) -> Vec<Value> {
+    rows.into_iter()
+        .map(|row| row.get("item").cloned().unwrap_or(row))
+        .collect()
+}
+
+pub fn geo_rpc_unavailable(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    lowered.contains("search_businesses_geo")
+        || lowered.contains("activity_pulse_geo")
+        || lowered.contains("owner_events_geo")
+        || lowered.contains("could not find the function")
+        || lowered.contains("schema cache")
+        || lowered.contains("postgis")
+        || lowered.contains("location_geog")
+}
+
 pub fn normalize_business(mut row: Value) -> Value {
     row = normalize_id_alias(row);
 
@@ -144,4 +161,34 @@ pub fn sanitize_postgrest_pattern(raw: &str) -> String {
         .collect::<String>()
         .trim()
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn unwrap_rpc_items_extracts_item_payloads_and_keeps_plain_rows() {
+        let rows = unwrap_rpc_items(vec![
+            json!({ "item": { "id": "inside" } }),
+            json!({ "id": "plain" }),
+        ]);
+
+        assert_eq!(rows[0]["id"], "inside");
+        assert_eq!(rows[1]["id"], "plain");
+    }
+
+    #[test]
+    fn geo_rpc_unavailable_detects_missing_geo_migration_errors() {
+        assert!(geo_rpc_unavailable(
+            "Could not find the function public.search_businesses_geo in the schema cache"
+        ));
+        assert!(geo_rpc_unavailable(
+            "column businesses.location_geog does not exist"
+        ));
+        assert!(!geo_rpc_unavailable(
+            "permission denied for table businesses"
+        ));
+    }
 }

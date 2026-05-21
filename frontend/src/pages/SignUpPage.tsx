@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 const RECAPTCHA_SIGNUP_ACTION = 'SIGNUP';
+const RECAPTCHA_SCRIPT_ID = 'recaptcha-enterprise-script';
 const signUpSignals = [
   {
     label: 'Earned visibility',
@@ -91,38 +92,68 @@ export default function SignUpPage() {
   const [widgetId, setWidgetId] = useState<number | null>(null);
   const [recaptchaToken, setRecaptchaToken] = useState('');
   const recaptchaRef = useRef<HTMLDivElement | null>(null);
+  const recaptchaRenderedRef = useRef(false);
 
   useEffect(() => {
-    if (!recaptchaEnabled || widgetId !== null) return;
+    if (!recaptchaEnabled || document.getElementById(RECAPTCHA_SCRIPT_ID)) return;
+
+    const script = document.createElement('script');
+    script.id = RECAPTCHA_SCRIPT_ID;
+    script.src = 'https://www.google.com/recaptcha/enterprise.js';
+    script.async = true;
+    script.defer = true;
+    script.onerror = () => {
+      setError('CAPTCHA could not be loaded. Check your connection and try again.');
+    };
+    document.head.appendChild(script);
+  }, [recaptchaEnabled]);
+
+  useEffect(() => {
+    if (!recaptchaEnabled || widgetId !== null || recaptchaRenderedRef.current) return;
 
     let pollId: number | null = null;
+    let attempts = 0;
+    let cancelled = false;
     const tryRender = () => {
       const recaptcha = window.grecaptcha?.enterprise;
       if (!recaptcha || !recaptchaRef.current) return false;
 
       recaptcha.ready(() => {
-        if (!recaptchaRef.current || widgetId !== null) return;
-        const id = recaptcha.render(recaptchaRef.current, {
-          sitekey: RECAPTCHA_SITE_KEY,
-          action: RECAPTCHA_SIGNUP_ACTION,
-          callback: (token: string) => setRecaptchaToken(token),
-          'expired-callback': () => setRecaptchaToken(''),
-        });
-        setWidgetId(id);
+        if (cancelled || !recaptchaRef.current || recaptchaRenderedRef.current) return;
+        try {
+          const id = recaptcha.render(recaptchaRef.current, {
+            sitekey: RECAPTCHA_SITE_KEY,
+            action: RECAPTCHA_SIGNUP_ACTION,
+            callback: (token: string) => setRecaptchaToken(token),
+            'expired-callback': () => setRecaptchaToken(''),
+          });
+          recaptchaRenderedRef.current = true;
+          setWidgetId(id);
+        } catch {
+          setError('CAPTCHA could not be initialized. Refresh the page and try again.');
+        }
       });
       return true;
     };
 
     if (!tryRender()) {
       pollId = window.setInterval(() => {
+        attempts += 1;
         if (tryRender() && pollId !== null) {
           window.clearInterval(pollId);
           pollId = null;
+          return;
+        }
+        if (attempts >= 50 && pollId !== null) {
+          window.clearInterval(pollId);
+          pollId = null;
+          setError('CAPTCHA could not be loaded. Check your connection and try again.');
         }
       }, 300);
     }
 
     return () => {
+      cancelled = true;
       if (pollId !== null) window.clearInterval(pollId);
     };
   }, [recaptchaEnabled, widgetId]);
@@ -146,7 +177,7 @@ export default function SignUpPage() {
     }
 
     if (recaptchaEnabled && !recaptchaToken) {
-      setError('Please complete the CAPTCHA verification');
+      setError('Please complete the CAPTCHA verification. If it does not appear, refresh the page and try again.');
       return;
     }
 
@@ -164,7 +195,11 @@ export default function SignUpPage() {
       setError(err);
       setLoading(false);
       if (widgetId !== null) {
-        window.grecaptcha?.enterprise.reset(widgetId);
+        try {
+          window.grecaptcha?.enterprise.reset(widgetId);
+        } catch {
+          setError('Signup failed. Refresh the page before retrying CAPTCHA verification.');
+        }
         setRecaptchaToken('');
       }
     } else {
@@ -373,12 +408,19 @@ export default function SignUpPage() {
             </div>
 
             {recaptchaEnabled && (
-              <div
-                ref={recaptchaRef}
-                className="g-recaptcha min-h-20"
-                data-sitekey={RECAPTCHA_SITE_KEY}
-                data-action={RECAPTCHA_SIGNUP_ACTION}
-              />
+              <div>
+                <div
+                  ref={recaptchaRef}
+                  className="g-recaptcha min-h-20"
+                  data-sitekey={RECAPTCHA_SITE_KEY}
+                  data-action={RECAPTCHA_SIGNUP_ACTION}
+                />
+                {!recaptchaToken && (
+                  <p className="mt-2 text-caption text-[hsl(var(--muted-foreground))]">
+                    Waiting for CAPTCHA verification.
+                  </p>
+                )}
+              </div>
             )}
 
             <Button

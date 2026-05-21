@@ -1,10 +1,10 @@
 use anyhow::Result;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const STRIPE_API: &str = "https://api.stripe.com/v1";
 
 async fn stripe_post(secret_key: &str, path: &str, params: &[(&str, &str)]) -> Result<Value> {
-    let client = reqwest::Client::new();
+    let client = stripe_client()?;
     let resp = client
         .post(format!("{}{}", STRIPE_API, path))
         .basic_auth(secret_key, Option::<&str>::None)
@@ -12,7 +12,22 @@ async fn stripe_post(secret_key: &str, path: &str, params: &[(&str, &str)]) -> R
         .send()
         .await?;
 
-    let data: Value = resp.json().await?;
+    parse_stripe_response(resp).await
+}
+
+async fn parse_stripe_response(resp: reqwest::Response) -> Result<Value> {
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    let data = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({ "message": text }));
+
+    if !status.is_success() {
+        let message = data["error"]["message"]
+            .as_str()
+            .or_else(|| data["message"].as_str())
+            .unwrap_or("Stripe request failed");
+        anyhow::bail!("Stripe error: {} (HTTP {})", message, status.as_u16());
+    }
+
     if let Some(err) = data.get("error") {
         anyhow::bail!(
             "Stripe error: {}",
@@ -23,61 +38,64 @@ async fn stripe_post(secret_key: &str, path: &str, params: &[(&str, &str)]) -> R
 }
 
 async fn stripe_delete(secret_key: &str, path: &str) -> Result<Value> {
-    let client = reqwest::Client::new();
+    let client = stripe_client()?;
     let resp = client
         .delete(format!("{}{}", STRIPE_API, path))
         .basic_auth(secret_key, Option::<&str>::None)
         .send()
         .await?;
 
-    let data: Value = resp.json().await?;
-    Ok(data)
-}
-
-pub async fn create_customer(secret_key: &str, email: &str) -> Result<String> {
-    let data = stripe_post(secret_key, "/customers", &[("email", email)]).await?;
-    let id = data["id"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("No customer ID in Stripe response"))?
-        .to_string();
-    Ok(id)
-}
-
-pub async fn create_subscription(secret_key: &str, email: &str, price_id: &str) -> Result<Value> {
-    // Create or retrieve customer
-    let customer_id = create_customer(secret_key, email).await?;
-
-    let data = stripe_post(
-        secret_key,
-        "/subscriptions",
-        &[
-            ("customer", customer_id.as_str()),
-            ("items[0][price]", price_id),
-        ],
-    )
-    .await?;
-
-    Ok(data)
+    parse_stripe_response(resp).await
 }
 
 pub async fn cancel_subscription(secret_key: &str, subscription_id: &str) -> Result<Value> {
     stripe_delete(secret_key, &format!("/subscriptions/{}", subscription_id)).await
 }
 
-pub async fn create_payment_intent(
-    secret_key: &str,
-    amount_cents: u64,
-    currency: &str,
-    customer_id: &str,
-) -> Result<Value> {
+pub struct CheckoutSessionRequest<'a> {
+    pub secret_key: &'a str,
+    pub email: &'a str,
+    pub price_id: &'a str,
+    pub success_url: &'a str,
+    pub cancel_url: &'a str,
+    pub user_id: &'a str,
+    pub business_id: &'a str,
+    pub tier: &'a str,
+    pub billing_cycle: &'a str,
+}
+
+pub async fn create_checkout_session(request: CheckoutSessionRequest<'_>) -> Result<Value> {
     stripe_post(
-        secret_key,
-        "/payment_intents",
+        request.secret_key,
+        "/checkout/sessions",
         &[
-            ("amount", &amount_cents.to_string()),
-            ("currency", currency),
-            ("customer", customer_id),
+            ("mode", "subscription"),
+            ("customer_email", request.email),
+            ("line_items[0][price]", request.price_id),
+            ("line_items[0][quantity]", "1"),
+            ("success_url", request.success_url),
+            ("cancel_url", request.cancel_url),
+            ("metadata[user_id]", request.user_id),
+            ("metadata[business_id]", request.business_id),
+            ("metadata[tier]", request.tier),
+            ("metadata[billing_cycle]", request.billing_cycle),
+            ("subscription_data[metadata][user_id]", request.user_id),
+            (
+                "subscription_data[metadata][business_id]",
+                request.business_id,
+            ),
+            ("subscription_data[metadata][tier]", request.tier),
+            (
+                "subscription_data[metadata][billing_cycle]",
+                request.billing_cycle,
+            ),
         ],
     )
     .await
+}
+
+fn stripe_client() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?)
 }

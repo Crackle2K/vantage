@@ -2,8 +2,8 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{
-        business_lat_lng, eq, limit, normalize_id_alias, offset, order, select_all, value_i64,
-        value_str,
+        business_lat_lng, eq, geo_rpc_unavailable, limit, normalize_id_alias, offset, order,
+        select_all, unwrap_rpc_items, value_i64, value_str,
     },
     security,
     state::AppState,
@@ -98,15 +98,13 @@ async fn check_in(
         .as_str()
         .ok_or_else(|| AppError::BadRequest("business_id required".into()))?;
 
-    let lat = payload["lat"].as_f64().or(payload["latitude"].as_f64());
-    let lng = payload["lng"].as_f64().or(payload["longitude"].as_f64());
-    if let (Some(lat), Some(lng)) = (lat, lng) {
-        security::validate_lat_lng(lat, lng)?;
-    }
+    let coordinates = checkin_coordinates(&payload)?;
+    let lat = coordinates.map(|(lat, _)| lat);
+    let lng = coordinates.map(|(_, lng)| lng);
 
     let business = find_business(&state, business_id).await?;
-    let distance = if let (Some(user_lat), Some(user_lng), Some((biz_lat, biz_lng))) =
-        (lat, lng, business_lat_lng(&business))
+    let distance = if let (Some((user_lat, user_lng)), Some((biz_lat, biz_lng))) =
+        (coordinates, business_lat_lng(&business))
     {
         Some(crate::services::geo_service::haversine_km(
             user_lat, user_lng, biz_lat, biz_lng,
@@ -168,8 +166,7 @@ async fn check_in(
             "created_at": Utc::now().to_rfc3339(),
         }),
     )
-    .await
-    .ok();
+    .await?;
 
     Ok((StatusCode::CREATED, Json(normalize_checkin(checkin))))
 }
@@ -304,8 +301,7 @@ async fn add_comment(
             &[eq("id", &id)],
             json!({ "comments": comment_count }),
         )
-        .await
-        .ok();
+        .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -361,11 +357,22 @@ async fn get_activity_pulse(
     State(state): State<Arc<AppState>>,
     Query(params): Query<FeedParams>,
 ) -> Result<impl IntoResponse> {
-    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
-        security::validate_lat_lng(lat, lng)?;
-    }
+    let has_coordinates = security::validate_optional_lat_lng(params.lat, params.lng)?.is_some();
 
     let limit_value = params.limit.unwrap_or(10).clamp(1, 30);
+    if has_coordinates {
+        match activity_pulse_geo(&state, &params, limit_value).await {
+            Ok(items) => return Ok(Json(json!({ "items": items }))),
+            Err(err) if geo_rpc_unavailable(&err.to_string()) => {
+                tracing::warn!(
+                    error = %err,
+                    "PostGIS activity pulse RPC unavailable; falling back to Rust distance filtering"
+                );
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+
     let rows = state
         .db
         .supabase
@@ -385,7 +392,11 @@ async fn get_activity_pulse(
         let business = if business_id.is_empty() {
             None
         } else {
-            find_business(&state, &business_id).await.ok()
+            match find_business(&state, &business_id).await {
+                Ok(business) => Some(business),
+                Err(AppError::NotFound(_)) => None,
+                Err(err) => return Err(err),
+            }
         };
 
         if let (Some(lat), Some(lng), Some(business)) = (params.lat, params.lng, business.as_ref())
@@ -420,6 +431,29 @@ async fn get_activity_pulse(
     }
 
     Ok(Json(json!({ "items": items })))
+}
+
+async fn activity_pulse_geo(
+    state: &AppState,
+    params: &FeedParams,
+    limit_value: i64,
+) -> anyhow::Result<Vec<Value>> {
+    let lat = params.lat.expect("validated before geospatial query");
+    let lng = params.lng.expect("validated before geospatial query");
+    let rows = state
+        .db
+        .supabase
+        .rpc_json(
+            "activity_pulse_geo",
+            json!({
+                "p_lat": lat,
+                "p_lng": lng,
+                "p_radius_km": params.radius.unwrap_or(5.0).clamp(0.1, 150.0),
+                "p_limit": limit_value,
+            }),
+        )
+        .await?;
+    Ok(unwrap_rpc_items(rows))
 }
 
 async fn get_business_activity(
@@ -483,14 +517,25 @@ async fn list_owner_events(
     State(state): State<Arc<AppState>>,
     Query(params): Query<EventParams>,
 ) -> Result<impl IntoResponse> {
-    if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
-        security::validate_lat_lng(lat, lng)?;
+    let has_coordinates = security::validate_optional_lat_lng(params.lat, params.lng)?.is_some();
+
+    if has_coordinates {
+        match owner_events_geo(&state, &params).await {
+            Ok(events) => return Ok(Json(events)),
+            Err(err) if geo_rpc_unavailable(&err.to_string()) => {
+                tracing::warn!(
+                    error = %err,
+                    "PostGIS owner events RPC unavailable; falling back to Rust distance filtering"
+                );
+            }
+            Err(err) => return Err(err.into()),
+        }
     }
 
     let mut query = vec![
         select_all(),
         order("start_time.asc"),
-        limit(if params.lat.is_some() && params.lng.is_some() {
+        limit(if has_coordinates {
             params.limit.unwrap_or(20).clamp(1, 100) * 3
         } else {
             params.limit.unwrap_or(20).clamp(1, 100)
@@ -549,6 +594,38 @@ async fn list_owner_events(
     events.truncate(params.limit.unwrap_or(20).clamp(1, 100) as usize);
 
     Ok(Json(events))
+}
+
+async fn owner_events_geo(state: &AppState, params: &EventParams) -> anyhow::Result<Vec<Value>> {
+    let lat = params.lat.expect("validated before geospatial query");
+    let lng = params.lng.expect("validated before geospatial query");
+    let business_id = params
+        .business_id
+        .as_ref()
+        .filter(|value| !value.is_empty())
+        .map(|value| security::validate_uuid_id(value, "business ID"))
+        .transpose()?;
+
+    let rows = state
+        .db
+        .supabase
+        .rpc_json(
+            "owner_events_geo",
+            json!({
+                "p_lat": lat,
+                "p_lng": lng,
+                "p_radius_km": params.radius.unwrap_or(5.0).clamp(0.1, 150.0),
+                "p_limit": params.limit.unwrap_or(20).clamp(1, 100),
+                "p_include_past": params.include_past.unwrap_or(false),
+                "p_business_id": business_id,
+            }),
+        )
+        .await?;
+
+    Ok(unwrap_rpc_items(rows)
+        .into_iter()
+        .map(normalize_id_alias)
+        .collect())
 }
 
 async fn create_owner_event(
@@ -617,8 +694,7 @@ async fn create_owner_event(
             "created_at": Utc::now().to_rfc3339(),
         }),
     )
-    .await
-    .ok();
+    .await?;
 
     Ok((StatusCode::CREATED, Json(normalize_id_alias(event))))
 }
@@ -734,7 +810,15 @@ async fn insert_activity(state: &AppState, body: Value) -> Result<Value> {
 }
 
 fn ensure_business_owner(row: &Value, auth_user: &AuthUser) -> Result<()> {
-    if value_str(row, "owner_id") != auth_user.id && auth_user.role != "admin" {
+    if auth_user.role != "business_owner" && auth_user.role != "admin" {
+        return Err(AppError::Forbidden(
+            "Business owner account required".into(),
+        ));
+    }
+    if auth_user.role == "admin" {
+        return Ok(());
+    }
+    if value_str(row, "owner_id") != auth_user.id {
         return Err(AppError::Forbidden("Not the business owner".into()));
     }
     Ok(())
@@ -783,8 +867,32 @@ fn normalize_checkin(mut row: Value) -> Value {
     row
 }
 
+fn checkin_coordinates(payload: &Value) -> Result<Option<(f64, f64)>> {
+    let lat = payload["lat"].as_f64().or(payload["latitude"].as_f64());
+    let lng = payload["lng"].as_f64().or(payload["longitude"].as_f64());
+    security::validate_optional_lat_lng(lat, lng)
+}
+
 fn parse_event_time(label: &str, value: &str) -> Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .map(|date| date.with_timezone(&Utc))
         .map_err(|_| AppError::BadRequest(format!("{} must be an ISO-8601 timestamp", label)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkin_coordinates_must_be_complete_and_valid() {
+        assert!(checkin_coordinates(&json!({})).unwrap().is_none());
+        assert_eq!(
+            checkin_coordinates(&json!({ "lat": 43.65, "lng": -79.38 }))
+                .unwrap()
+                .unwrap(),
+            (43.65, -79.38)
+        );
+        assert!(checkin_coordinates(&json!({ "lat": 43.65 })).is_err());
+        assert!(checkin_coordinates(&json!({ "lat": 91.0, "lng": -79.38 })).is_err());
+    }
 }

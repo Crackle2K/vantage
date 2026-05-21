@@ -40,17 +40,13 @@ async fn reverse_geocode(
         })));
     }
 
-    let url = format!(
-        "https://maps.googleapis.com/maps/api/geocode/json?latlng={},{}&key={}",
-        params.lat, params.lng, state.config.google_api_key
-    );
-
-    let resp: Value = reqwest::get(&url)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let resp = crate::services::google_places::reverse_geocode(
+        &state.config.google_api_key,
+        params.lat,
+        params.lng,
+    )
+    .await
+    .map_err(|_| AppError::BadRequest("Reverse geocoding is unavailable".into()))?;
 
     let results = resp["results"].as_array().cloned().unwrap_or_default();
     if results.is_empty() {

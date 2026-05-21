@@ -174,6 +174,23 @@ impl SupabaseClient {
         Self::parse_array_response(resp).await
     }
 
+    pub async fn rpc_json(&self, function_name: &str, body: Value) -> Result<Vec<Value>> {
+        self.ensure_configured()?;
+        let mut req = self
+            .http
+            .post(format!("{}/rest/v1/rpc/{}", self.url, function_name));
+        for (k, v) in self.auth_headers() {
+            req = req.header(k, v);
+        }
+        let resp = req
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        Self::parse_array_response(resp).await
+    }
+
     pub async fn count(&self, table: &str, filter: &[(String, String)]) -> Result<usize> {
         self.ensure_configured()?;
         let mut req = self

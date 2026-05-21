@@ -5,7 +5,7 @@
  * variable aspect ratios for a masonry layout.
  */
 
-import { memo, type KeyboardEvent } from 'react';
+import { memo } from 'react';
 import { Heart, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BusinessImage } from '@/components/explore/BusinessImage';
@@ -88,26 +88,15 @@ export const BusinessCard = memo(function BusinessCard({
     : undefined;
   const images = collectImages(business, proxyUrl);
   const isClickable = typeof onViewDetails === 'function';
-  const handleKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    if (!isClickable) {
-      return;
-    }
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onViewDetails();
-    }
+  const handleViewDetails = () => {
+    onViewDetails?.();
   };
 
   return (
     <article
-      onClick={onViewDetails}
-      onKeyDown={handleKeyDown}
-      role={isClickable ? 'button' : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-      aria-label={isClickable ? `View ${business.name}` : undefined}
       className={cn(
         'group overflow-hidden transition-all duration-300 motion-reduce:transition-none',
-        isClickable && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]',
+        isClickable && 'cursor-pointer',
         'break-inside-avoid rounded-2xl bg-transparent hover:-translate-y-1 motion-reduce:hover:translate-y-0'
       )}
     >
@@ -129,7 +118,16 @@ export const BusinessCard = memo(function BusinessCard({
         </div>
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/54 via-black/22 to-transparent" />
 
-        <div className="absolute right-3 top-3">
+        {isClickable && (
+          <button
+            type="button"
+            onClick={handleViewDetails}
+            className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/75"
+            aria-label={`View ${business.name}`}
+          />
+        )}
+
+        <div className="absolute right-3 top-3 z-20">
           <button
             type="button"
             onClick={(e) => {
@@ -148,7 +146,7 @@ export const BusinessCard = memo(function BusinessCard({
         </div>
 
         {distance && (
-          <div className="absolute bottom-3 right-3">
+          <div className="pointer-events-none absolute bottom-3 right-3 z-20">
             <span className="inline-flex items-center gap-1 rounded-full border border-white/18 bg-black/40 px-3 py-1.5 text-caption font-medium text-white/92 backdrop-blur-md">
               <MapPin className="h-3.5 w-3.5" />
               {distance}
@@ -157,14 +155,31 @@ export const BusinessCard = memo(function BusinessCard({
         )}
       </div>
 
-      <div className="space-y-1.5 px-1.5 pb-1 pt-3.5">
-        <h3 className="font-sub text-[1.08rem] font-semibold leading-tight text-[hsl(var(--foreground))] line-clamp-2">
-          {business.name}
-        </h3>
-        <p className="line-clamp-1 text-caption text-[hsl(var(--muted-foreground))]">
-          {business.address || 'Toronto'}
-        </p>
-      </div>
+      {isClickable ? (
+        <div className="space-y-1.5 px-1.5 pb-1 pt-3.5">
+          <h3 className="font-sub text-[1.08rem] font-semibold leading-tight text-[hsl(var(--foreground))] line-clamp-2">
+            <button
+              type="button"
+              onClick={handleViewDetails}
+              className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))/0.45] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))]"
+            >
+              {business.name}
+            </button>
+          </h3>
+          <p className="line-clamp-1 text-caption text-[hsl(var(--muted-foreground))]">
+            {business.address || 'Toronto'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1.5 px-1.5 pb-1 pt-3.5">
+          <h3 className="font-sub text-[1.08rem] font-semibold leading-tight text-[hsl(var(--foreground))] line-clamp-2">
+            {business.name}
+          </h3>
+          <p className="line-clamp-1 text-caption text-[hsl(var(--muted-foreground))]">
+            {business.address || 'Toronto'}
+          </p>
+        </div>
+      )}
     </article>
   );
 });
