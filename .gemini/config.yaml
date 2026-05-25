@@ -1,0 +1,13 @@
+code_review:
+  # Automatically review every pull request
+  comment_on_pull_requests: true
+
+  # Keep responses concise and actionable
+  max_review_comments: 10
+
+  # Focus areas for review
+  checks:
+    - bugs
+    - security
+    - performance
+    - best_practices
