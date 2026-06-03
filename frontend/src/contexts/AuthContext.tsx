@@ -9,6 +9,15 @@ import { createContext, useContext, useEffect, useState, useCallback, useMemo, u
 import { api } from '../api';
 import type { User } from '../types';
 
+const TEMP_AUTH_BYPASS = true;
+const TEMP_USER: User = {
+  id: 'temp-auth-bypass-user',
+  name: 'Temporary User',
+  email: 'temp@vantage.local',
+  role: 'business_owner',
+  preferences_completed: true,
+};
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -61,11 +70,17 @@ export const useAuth = () => {
  * @returns {JSX.Element} The auth context provider wrapping children.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(TEMP_AUTH_BYPASS ? TEMP_USER : null);
+  const [loading, setLoading] = useState(!TEMP_AUTH_BYPASS);
   const sessionEpoch = useRef(0);
 
   const fetchUser = useCallback(async () => {
+    if (TEMP_AUTH_BYPASS) {
+      setUser(TEMP_USER);
+      setLoading(false);
+      return;
+    }
+
     const epoch = sessionEpoch.current;
     try {
       const userData = await api.getMe();
@@ -88,6 +103,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchUser]);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    if (TEMP_AUTH_BYPASS) {
+      setUser(TEMP_USER);
+      setLoading(false);
+      return { error: null };
+    }
+
     try {
       const userData = await api.login(email, password);
       sessionEpoch.current += 1;
@@ -108,6 +129,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     recaptchaToken: string,
     recaptchaAction: string
   ) => {
+    if (TEMP_AUTH_BYPASS) {
+      setUser(TEMP_USER);
+      setLoading(false);
+      return { error: null };
+    }
+
     try {
       const userData = await api.register(name, email, password, role, recaptchaToken, recaptchaAction);
       sessionEpoch.current += 1;
@@ -121,6 +148,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = useCallback(async (credential: string) => {
+    if (TEMP_AUTH_BYPASS) {
+      setUser(TEMP_USER);
+      setLoading(false);
+      return { error: null };
+    }
+
     try {
       const userData = await api.googleAuth(credential);
       sessionEpoch.current += 1;
@@ -134,6 +167,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (TEMP_AUTH_BYPASS) {
+      setUser(TEMP_USER);
+      setLoading(false);
+      return;
+    }
+
     sessionEpoch.current += 1;
     // Call backend logout endpoint to clear httpOnly cookie
     try {

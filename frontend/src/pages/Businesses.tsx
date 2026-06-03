@@ -24,8 +24,14 @@ import type { Business, ExploreLane, ExploreSortMode, OwnerEvent, User } from '@
 import { api } from '@/api';
 import { logger } from '@/lib/logger';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  USE_DEMO_EXPLORE,
+  buildDemoExploreLanes,
+  getDemoBusinesses,
+  getDemoOwnerEvents
+} from '@/data/demoBusinesses';
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = USE_DEMO_EXPLORE ? 'v6-demo' : 'v5';
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_LAT = 43.6532;
 const DEFAULT_LNG = -79.3832;
@@ -276,6 +282,11 @@ export default function Businesses() {
   }, [searchInput]);
 
   const fetchOwnerEvents = useCallback(async (lat: number, lng: number, radiusValue: number) => {
+    if (USE_DEMO_EXPLORE) {
+      setOwnerEvents(getDemoOwnerEvents());
+      return;
+    }
+
     try {
       const events = await api.getOwnerEvents({ lat, lng, radius: radiusValue, limit: 12 });
       setOwnerEvents(events);
@@ -285,6 +296,17 @@ export default function Businesses() {
   }, []);
 
   const fetchExploreData = useCallback(async (lat: number, lng: number, radiusValue: number, forceRefresh = false, requestedSortMode: ExploreSortMode = 'canonical') => {
+    if (USE_DEMO_EXPLORE) {
+      const demoItems = getDemoBusinesses();
+      const demoLanes = buildDemoExploreLanes(demoItems);
+      setBusinesses(demoItems);
+      setLanes(demoLanes);
+      setOwnerEvents(getDemoOwnerEvents());
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     const key = cacheKey(lat, lng, radiusValue, requestedSortMode);
     if (forceRefresh) removeCached(key);
     void fetchOwnerEvents(lat, lng, radiusValue);
