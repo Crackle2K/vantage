@@ -57,30 +57,19 @@ async fn register(
     let role = registration_role(payload.role.as_ref())?;
 
     let full_name = security::sanitize_optional_text(payload.full_name.as_deref(), 120);
+    let user_metadata = registration_user_metadata(full_name.as_deref());
+    let app_metadata = registration_app_metadata(role);
     let created_user = state
         .db
         .supabase
-        .auth_create_user(
-            &email,
-            &payload.password,
-            json!({
-                "full_name": full_name,
-                "name": full_name,
-                "profile_picture": Value::Null,
-                "auth_provider": "email",
-            }),
-            json!({
-                "role": role,
-                "subscription_tier": "FREE",
-            }),
-        )
+        .auth_create_user(&email, &payload.password, user_metadata, app_metadata)
         .await
         .map_err(map_supabase_auth_error)?;
 
-    // Supabase may not include admin-created app metadata in a session minted
-    // before an explicit update. Apply defaults first so the cookie JWT has the
-    // same role/subscription claims as the returned user payload.
-    let user = ensure_auth_defaults(&state, created_user, Some(role), Some("email")).await?;
+    // Force metadata into Supabase Auth before login so the newly minted JWT
+    // carries the selected registration role immediately.
+    let user =
+        update_registration_metadata(&state, created_user, role, full_name.as_deref()).await?;
 
     let session = state
         .db
@@ -246,6 +235,57 @@ fn registration_role(role: Option<&UserRole>) -> Result<&'static str> {
     }
 }
 
+async fn update_registration_metadata(
+    state: &AppState,
+    user: AuthUserRecord,
+    role: &str,
+    full_name: Option<&str>,
+) -> Result<AuthUserRecord> {
+    let (app_metadata, user_metadata) = registration_metadata(&user, role, full_name);
+    state
+        .db
+        .supabase
+        .auth_update_user(
+            &user.id,
+            json!({
+                "app_metadata": app_metadata,
+                "user_metadata": user_metadata,
+            }),
+        )
+        .await
+        .map_err(map_supabase_auth_error)
+}
+
+fn registration_metadata(
+    user: &AuthUserRecord,
+    role: &str,
+    full_name: Option<&str>,
+) -> (Value, Value) {
+    let mut app_metadata = user.app_metadata.clone();
+    let mut user_metadata = user.user_metadata.clone();
+
+    merge_metadata(&mut app_metadata, registration_app_metadata(role));
+    merge_metadata(&mut user_metadata, registration_user_metadata(full_name));
+
+    (app_metadata, user_metadata)
+}
+
+fn registration_app_metadata(role: &str) -> Value {
+    json!({
+        "role": role,
+        "subscription_tier": "FREE",
+    })
+}
+
+fn registration_user_metadata(full_name: Option<&str>) -> Value {
+    json!({
+        "full_name": full_name,
+        "name": full_name,
+        "profile_picture": Value::Null,
+        "auth_provider": "email",
+    })
+}
+
 fn public_user_json(user: &AuthUserRecord) -> Value {
     let email = user.email.as_deref().unwrap_or_default();
     let full_name = metadata_str(&user.user_metadata, "full_name")
@@ -346,5 +386,28 @@ mod tests {
         assert!(response.get("refresh_token").is_none());
         assert!(response.get("token_type").is_none());
         assert_eq!(response["user"]["email"], "owner@example.com");
+    }
+
+    #[test]
+    fn registration_metadata_forces_selected_role_before_login() {
+        let mut record = auth_record();
+        record.app_metadata = json!({
+            "role": "customer",
+            "legacy": "kept"
+        });
+        record.user_metadata = json!({
+            "preferences": { "preferences_completed": true }
+        });
+
+        let (app_metadata, user_metadata) =
+            registration_metadata(&record, "business_owner", Some("Fresh Owner"));
+
+        assert_eq!(app_metadata["role"], "business_owner");
+        assert_eq!(app_metadata["subscription_tier"], "FREE");
+        assert_eq!(app_metadata["legacy"], "kept");
+        assert_eq!(user_metadata["full_name"], "Fresh Owner");
+        assert_eq!(user_metadata["name"], "Fresh Owner");
+        assert_eq!(user_metadata["auth_provider"], "email");
+        assert_eq!(user_metadata["preferences"]["preferences_completed"], true);
     }
 }
