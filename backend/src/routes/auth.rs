@@ -57,7 +57,7 @@ async fn register(
     let role = registration_role(payload.role.as_ref())?;
 
     let full_name = security::sanitize_optional_text(payload.full_name.as_deref(), 120);
-    state
+    let created_user = state
         .db
         .supabase
         .auth_create_user(
@@ -77,14 +77,17 @@ async fn register(
         .await
         .map_err(map_supabase_auth_error)?;
 
+    // Supabase may not include admin-created app metadata in a session minted
+    // before an explicit update. Apply defaults first so the cookie JWT has the
+    // same role/subscription claims as the returned user payload.
+    let user = ensure_auth_defaults(&state, created_user, Some(role), Some("email")).await?;
+
     let session = state
         .db
         .supabase
         .auth_login_password(&email, &payload.password)
         .await
         .map_err(map_supabase_auth_error)?;
-    let user =
-        ensure_auth_defaults(&state, session.user.clone(), Some(role), Some("email")).await?;
 
     Ok((
         StatusCode::CREATED,
