@@ -99,7 +99,7 @@ async fn login(
         .supabase
         .auth_login_password(&email, &payload.password)
         .await
-        .map_err(|_| AppError::Unauthorized("Invalid credentials".into()))?;
+        .map_err(map_supabase_auth_error)?;
     let user = ensure_auth_defaults(&state, session.user.clone(), None, Some("email")).await?;
 
     Ok((
