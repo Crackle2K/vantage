@@ -6,7 +6,8 @@
  * and intent explanations.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertCircle, Loader2, MapPin, Navigation, Sparkles } from 'lucide-react';
 import { api } from '@/api';
 import { BusinessModal } from '@/components/BusinessModal';
@@ -14,6 +15,7 @@ import { CategoryChip } from '@/components/explore/CategoryChip';
 import { BusinessImage } from '@/components/explore/BusinessImage';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getAnonymousSessionId, trackCustomerEvent } from '@/lib/customerEvents';
 import { useSavedBusinesses } from '@/hooks/useSavedBusinesses';
 import type { Business, DecideIntent } from '@/types';
 
@@ -49,13 +51,17 @@ function getBusinessId(business: Business) {
   return business.id || business._id || business.name;
 }
 
+function rankingReasonCodesFor(business: Business): string[] {
+  return (business.reason_codes ?? []).filter((reasonCode) => reasonCode !== 'CLAIMED');
+}
+
 function reasonChipLabel(reasonCode: string): string {
   switch (reasonCode) {
     case 'VERIFIED_TODAY': return 'Verified today';
     case 'HIGH_TRUST': return 'High trust';
     case 'RECENT_MOMENTUM': return 'Recent momentum';
     case 'HIGH_ENGAGEMENT': return 'High engagement';
-    case 'CLAIMED': return 'Claimed';
+    case 'CLAIMED': return 'Owner managed';
     case 'INDEPENDENT': return 'Independent';
     case 'HIDDEN_GEM': return 'Hidden gem';
     case 'MATCHED_CATEGORIES': return 'Matched category';
@@ -108,7 +114,10 @@ export default function DecidePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const modalScrollRef = useRef(0);
+  const impressedIdsRef = useRef<Set<string>>(new Set());
+  const pointerStartRef = useRef<{ businessId: string; x: number } | null>(null);
 
   const fetchLocation = useCallback((onSuccess?: () => void) => {
     if (!navigator.geolocation) {
@@ -168,6 +177,40 @@ export default function DecidePage() {
     };
   }, [primaryIntent, toggles]);
 
+  const activeResults = useMemo(() => {
+    const dismissed = new Set(dismissedIds);
+    return results.filter((business) => !dismissed.has(getBusinessId(business)));
+  }, [dismissedIds, results]);
+
+  const eventContext = useMemo(() => ({
+    source_surface: 'decide',
+    intent: primaryIntent ?? requestShape?.intent,
+    constraints: requestShape?.constraints ?? [],
+    location_context: {
+      radius_km: radius,
+      used_browser_location: !usingDefaultArea,
+      category: selectedCategory === 'Any' ? undefined : selectedCategory,
+    },
+  }), [primaryIntent, radius, requestShape, selectedCategory, usingDefaultArea]);
+
+  useEffect(() => {
+    activeResults.forEach((business, index) => {
+      const businessId = getBusinessId(business);
+      if (impressedIdsRef.current.has(businessId)) return;
+      impressedIdsRef.current.add(businessId);
+      void trackCustomerEvent({
+        event_type: 'match_card_impression',
+        business_id: businessId,
+        source_surface: eventContext.source_surface,
+        intent: eventContext.intent,
+        constraints: eventContext.constraints,
+        match_reason_codes: rankingReasonCodesFor(business),
+        location_context: eventContext.location_context,
+        metadata: { card_index: index },
+      });
+    });
+  }, [activeResults, eventContext]);
+
   const toggleExtraIntent = (intent: DecideIntent) => {
     setToggles((current) => {
       if (current.includes(intent)) {
@@ -204,6 +247,8 @@ export default function DecidePage() {
         }
       );
       setResults(response.items ?? []);
+      setDismissedIds([]);
+      impressedIdsRef.current = new Set();
       setIntentExplanation(response.intent_explanation ?? []);
     } catch (err) {
       setResults([]);
@@ -215,8 +260,79 @@ export default function DecidePage() {
   };
 
   const openBusiness = (business: Business) => {
+    const businessId = getBusinessId(business);
+    void trackCustomerEvent({
+      event_type: 'business_profile_open',
+      business_id: businessId,
+      source_surface: eventContext.source_surface,
+      intent: eventContext.intent,
+      constraints: eventContext.constraints,
+      match_reason_codes: rankingReasonCodesFor(business),
+      location_context: eventContext.location_context,
+    });
     modalScrollRef.current = window.scrollY;
     setSelectedBusiness(business);
+  };
+
+  const handleShowAnother = (business: Business) => {
+    const businessId = getBusinessId(business);
+    void trackCustomerEvent({
+      event_type: 'swipe_left',
+      business_id: businessId,
+      source_surface: eventContext.source_surface,
+      intent: eventContext.intent,
+      constraints: eventContext.constraints,
+      match_reason_codes: rankingReasonCodesFor(business),
+      location_context: eventContext.location_context,
+    });
+    setDismissedIds((current) => current.includes(businessId) ? current : [...current, businessId]);
+  };
+
+  const handleMatch = (business: Business) => {
+    const businessId = getBusinessId(business);
+    const commonPayload = {
+      business_id: businessId,
+      source_surface: eventContext.source_surface,
+      intent: eventContext.intent,
+      constraints: eventContext.constraints,
+      match_reason_codes: rankingReasonCodesFor(business),
+      location_context: eventContext.location_context,
+    };
+    void trackCustomerEvent({ event_type: 'swipe_right', ...commonPayload });
+    void trackCustomerEvent({ event_type: 'match', ...commonPayload });
+    openBusiness(business);
+  };
+
+  const handleSave = async (business: Business, wasSaved: boolean) => {
+    await toggleSaved(business);
+    if (!wasSaved) {
+      void trackCustomerEvent({
+        event_type: 'save',
+        business_id: getBusinessId(business),
+        source_surface: eventContext.source_surface,
+        intent: eventContext.intent,
+        constraints: eventContext.constraints,
+        match_reason_codes: rankingReasonCodesFor(business),
+        location_context: eventContext.location_context,
+      });
+    }
+  };
+
+  const handlePointerDown = (business: Business, event: PointerEvent<HTMLElement>) => {
+    pointerStartRef.current = { businessId: getBusinessId(business), x: event.clientX };
+  };
+
+  const handlePointerUp = (business: Business, event: PointerEvent<HTMLElement>) => {
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+    if (!start || start.businessId !== getBusinessId(business)) return;
+    const deltaX = event.clientX - start.x;
+    if (Math.abs(deltaX) < 90) return;
+    if (deltaX < 0) {
+      handleShowAnother(business);
+    } else {
+      handleMatch(business);
+    }
   };
 
   const closeBusiness = () => {
@@ -369,13 +485,35 @@ export default function DecidePage() {
                 </div>
               </div>
 
+              {activeResults.length === 0 ? (
+                <div className="rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] px-6 py-12 text-center">
+                  <h2 className="text-subheading font-semibold text-[hsl(var(--foreground))]">You reviewed this set</h2>
+                  <p className="mt-2 text-ui text-[hsl(var(--muted-foreground))]">
+                    Ask for another stack or reset the current matches.
+                  </p>
+                  <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+                    <Button type="button" variant="outline" onClick={() => setDismissedIds([])} className="rounded-full">
+                      Reset matches
+                    </Button>
+                    <Button type="button" onClick={handlePick} className="rounded-full">
+                      Pick another set
+                    </Button>
+                  </div>
+                </div>
+              ) : (
               <div className="grid gap-6 lg:grid-cols-3">
-                {results.map((business) => {
+                {activeResults.map((business, index) => {
                   const businessId = getBusinessId(business);
                   const isSaved = savedIds.includes(businessId);
                   const images = imageCandidatesFor(business);
+                  const reasonCodes = rankingReasonCodesFor(business);
                   return (
-                    <article key={businessId} className="overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.6)]">
+                    <article
+                      key={businessId}
+                      onPointerDown={(event) => handlePointerDown(business, event)}
+                      onPointerUp={(event) => handlePointerUp(business, event)}
+                      className="flex min-h-[570px] flex-col overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.6)] transition duration-200 motion-reduce:transition-none"
+                    >
                       <div className="relative aspect-[16/10] overflow-hidden bg-[hsl(var(--secondary))]">
                         <BusinessImage
                           primaryImage={images[0]}
@@ -390,12 +528,15 @@ export default function DecidePage() {
                             {business.category}
                           </span>
                           <span className="rounded-full border border-white/15 bg-black/35 px-3 py-1 text-caption font-medium text-white">
+                            #{index + 1} match
+                          </span>
+                          <span className="rounded-full border border-white/15 bg-black/35 px-3 py-1 text-caption font-medium text-white">
                             Score {Math.round(business.canonical_rank_score ?? business.ranking_components?.final_score ?? 0)}
                           </span>
                         </div>
                       </div>
 
-                      <div className="space-y-4 p-5">
+                      <div className="flex flex-1 flex-col space-y-4 p-5">
                         <div>
                           <h2 className="text-subheading font-semibold text-[hsl(var(--foreground))]">{business.name}</h2>
                           <p className="mt-2 line-clamp-3 text-ui text-[hsl(var(--muted-foreground))]">{buildDescription(business)}</p>
@@ -405,31 +546,47 @@ export default function DecidePage() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          {(business.reason_codes ?? []).slice(0, 3).map((reasonCode) => (
+                          {reasonCodes.slice(0, 3).map((reasonCode) => (
                             <span key={`${businessId}-${reasonCode}`} className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))/0.66] px-3 py-1.5 text-caption text-[hsl(var(--foreground))]">
                               {reasonChipLabel(reasonCode)}
                             </span>
                           ))}
+                          {business.is_claimed && (
+                            <span className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] px-3 py-1.5 text-caption text-[hsl(var(--muted-foreground))]">
+                              Owner managed
+                            </span>
+                          )}
                         </div>
 
-                        <div className="flex gap-3">
+                        <div className="mt-auto grid gap-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <Button type="button" variant="outline" onClick={() => handleShowAnother(business)} className="rounded-full">
+                              Show another
+                            </Button>
+                            <Button type="button" onClick={() => handleMatch(business)} className="rounded-full">
+                              Match
+                            </Button>
+                          </div>
+                          <div className="flex gap-3">
                           <Button type="button" variant="outline" onClick={() => openBusiness(business)} className="flex-1 rounded-full">
-                            Open
+                            Open business
                           </Button>
                           <Button
                             type="button"
                             variant={isSaved ? 'default' : 'outline'}
-                            onClick={() => void toggleSaved(business)}
+                            onClick={() => void handleSave(business, isSaved)}
                             className="flex-1 rounded-full"
                           >
-                            {isSaved ? 'Saved' : 'Save'}
+                            {isSaved ? 'Saved' : 'Save place'}
                           </Button>
+                          </div>
                         </div>
                       </div>
                     </article>
                   );
                 })}
               </div>
+              )}
             </>
           )}
 
@@ -442,12 +599,28 @@ export default function DecidePage() {
               <p className="mt-2 text-ui text-[hsl(var(--muted-foreground))]">
                 Pick a primary intent, then tap "Pick for me" to get three trust-ranked options.
               </p>
+              <Button asChild variant="outline" className="mt-5 rounded-full">
+                <Link to="/businesses">Browse Explore instead</Link>
+              </Button>
             </div>
           )}
         </div>
       </section>
 
-      {selectedBusiness && <BusinessModal business={selectedBusiness} onClose={closeBusiness} />}
+      {selectedBusiness && (
+        <BusinessModal
+          business={selectedBusiness}
+          onClose={closeBusiness}
+          sourceContext={{
+            sourceSurface: 'decide',
+            intent: eventContext.intent,
+            constraints: eventContext.constraints,
+            locationContext: eventContext.location_context,
+            anonymousSessionId: getAnonymousSessionId(),
+            matchReasonCodes: rankingReasonCodesFor(selectedBusiness),
+          }}
+        />
+      )}
     </div>
   );
 }

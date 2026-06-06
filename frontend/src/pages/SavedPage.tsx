@@ -11,6 +11,7 @@ import { BusinessModal } from '@/components/BusinessModal';
 import { BusinessImage } from '@/components/explore/BusinessImage';
 import { Button } from '@/components/ui/button';
 import { useSavedBusinesses } from '@/hooks/useSavedBusinesses';
+import { getAnonymousSessionId, trackCustomerEvent } from '@/lib/customerEvents';
 import type { Business } from '@/types';
 
 function getBusinessId(business: Business) {
@@ -45,8 +46,17 @@ export default function SavedPage() {
   const modalScrollRef = useRef(0);
 
   const openBusiness = (business: Business) => {
+    void trackCustomerEvent({
+      event_type: 'business_profile_open',
+      business_id: getBusinessId(business),
+      source_surface: 'saved',
+    });
     modalScrollRef.current = window.scrollY;
     setSelectedBusiness(business);
+  };
+
+  const handleRemoveSaved = async (business: Business) => {
+    await toggleSaved(business);
   };
 
   const closeBusiness = () => {
@@ -127,7 +137,7 @@ export default function SavedPage() {
                       <Button type="button" variant="outline" onClick={() => openBusiness(business)} className="rounded-full sm:flex-1">
                         Open
                       </Button>
-                      <Button type="button" onClick={() => void toggleSaved(business)} className="rounded-full sm:flex-1">
+                      <Button type="button" onClick={() => void handleRemoveSaved(business)} className="rounded-full sm:flex-1">
                         Remove
                       </Button>
                     </div>
@@ -139,7 +149,16 @@ export default function SavedPage() {
         )}
       </div>
 
-      {selectedBusiness && <BusinessModal business={selectedBusiness} onClose={closeBusiness} />}
+      {selectedBusiness && (
+        <BusinessModal
+          business={selectedBusiness}
+          onClose={closeBusiness}
+          sourceContext={{
+            sourceSurface: 'saved',
+            anonymousSessionId: getAnonymousSessionId(),
+          }}
+        />
+      )}
     </div>
   );
 }

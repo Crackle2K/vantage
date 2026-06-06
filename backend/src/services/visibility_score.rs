@@ -119,4 +119,32 @@ mod tests {
 
         assert_eq!(compute(&unclaimed), compute(&claimed));
     }
+
+    #[test]
+    fn monetization_and_customer_action_metadata_do_not_change_visibility_score() {
+        let baseline = json!({
+            "rating": 4.6,
+            "review_count": 42,
+            "is_verified": true,
+            "description": "Independent restaurant with recent local activity",
+            "photos": ["front.jpg"],
+        });
+        let with_non_ranking_metadata = json!({
+            "rating": 4.6,
+            "review_count": 42,
+            "is_verified": true,
+            "description": "Independent restaurant with recent local activity",
+            "photos": ["front.jpg"],
+            "subscription_tier": "premium",
+            "visibility_boost": true,
+            "featured_placement": true,
+            "sponsored": true,
+            "has_deals": true,
+            "active_offer_claims": 18,
+            "customer_event_count": 240,
+            "affects_lvs": false
+        });
+
+        assert_eq!(compute(&baseline), compute(&with_non_ranking_metadata));
+    }
 }

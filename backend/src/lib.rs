@@ -71,7 +71,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/health", get(health_check))
         .nest("/api/auth", routes::auth::router())
         .nest("/api", routes::businesses::router())
+        .nest("/api", routes::campaigns::router())
+        .nest("/api", routes::conversion_analytics::router())
         .nest("/api", routes::reviews::router())
+        .nest("/api", routes::customer_events::router())
         .nest("/api", routes::deals::router())
         .nest("/api", routes::claims::router())
         .nest("/api", routes::subscriptions::router())
@@ -215,5 +218,150 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn customer_event_requires_authenticated_or_anonymous_identity_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/customer-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "event_type": "match_card_impression",
+                            "business_id": "550e8400-e29b-41d4-a716-446655440000",
+                            "source_surface": "decide"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn invalid_customer_event_type_returns_bad_request_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/customer-events")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "event_type": "sponsored_rank_boost",
+                            "business_id": "550e8400-e29b-41d4-a716-446655440000",
+                            "source_surface": "decide",
+                            "anonymous_session_id": "anon_test_session"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn conversion_summary_requires_authentication_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/businesses/550e8400-e29b-41d4-a716-446655440000/conversion-summary")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn invalid_conversion_range_returns_bad_request_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/businesses/550e8400-e29b-41d4-a716-446655440000/conversion-summary?range=365d")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn invalid_campaign_business_id_returns_bad_request_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/businesses/not-a-uuid/campaigns")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn campaign_claim_requires_authentication_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/campaigns/550e8400-e29b-41d4-a716-446655440000/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn invalid_offer_claim_deal_id_returns_bad_request_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/deals/not-a-uuid/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn offer_claim_requires_authentication_before_database() {
+        let response = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/deals/550e8400-e29b-41d4-a716-446655440000/claim")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }

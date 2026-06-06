@@ -6,22 +6,33 @@
  * and "known for" tags directly from this modal.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, Star, MapPin, Phone, Mail, Globe, Tag, Send, Loader2, MessageSquare, Clock, CheckCircle2, Award, Zap, Edit3, Save } from 'lucide-react'
+import { X, Star, MapPin, Phone, Mail, Globe, Tag, Send, Loader2, MessageSquare, Clock, CheckCircle2, Award, Zap, Edit3, Save, Navigation } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { BusinessImage } from '@/components/explore/BusinessImage'
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock'
-import type { Business, Review, Deal, BusinessActivityStatus } from '../types'
+import type { Business, Review, Deal, BusinessActivityStatus, OfferClaim, Campaign, CampaignClaim } from '../types'
 import { api, buildApiUrl } from '../api'
 import { logger } from '@/lib/logger'
 import { useAuth } from '@/contexts/AuthContext'
+import { getAnonymousSessionId, trackCustomerEvent } from '@/lib/customerEvents'
+
+interface BusinessModalSourceContext {
+  sourceSurface: string
+  intent?: string
+  constraints?: string[]
+  matchReasonCodes?: string[]
+  locationContext?: Record<string, unknown>
+  anonymousSessionId?: string
+}
 
 /** Props for the BusinessModal component. */
 interface BusinessModalProps {
   business: Business
   onClose: () => void
   onBusinessUpdated?: (business: Business) => void
+  sourceContext?: BusinessModalSourceContext
 }
 
 const categoryGradients: Record<string, string> = {
@@ -47,6 +58,50 @@ function hasOwnerLink(business: Business) {
   return Boolean(business.owner_id?.trim())
 }
 
+function getDealId(deal: Deal) {
+  return deal.id || deal._id || ''
+}
+
+function getCampaignId(campaign: Campaign) {
+  return campaign.id || campaign._id || ''
+}
+
+function dealIsCurrent(deal: Deal) {
+  if (!deal.is_active) return false
+  if (!deal.valid_until) return true
+  const expiresAt = new Date(deal.valid_until).getTime()
+  return Number.isFinite(expiresAt) && expiresAt > Date.now()
+}
+
+function campaignIsCurrent(campaign: Campaign) {
+  if (campaign.status !== 'active') return false
+  const startsAt = new Date(campaign.starts_at).getTime()
+  const endsAt = new Date(campaign.ends_at).getTime()
+  const now = Date.now()
+  return Number.isFinite(startsAt) && Number.isFinite(endsAt) && startsAt <= now && endsAt > now
+}
+
+function campaignValueLabel(campaign: Campaign) {
+  if (campaign.offer_kind === 'discount' && campaign.discount_value != null) {
+    return campaign.discount_type === 'fixed'
+      ? `$${campaign.discount_value}`
+      : `${campaign.discount_value}%`
+  }
+  if (campaign.offer_kind === 'event') return 'Event'
+  if (campaign.offer_kind === 'non_discount') return 'Perk'
+  return 'Offer'
+}
+
+function buildDirectionsUrl(business: Business) {
+  const coords = business.location?.coordinates
+  if (coords && coords.length === 2) {
+    const [lng, lat] = coords
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`
+  }
+  const query = [business.name, business.address].filter(Boolean).join(' ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
 /**
  * Renders a business detail modal with three tabs (Details, Reviews, Deals).
  *
@@ -61,12 +116,13 @@ function hasOwnerLink(business: Business) {
  * @param {BusinessModalProps} onBusinessUpdated - Optional callback when profile is edited.
  * @returns {JSX.Element} The modal overlay and content.
  */
-export function BusinessModal({ business, onClose, onBusinessUpdated }: BusinessModalProps) {
+export function BusinessModal({ business, onClose, onBusinessUpdated, sourceContext }: BusinessModalProps) {
   const { isAuthenticated, user } = useAuth()
   const navigate = useNavigate()
   useBodyScrollLock(true)
   const [reviews, setReviews] = useState<Review[]>([])
   const [deals, setDeals] = useState<Deal[]>([])
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [activityStatus, setActivityStatus] = useState<BusinessActivityStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'info' | 'reviews' | 'deals'>('info')
@@ -85,6 +141,17 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   const [shortDescription, setShortDescription] = useState(business.short_description || business.description || '')
   const [knownFor, setKnownFor] = useState<string[]>(business.known_for || [])
   const [knownForInput, setKnownForInput] = useState((business.known_for || []).join(', '))
+  const [claimingDealId, setClaimingDealId] = useState<string | null>(null)
+  const [claimedOffers, setClaimedOffers] = useState<Record<string, OfferClaim>>({})
+  const [claimingCampaignId, setClaimingCampaignId] = useState<string | null>(null)
+  const [claimedCampaigns, setClaimedCampaigns] = useState<Record<string, CampaignClaim>>({})
+  const [offerError, setOfferError] = useState('')
+  const [redeemingClaimId, setRedeemingClaimId] = useState<string | null>(null)
+  const [redemptionPlaceholders, setRedemptionPlaceholders] = useState<string[]>([])
+  const [redeemingCampaignClaimId, setRedeemingCampaignClaimId] = useState<string | null>(null)
+  const [campaignRedemptionPlaceholders, setCampaignRedemptionPlaceholders] = useState<string[]>([])
+  const [trackedCampaignImpressions, setTrackedCampaignImpressions] = useState<string[]>([])
+  const [trackedCampaignOpens, setTrackedCampaignOpens] = useState<string[]>([])
 
   const businessId = getBusinessId(business)
   const isOwner = !!(isAuthenticated && user?.id && user.id === business.owner_id)
@@ -100,6 +167,10 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   const gradient = categoryGradients[business.category] || 'from-brand-light to-brand'
   const displayShortDescription = shortDescription || business.short_description || business.description || ''
   const displayKnownFor = knownFor.length > 0 ? knownFor : business.known_for || []
+  const currentDeals = useMemo(() => deals.filter(dealIsCurrent), [deals])
+  const currentCampaigns = useMemo(() => campaigns.filter(campaignIsCurrent), [campaigns])
+  const primaryCampaign = currentCampaigns[0]
+  const primaryDeal = currentDeals[0]
   const detailDescription =
     business.description && business.description !== business.address
       ? business.description
@@ -115,13 +186,15 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [reviewsData, dealsData, activityData] = await Promise.allSettled([
+      const [reviewsData, dealsData, campaignsData, activityData] = await Promise.allSettled([
         api.getBusinessReviews(businessId),
         api.getBusinessDeals(businessId),
+        api.getBusinessCampaigns(businessId, 'active'),
         api.getBusinessActivity(businessId),
       ])
       if (reviewsData.status === 'fulfilled') setReviews(reviewsData.value)
       if (dealsData.status === 'fulfilled') setDeals(dealsData.value)
+      if (campaignsData.status === 'fulfilled') setCampaigns(campaignsData.value)
       if (activityData.status === 'fulfilled') setActivityStatus(activityData.value)
     } catch (err) {
       logger.error('Failed to load data:', err)
@@ -142,6 +215,8 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
     setProfileError('')
     setCheckedIn(false)
     setSubmitError('')
+    setTrackedCampaignImpressions([])
+    setTrackedCampaignOpens([])
   }, [business])
 
   useEffect(() => {
@@ -149,6 +224,61 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  useEffect(() => {
+    const untracked = currentCampaigns.filter(campaign => {
+      const campaignId = getCampaignId(campaign)
+      return campaignId && !trackedCampaignImpressions.includes(campaignId)
+    })
+    if (untracked.length === 0) return
+
+    setTrackedCampaignImpressions(current => [
+      ...current,
+      ...untracked.map(getCampaignId).filter(Boolean)
+    ])
+    untracked.forEach(campaign => {
+      void trackCustomerEvent({
+        event_type: 'campaign_impression',
+        business_id: businessId,
+        campaign_id: getCampaignId(campaign),
+        source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+        intent: sourceContext?.intent,
+        constraints: sourceContext?.constraints,
+        match_reason_codes: sourceContext?.matchReasonCodes,
+        anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+        location_context: sourceContext?.locationContext,
+        metadata: { campaign_type: campaign.campaign_type }
+      })
+    })
+  }, [businessId, currentCampaigns, sourceContext, trackedCampaignImpressions])
+
+  useEffect(() => {
+    if (activeTab !== 'deals') return
+    const untracked = currentCampaigns.filter(campaign => {
+      const campaignId = getCampaignId(campaign)
+      return campaignId && !trackedCampaignOpens.includes(campaignId)
+    })
+    if (untracked.length === 0) return
+
+    setTrackedCampaignOpens(current => [
+      ...current,
+      ...untracked.map(getCampaignId).filter(Boolean)
+    ])
+    untracked.forEach(campaign => {
+      void trackCustomerEvent({
+        event_type: 'campaign_open',
+        business_id: businessId,
+        campaign_id: getCampaignId(campaign),
+        source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+        intent: sourceContext?.intent,
+        constraints: sourceContext?.constraints,
+        match_reason_codes: sourceContext?.matchReasonCodes,
+        anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+        location_context: sourceContext?.locationContext,
+        metadata: { campaign_type: campaign.campaign_type }
+      })
+    })
+  }, [activeTab, businessId, currentCampaigns, sourceContext, trackedCampaignOpens])
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -210,6 +340,21 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
         latitude: pos?.coords.latitude,
         longitude: pos?.coords.longitude,
       })
+      void trackCustomerEvent({
+        event_type: 'check_in_placeholder',
+        business_id: businessId,
+        campaign_id: primaryCampaign ? getCampaignId(primaryCampaign) : undefined,
+        source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+        intent: sourceContext?.intent,
+        constraints: sourceContext?.constraints,
+        match_reason_codes: sourceContext?.matchReasonCodes,
+        anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+        location_context: {
+          ...(sourceContext?.locationContext ?? {}),
+          used_browser_location: !!pos,
+        },
+        metadata: { status: 'self_reported' },
+      })
       setCheckedIn(true)
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Check-in failed')
@@ -223,6 +368,134 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
     navigate(`/claim?business=${businessId}`)
   }
 
+  const handleDirectionsClick = () => {
+    void trackCustomerEvent({
+      event_type: 'directions_click',
+      business_id: businessId,
+      source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+      intent: sourceContext?.intent,
+      constraints: sourceContext?.constraints,
+      match_reason_codes: sourceContext?.matchReasonCodes,
+      anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+      location_context: {
+        ...(sourceContext?.locationContext ?? {}),
+        has_address: !!business.address,
+        has_coordinates: !!business.location?.coordinates,
+      },
+    })
+    window.open(buildDirectionsUrl(business), '_blank', 'noopener,noreferrer')
+  }
+
+  const handleClaimOffer = async (deal: Deal) => {
+    const dealId = getDealId(deal)
+    if (!dealId || claimingDealId) return
+
+    setOfferError('')
+    setClaimingDealId(dealId)
+    try {
+      const claim = await api.claimOffer(dealId, {
+        source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+        anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+        intent: sourceContext?.intent,
+        metadata: { business_id: businessId },
+      })
+      setClaimedOffers((current) => ({ ...current, [dealId]: claim }))
+    } catch (err) {
+      setOfferError(err instanceof Error ? err.message : 'Failed to claim offer')
+    } finally {
+      setClaimingDealId(null)
+    }
+  }
+
+  const handleClaimCampaign = async (campaign: Campaign) => {
+    const campaignId = getCampaignId(campaign)
+    if (!campaignId || claimingCampaignId) return
+
+    setOfferError('')
+    setClaimingCampaignId(campaignId)
+    try {
+      const claim = await api.claimCampaign(campaignId, {
+        source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+        anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+        intent: sourceContext?.intent,
+        metadata: {
+          business_id: businessId,
+          campaign_type: campaign.campaign_type
+        },
+      })
+      setClaimedCampaigns((current) => ({ ...current, [campaignId]: claim }))
+    } catch (err) {
+      setOfferError(err instanceof Error ? err.message : 'Failed to claim campaign')
+    } finally {
+      setClaimingCampaignId(null)
+    }
+  }
+
+  const handleCampaignDirectionsClick = (campaign: Campaign) => {
+    const campaignId = getCampaignId(campaign)
+    void trackCustomerEvent({
+      event_type: 'campaign_directions_click',
+      business_id: businessId,
+      campaign_id: campaignId,
+      source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+      intent: sourceContext?.intent,
+      constraints: sourceContext?.constraints,
+      match_reason_codes: sourceContext?.matchReasonCodes,
+      anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+      location_context: {
+        ...(sourceContext?.locationContext ?? {}),
+        has_address: !!business.address,
+        has_coordinates: !!business.location?.coordinates,
+      },
+      metadata: { campaign_type: campaign.campaign_type },
+    })
+    window.open(buildDirectionsUrl(business), '_blank', 'noopener,noreferrer')
+  }
+
+  const handleRedemptionPlaceholder = async (claim: OfferClaim) => {
+    if (redeemingClaimId) return
+
+    setOfferError('')
+    setRedeemingClaimId(claim.offer_claim_id)
+    try {
+      await api.redeemOfferPlaceholder(claim.offer_claim_id, {
+        source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+        anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+        intent: sourceContext?.intent,
+        metadata: { placeholder_only: true },
+      })
+      setRedemptionPlaceholders((current) =>
+        current.includes(claim.offer_claim_id) ? current : [...current, claim.offer_claim_id]
+      )
+    } catch (err) {
+      setOfferError(err instanceof Error ? err.message : 'Failed to record placeholder')
+    } finally {
+      setRedeemingClaimId(null)
+    }
+  }
+
+  const handleCampaignRedemptionPlaceholder = async (claim: CampaignClaim) => {
+    if (redeemingCampaignClaimId) return
+
+    setOfferError('')
+    setRedeemingCampaignClaimId(claim.campaign_claim_id)
+    try {
+      await api.redeemCampaignPlaceholder(claim.campaign_claim_id, {
+        source_surface: sourceContext?.sourceSurface ?? 'business_modal',
+        anonymous_session_id: sourceContext?.anonymousSessionId ?? getAnonymousSessionId(),
+        intent: sourceContext?.intent,
+        metadata: { placeholder_only: true },
+      })
+      setCampaignRedemptionPlaceholders((current) =>
+        current.includes(claim.campaign_claim_id) ? current : [...current, claim.campaign_claim_id]
+      )
+    } catch (err) {
+      setOfferError(err instanceof Error ? err.message : 'Failed to record placeholder')
+    } finally {
+      setRedeemingCampaignClaimId(null)
+    }
+  }
+
   const closeReviewForm = () => {
     setShowReviewForm(false)
     setSubmitError('')
@@ -231,7 +504,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
   const tabs = [
     { id: 'info' as const, label: 'Details' },
     { id: 'reviews' as const, label: `Reviews (${reviews.length})` },
-    { id: 'deals' as const, label: `Deals (${deals.length})` },
+    { id: 'deals' as const, label: `Offers (${currentDeals.length + currentCampaigns.length})` },
   ]
 
   return (
@@ -361,6 +634,71 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 </button>
               )}
 
+              {!isAuthenticated && (
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/45 p-3 text-center text-ui text-[hsl(var(--muted-foreground))]">
+                  <a href="/login" className="font-medium text-[hsl(var(--primary))] hover:underline">Sign in</a> to check in or keep claimed offers.
+                </div>
+              )}
+
+              {primaryCampaign && (
+                <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-caption font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Active campaign</p>
+                      <h3 className="mt-1 text-ui font-semibold text-[hsl(var(--foreground))]">{primaryCampaign.title}</h3>
+                      <p className="mt-1 text-caption text-[hsl(var(--muted-foreground))]">{primaryCampaign.description}</p>
+                      {primaryCampaign.perk_description && (
+                        <p className="mt-2 text-caption font-medium text-[hsl(var(--foreground))]">
+                          {primaryCampaign.perk_description}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleClaimCampaign(primaryCampaign)}
+                      disabled={claimingCampaignId === getCampaignId(primaryCampaign)}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-ui font-medium gradient-primary text-on-primary disabled:opacity-60"
+                    >
+                      {claimingCampaignId === getCampaignId(primaryCampaign) ? <Loader2 className="w-4 h-4 icon-spinner" /> : <Tag className="w-4 h-4" />}
+                      Claim campaign
+                    </button>
+                  </div>
+                  {claimedCampaigns[getCampaignId(primaryCampaign)] && (
+                    <div className="mt-3 rounded-xl border border-success bg-success p-3 text-ui text-success">
+                      Claimed. Code: <span className="font-mono font-semibold">{claimedCampaigns[getCampaignId(primaryCampaign)].claim_code}</span>
+                    </div>
+                  )}
+                  {offerError && <p className="mt-3 text-ui text-error">{offerError}</p>}
+                </div>
+              )}
+
+              {primaryDeal && (
+                <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-caption font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">Active offer</p>
+                      <h3 className="mt-1 text-ui font-semibold text-[hsl(var(--foreground))]">{primaryDeal.title}</h3>
+                      <p className="mt-1 text-caption text-[hsl(var(--muted-foreground))]">{primaryDeal.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleClaimOffer(primaryDeal)}
+                      disabled={claimingDealId === getDealId(primaryDeal)}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-ui font-medium gradient-primary text-on-primary disabled:opacity-60"
+                    >
+                      {claimingDealId === getDealId(primaryDeal) ? <Loader2 className="w-4 h-4 icon-spinner" /> : <Tag className="w-4 h-4" />}
+                      Claim offer
+                    </button>
+                  </div>
+                  {claimedOffers[getDealId(primaryDeal)] && (
+                    <div className="mt-3 rounded-xl border border-success bg-success p-3 text-ui text-success">
+                      Claimed. Code: <span className="font-mono font-semibold">{claimedOffers[getDealId(primaryDeal)].claim_code}</span>
+                    </div>
+                  )}
+                  {offerError && <p className="mt-3 text-ui text-error">{offerError}</p>}
+                </div>
+              )}
+
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -467,10 +805,30 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 <h4 className="text-ui font-semibold text-[hsl(var(--foreground))] uppercase tracking-wide font-mono">Contact</h4>
                 <div className="space-y-2.5">
                   {business.address && (
-                    <div className="flex items-start gap-3 text-ui">
-                      <MapPin className="w-4 h-4 text-[hsl(var(--primary))] flex-shrink-0 mt-0.5" />
-                      <span className="text-[hsl(var(--muted-foreground))]">{business.address}</span>
+                    <div className="flex items-start justify-between gap-3 text-ui">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <MapPin className="w-4 h-4 text-[hsl(var(--primary))] flex-shrink-0 mt-0.5" />
+                        <span className="text-[hsl(var(--muted-foreground))]">{business.address}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleDirectionsClick}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-[hsl(var(--border))] px-3 py-2 text-caption font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
+                      >
+                        <Navigation className="h-3.5 w-3.5" />
+                        Get directions
+                      </button>
                     </div>
+                  )}
+                  {!business.address && business.location?.coordinates && (
+                    <button
+                      type="button"
+                      onClick={handleDirectionsClick}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[hsl(var(--border))] px-3 py-2 text-ui font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--secondary))]"
+                    >
+                      <Navigation className="h-4 w-4 text-[hsl(var(--primary))]" />
+                      Get directions
+                    </button>
                   )}
                   {business.phone && (
                     <div className="flex items-center gap-3 text-ui">
@@ -618,14 +976,95 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 <div className="space-y-4">
                   {[1,2].map(i => <div key={i} className="h-20 rounded-xl skeleton" />)}
                 </div>
-              ) : deals.length === 0 ? (
+              ) : currentDeals.length + currentCampaigns.length === 0 ? (
                 <div className="text-center py-10">
                   <Tag className="w-10 h-10 text-[hsl(var(--muted-foreground))] mx-auto mb-3 opacity-40" />
-                  <p className="font-medium text-[hsl(var(--foreground))]">No active deals</p>
+                  <p className="font-medium text-[hsl(var(--foreground))]">No active offers</p>
                   <p className="text-ui text-[hsl(var(--muted-foreground))]">Check back later for special offers</p>
                 </div>
               ) : (
-                deals.map(deal => (
+                <>
+                {currentCampaigns.map(campaign => {
+                  const campaignId = getCampaignId(campaign)
+                  const claim = claimedCampaigns[campaignId]
+                  const placeholderRecorded = claim ? campaignRedemptionPlaceholders.includes(claim.campaign_claim_id) : false
+                  return (
+                  <div key={campaignId} className="p-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-brand-light/15 flex items-center justify-center flex-shrink-0">
+                          <Zap className="w-5 h-5 text-brand-light" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-[hsl(var(--foreground))]">{campaign.title}</h4>
+                          <p className="text-ui text-[hsl(var(--muted-foreground))]">{campaign.description}</p>
+                          {campaign.perk_description && (
+                            <p className="mt-1 text-caption font-medium text-[hsl(var(--foreground))]">
+                              {campaign.perk_description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-body font-bold text-brand-light flex-shrink-0">
+                        {campaignValueLabel(campaign)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-[hsl(var(--border))]/50">
+                      <span className="px-3 py-1 rounded-lg bg-[hsl(var(--secondary))] text-caption font-medium text-[hsl(var(--foreground))]">
+                        {campaign.campaign_type.replaceAll('_', ' ')}
+                      </span>
+                      <span className="text-caption text-[hsl(var(--muted-foreground))]">
+                        Ends {new Date(campaign.ends_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      {claim ? (
+                        <div className="rounded-xl border border-success bg-success px-3 py-2 text-ui text-success">
+                          Claim code <span className="font-mono font-semibold">{claim.claim_code}</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleClaimCampaign(campaign)}
+                          disabled={claimingCampaignId === campaignId}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-ui font-medium gradient-primary text-on-primary disabled:opacity-60"
+                        >
+                          {claimingCampaignId === campaignId ? <Loader2 className="w-4 h-4 icon-spinner" /> : <Tag className="w-4 h-4" />}
+                          Claim campaign
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleCampaignDirectionsClick(campaign)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-[hsl(var(--border))] px-4 py-2.5 text-ui font-medium text-[hsl(var(--foreground))]"
+                      >
+                        <Navigation className="w-4 h-4" />
+                        Get directions
+                      </button>
+                      {claim && (
+                        <button
+                          type="button"
+                          onClick={() => void handleCampaignRedemptionPlaceholder(claim)}
+                          disabled={placeholderRecorded || redeemingCampaignClaimId === claim.campaign_claim_id}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-[hsl(var(--border))] px-4 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] disabled:opacity-60"
+                        >
+                          {redeemingCampaignClaimId === claim.campaign_claim_id ? <Loader2 className="w-4 h-4 icon-spinner" /> : <CheckCircle2 className="w-4 h-4" />}
+                          {placeholderRecorded ? 'Placeholder recorded' : 'Record use placeholder'}
+                        </button>
+                      )}
+                    </div>
+                    {claim && (
+                      <p className="mt-2 text-caption text-[hsl(var(--muted-foreground))]">
+                        Redemption is not verified in this milestone.
+                      </p>
+                    )}
+                  </div>
+                )})}
+                {currentDeals.map(deal => {
+                  const dealId = getDealId(deal)
+                  const claim = claimedOffers[dealId]
+                  const placeholderRecorded = claim ? redemptionPlaceholders.includes(claim.offer_claim_id) : false
+                  return (
                   <div key={deal.id || deal._id} className="p-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:shadow-md transition-shadow">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-start gap-3">
@@ -649,8 +1088,42 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                         Valid until {new Date(deal.valid_until).toLocaleDateString()}
                       </span>
                     </div>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      {claim ? (
+                        <div className="rounded-xl border border-success bg-success px-3 py-2 text-ui text-success">
+                          Claim code <span className="font-mono font-semibold">{claim.claim_code}</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleClaimOffer(deal)}
+                          disabled={claimingDealId === dealId}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-ui font-medium gradient-primary text-on-primary disabled:opacity-60"
+                        >
+                          {claimingDealId === dealId ? <Loader2 className="w-4 h-4 icon-spinner" /> : <Tag className="w-4 h-4" />}
+                          Claim offer
+                        </button>
+                      )}
+                      {claim && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRedemptionPlaceholder(claim)}
+                          disabled={placeholderRecorded || redeemingClaimId === claim.offer_claim_id}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-[hsl(var(--border))] px-4 py-2.5 text-ui font-medium text-[hsl(var(--foreground))] disabled:opacity-60"
+                        >
+                          {redeemingClaimId === claim.offer_claim_id ? <Loader2 className="w-4 h-4 icon-spinner" /> : <CheckCircle2 className="w-4 h-4" />}
+                          {placeholderRecorded ? 'Placeholder recorded' : 'Record use placeholder'}
+                        </button>
+                      )}
+                    </div>
+                    {claim && (
+                      <p className="mt-2 text-caption text-[hsl(var(--muted-foreground))]">
+                        Redemption is not verified in this milestone.
+                      </p>
+                    )}
                   </div>
-                ))
+                )})}
+                </>
               )}
             </div>
           )}

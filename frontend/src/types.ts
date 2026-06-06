@@ -164,6 +164,282 @@ export interface Deal {
   is_active: boolean;
 }
 
+/** Customer action event names recorded by the milestone-one analytics stream. */
+export type CustomerEventType =
+  | 'match_card_impression'
+  | 'swipe_left'
+  | 'swipe_right'
+  | 'save'
+  | 'match'
+  | 'business_profile_open'
+  | 'offer_claim'
+  | 'directions_click'
+  | 'check_in_placeholder'
+  | 'redemption_placeholder'
+  | 'campaign_impression'
+  | 'campaign_open'
+  | 'campaign_claim'
+  | 'campaign_directions_click'
+  | 'campaign_redemption_placeholder';
+
+/** Payload for best-effort customer action tracking. */
+export interface CustomerEventCreate {
+  event_type: CustomerEventType;
+  business_id: string;
+  source_surface: string;
+  anonymous_session_id?: string;
+  intent?: string;
+  constraints?: string[];
+  match_reason_codes?: string[];
+  deal_id?: string;
+  offer_claim_id?: string;
+  campaign_id?: string;
+  campaign_claim_id?: string;
+  location_context?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+/** API response after a customer event is recorded. */
+export interface CustomerEventResponse {
+  id: string;
+  created_at: string;
+}
+
+/** Durable claim created for an active offer. */
+export interface OfferClaim {
+  offer_claim_id: string;
+  deal_id: string;
+  business_id: string;
+  claim_code: string;
+  status: 'claimed' | 'used_placeholder' | 'expired' | 'cancelled' | string;
+  claimed_at: string;
+  expires_at?: string | null;
+}
+
+/** Campaign categories available to claimed business owners. */
+export type CampaignType =
+  | 'slow_hour'
+  | 'first_time_visitor'
+  | 'event_promotion'
+  | 'limited_time_perk'
+  | 'non_discount'
+  | 'custom_template';
+
+/** How the campaign value is presented to customers. */
+export type CampaignOfferKind = 'discount' | 'perk' | 'event' | 'non_discount';
+
+/** Lifecycle state for an owner-created campaign. */
+export type CampaignStatus = 'draft' | 'scheduled' | 'active' | 'ended' | 'cancelled';
+
+/** Basic milestone-three targeting metadata. */
+export interface CampaignTargeting {
+  audience:
+    | 'all_visitors'
+    | 'first_time_visitors'
+    | 'saved_business_users'
+    | 'slow_hour'
+    | 'event_interested'
+    | 'intent_match'
+    | 'category_match';
+  time_window?: string;
+  intent?: string;
+  category?: string;
+}
+
+/** Owner campaign rendered in dashboard and existing customer surfaces. */
+export interface Campaign {
+  id: string;
+  _id?: string;
+  business_id: string;
+  owner_id: string;
+  title: string;
+  description: string;
+  campaign_type: CampaignType;
+  offer_kind: CampaignOfferKind;
+  discount_type?: 'percentage' | 'fixed' | string | null;
+  discount_value?: number | null;
+  perk_description?: string | null;
+  starts_at: string;
+  ends_at: string;
+  status: CampaignStatus;
+  targeting: CampaignTargeting;
+  template_id?: string | null;
+  linked_event_id?: string | null;
+  claim_limit?: number | null;
+  per_user_limit?: number | null;
+  metadata?: Record<string, unknown>;
+  affects_lvs: false;
+  created_at: string;
+  updated_at?: string;
+}
+
+/** Campaign creation/update payload. */
+export interface CampaignCreate {
+  title: string;
+  description: string;
+  campaign_type: CampaignType;
+  offer_kind?: CampaignOfferKind;
+  discount_type?: 'percentage' | 'fixed';
+  discount_value?: number;
+  perk_description?: string;
+  starts_at?: string;
+  ends_at: string;
+  status?: CampaignStatus;
+  targeting?: CampaignTargeting;
+  template_id?: string;
+  linked_event_id?: string;
+  claim_limit?: number;
+  per_user_limit?: number;
+  metadata?: Record<string, unknown>;
+}
+
+/** Campaign template used to prefill simple owner campaigns. */
+export interface CampaignTemplate {
+  id: string;
+  name: string;
+  campaign_type: CampaignType;
+  offer_kind: CampaignOfferKind;
+  title: string;
+  description: string;
+  perk_description?: string;
+  targeting: CampaignTargeting;
+  recommended_duration_days: number;
+}
+
+/** Durable claim created for a campaign. */
+export interface CampaignClaim {
+  campaign_claim_id: string;
+  campaign_id: string;
+  business_id: string;
+  claim_code: string;
+  status: 'claimed' | 'used_placeholder' | 'expired' | 'cancelled' | string;
+  claimed_at: string;
+  expires_at?: string | null;
+}
+
+/** Campaign performance aggregate counts. */
+export interface CampaignPerformanceTotals {
+  impressions: number;
+  opens: number;
+  claims: number;
+  directions_clicks: number;
+  check_ins: number;
+  redemption_placeholders: number;
+}
+
+/** Campaign performance aggregate rates. */
+export interface CampaignPerformanceRates {
+  open_rate: number;
+  claim_rate: number;
+  action_rate: number;
+  redemption_placeholder_rate: number;
+}
+
+/** Daily campaign performance bucket. */
+export interface CampaignPerformanceBucket {
+  date: string;
+  impressions: number;
+  opens: number;
+  claims: number;
+  directions_clicks: number;
+  check_ins: number;
+  redemption_placeholders: number;
+}
+
+/** Top campaign row in owner analytics. */
+export interface TopCampaignPerformance {
+  campaign_id: string;
+  title: string;
+  campaign_type: CampaignType | string;
+  status: CampaignStatus | string;
+  actions: number;
+  claims: number;
+  impressions: number;
+}
+
+/** Owner campaign performance response. */
+export interface CampaignPerformance {
+  business_id: string;
+  range: ConversionRange;
+  totals: CampaignPerformanceTotals;
+  rates: CampaignPerformanceRates;
+  buckets: CampaignPerformanceBucket[];
+  top_campaigns: TopCampaignPerformance[];
+}
+
+/** Date range options supported by owner-facing conversion analytics. */
+export type ConversionRange = '7d' | '30d' | '90d';
+
+/** Aggregate conversion event counts for a business analytics window. */
+export interface BusinessConversionTotals {
+  impressions: number;
+  swipe_left: number;
+  swipe_right: number;
+  saves: number;
+  matches: number;
+  profile_opens: number;
+  offer_claims: number;
+  directions_clicks: number;
+  check_ins: number;
+  redemption_placeholders: number;
+}
+
+/** Conversion rates derived from aggregate event counts. */
+export interface BusinessConversionRates {
+  match_rate: number;
+  save_rate: number;
+  profile_open_rate: number;
+  action_rate: number;
+  claim_rate: number;
+  redemption_placeholder_rate: number;
+}
+
+/** A single step in the owner conversion funnel. */
+export interface BusinessConversionFunnelStep {
+  id: 'impressions' | 'positive_intent' | 'profile_opens' | 'actions' | 'redemptions';
+  label: string;
+  count: number;
+}
+
+/** Counted match reason code surfaced in conversion analytics. */
+export interface BusinessConversionReason {
+  reason_code: string;
+  label: string;
+  count: number;
+}
+
+/** Summary analytics response for a claimed/owned business. */
+export interface BusinessConversionSummary {
+  business_id: string;
+  range: ConversionRange;
+  totals: BusinessConversionTotals;
+  rates: BusinessConversionRates;
+  funnel: BusinessConversionFunnelStep[];
+  top_match_reasons: BusinessConversionReason[];
+  top_skipped_reasons: BusinessConversionReason[];
+}
+
+/** Daily conversion analytics bucket. */
+export interface BusinessConversionTimeseriesBucket {
+  date: string;
+  impressions: number;
+  saves: number;
+  matches: number;
+  profile_opens: number;
+  offer_claims: number;
+  directions_clicks: number;
+  check_ins: number;
+  redemption_placeholders: number;
+}
+
+/** Daily trend response for a claimed/owned business. */
+export interface BusinessConversionTimeseries {
+  business_id: string;
+  range: ConversionRange;
+  bucket: 'day';
+  buckets: BusinessConversionTimeseriesBucket[];
+}
+
 /** Payload for creating a new review. */
 export interface ReviewCreate {
   business_id: string;

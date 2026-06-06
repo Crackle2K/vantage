@@ -6,7 +6,7 @@
  * cookies) for session-based authentication.
  */
 
-import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, SubscriptionCancel, TierInfo, StripeCheckoutResponse, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse, ReverseGeocodeResponse } from './types';
+import type { Business, Review, Deal, ReviewCreate, User, BusinessClaim, ClaimCreate, Subscription, SubscriptionCreate, SubscriptionCancel, TierInfo, StripeCheckoutResponse, CheckIn, CheckInCreate, UserCredibility, ActivityFeedItem, ActivityPulseItem, OwnerEvent, OwnerEventCreate, BusinessActivityStatus, ActivityComment, ActivityLikeResult, UserUpdate, UserPreferencesUpdate, ExploreSortMode, ExploreLanesResponse, DecideIntent, DecideResponse, SavedBusinessesResponse, ReverseGeocodeResponse, CustomerEventCreate, CustomerEventResponse, OfferClaim, BusinessConversionSummary, BusinessConversionTimeseries, ConversionRange, Campaign, CampaignCreate, CampaignTemplate, CampaignClaim, CampaignPerformance, CampaignStatus } from './types';
 import { logger } from './lib/logger';
 
 /**
@@ -363,6 +363,155 @@ export const api = {
   async getBusinessDeals(businessId: string): Promise<Deal[]> {
     const data = await request<{ items?: Deal[] } | Deal[]>(`/deals/business/${businessId}`, undefined, 'Failed to fetch deals');
     return Array.isArray(data) ? data : (data.items ?? []);
+  },
+
+  async getCampaignTemplates(): Promise<CampaignTemplate[]> {
+    const data = await request<{ items?: CampaignTemplate[] } | CampaignTemplate[]>(
+      '/campaign-templates',
+      undefined,
+      'Failed to fetch campaign templates'
+    );
+    return Array.isArray(data) ? data : (data.items ?? []);
+  },
+
+  async getBusinessCampaigns(
+    businessId: string,
+    status: CampaignStatus | 'all' = 'active'
+  ): Promise<Campaign[]> {
+    const data = await request<{ items?: Campaign[] } | Campaign[]>(
+      `/businesses/${businessId}/campaigns?status=${status}`,
+      undefined,
+      'Failed to fetch campaigns'
+    );
+    return Array.isArray(data) ? data : (data.items ?? []);
+  },
+
+  async createCampaign(businessId: string, campaign: CampaignCreate): Promise<Campaign> {
+    return request<Campaign>(`/businesses/${businessId}/campaigns`, {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(campaign),
+    }, 'Failed to create campaign');
+  },
+
+  async updateCampaign(campaignId: string, campaign: Partial<CampaignCreate>): Promise<Campaign> {
+    return request<Campaign>(`/campaigns/${campaignId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(campaign),
+    }, 'Failed to update campaign');
+  },
+
+  async cancelCampaign(campaignId: string): Promise<Campaign> {
+    return request<Campaign>(`/campaigns/${campaignId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    }, 'Failed to cancel campaign');
+  },
+
+  async createCustomerEvent(event: CustomerEventCreate): Promise<CustomerEventResponse> {
+    return request<CustomerEventResponse>('/customer-events', {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(event),
+    }, 'Failed to record customer event');
+  },
+
+  async claimOffer(
+    dealId: string,
+    context: {
+      source_surface?: string;
+      anonymous_session_id?: string;
+      intent?: string;
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): Promise<OfferClaim> {
+    return request<OfferClaim>(`/deals/${dealId}/claim`, {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(context),
+    }, 'Failed to claim offer');
+  },
+
+  async redeemOfferPlaceholder(
+    offerClaimId: string,
+    context: {
+      source_surface?: string;
+      anonymous_session_id?: string;
+      intent?: string;
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): Promise<{ offer_claim_id: string; status: string; verified: boolean }> {
+    return request<{ offer_claim_id: string; status: string; verified: boolean }>(`/offer-claims/${offerClaimId}/redeem-placeholder`, {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(context),
+    }, 'Failed to record redemption placeholder');
+  },
+
+  async claimCampaign(
+    campaignId: string,
+    context: {
+      source_surface?: string;
+      anonymous_session_id?: string;
+      intent?: string;
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): Promise<CampaignClaim> {
+    return request<CampaignClaim>(`/campaigns/${campaignId}/claim`, {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(context),
+    }, 'Failed to claim campaign');
+  },
+
+  async redeemCampaignPlaceholder(
+    campaignClaimId: string,
+    context: {
+      source_surface?: string;
+      anonymous_session_id?: string;
+      intent?: string;
+      metadata?: Record<string, unknown>;
+    } = {}
+  ): Promise<{ campaign_claim_id: string; status: string; verified: boolean }> {
+    return request<{ campaign_claim_id: string; status: string; verified: boolean }>(`/campaign-claims/${campaignClaimId}/redeem-placeholder`, {
+      method: 'POST',
+      headers: getAuthHeaders(true),
+      body: JSON.stringify(context),
+    }, 'Failed to record campaign redemption placeholder');
+  },
+
+  async getBusinessConversionSummary(
+    businessId: string,
+    range: ConversionRange
+  ): Promise<BusinessConversionSummary> {
+    return request<BusinessConversionSummary>(
+      `/businesses/${businessId}/conversion-summary?range=${range}`,
+      undefined,
+      'Failed to fetch conversion summary'
+    );
+  },
+
+  async getBusinessConversionTimeseries(
+    businessId: string,
+    range: ConversionRange
+  ): Promise<BusinessConversionTimeseries> {
+    return request<BusinessConversionTimeseries>(
+      `/businesses/${businessId}/conversion-timeseries?range=${range}&bucket=day`,
+      undefined,
+      'Failed to fetch conversion trends'
+    );
+  },
+
+  async getCampaignPerformance(
+    businessId: string,
+    range: ConversionRange
+  ): Promise<CampaignPerformance> {
+    return request<CampaignPerformance>(
+      `/businesses/${businessId}/campaign-performance?range=${range}`,
+      undefined,
+      'Failed to fetch campaign performance'
+    );
   },
 
   async submitClaim(claim: ClaimCreate): Promise<BusinessClaim> {

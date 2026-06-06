@@ -23,6 +23,7 @@ import { useSavedBusinesses } from '@/hooks/useSavedBusinesses';
 import type { Business, ExploreLane, ExploreSortMode, OwnerEvent, User } from '@/types';
 import { api } from '@/api';
 import { logger } from '@/lib/logger';
+import { getAnonymousSessionId, trackCustomerEvent } from '@/lib/customerEvents';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   USE_DEMO_EXPLORE,
@@ -631,8 +632,36 @@ export default function Businesses() {
   };
 
   const openBusiness = (business: Business) => {
+    void trackCustomerEvent({
+      event_type: 'business_profile_open',
+      business_id: getBusinessId(business),
+      source_surface: 'explore',
+      location_context: {
+        radius_km: radius,
+        used_browser_location: !!location,
+        sort_mode: sortMode,
+      },
+    });
     businessModalScrollRef.current = window.scrollY;
     setSelectedBusiness(business);
+  };
+
+  const handleToggleSaved = async (business: Business) => {
+    const businessId = getBusinessId(business);
+    const wasSaved = savedIds.includes(businessId);
+    await toggleSaved(business);
+    if (!wasSaved) {
+      void trackCustomerEvent({
+        event_type: 'save',
+        business_id: businessId,
+        source_surface: 'explore',
+        location_context: {
+          radius_km: radius,
+          used_browser_location: !!location,
+          sort_mode: sortMode,
+        },
+      });
+    }
   };
 
   const closeBusiness = () => {
@@ -700,7 +729,7 @@ export default function Businesses() {
           const businessId = getBusinessId(entry.business);
           return (
             <div key={businessId} className="mb-4 break-inside-avoid">
-              <BusinessCard business={entry.business} isFavorite={savedIds.includes(businessId)} onToggleFavorite={() => void toggleSaved(entry.business)} onViewDetails={() => openBusiness(entry.business)} />
+              <BusinessCard business={entry.business} isFavorite={savedIds.includes(businessId)} onToggleFavorite={() => void handleToggleSaved(entry.business)} onViewDetails={() => openBusiness(entry.business)} />
             </div>
           );
         })}
@@ -982,7 +1011,22 @@ export default function Businesses() {
         </div>
       )}
 
-      {selectedBusiness && <BusinessModal business={selectedBusiness} onClose={closeBusiness} onBusinessUpdated={handleBusinessUpdated} />}
+      {selectedBusiness && (
+        <BusinessModal
+          business={selectedBusiness}
+          onClose={closeBusiness}
+          onBusinessUpdated={handleBusinessUpdated}
+          sourceContext={{
+            sourceSurface: 'explore',
+            locationContext: {
+              radius_km: radius,
+              used_browser_location: !!location,
+              sort_mode: sortMode,
+            },
+            anonymousSessionId: getAnonymousSessionId(),
+          }}
+        />
+      )}
 
       <PreferenceOnboardingModal
         open={showPreferenceOnboarding}

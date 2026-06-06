@@ -1,7 +1,10 @@
 pub mod activity;
 pub mod auth;
 pub mod businesses;
+pub mod campaigns;
 pub mod claims;
+pub mod conversion_analytics;
+pub mod customer_events;
 pub mod deals;
 pub mod discovery;
 pub mod location;

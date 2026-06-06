@@ -7,15 +7,37 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { logger } from '@/lib/logger'
-import type { Business, Deal, Review, Subscription, BusinessActivityStatus, BusinessClaim, OwnerEvent } from '../types'
+import { formatReasonCode } from '../lib/conversionAnalytics'
+import type {
+  Business,
+  Deal,
+  Review,
+  Subscription,
+  BusinessActivityStatus,
+  BusinessClaim,
+  OwnerEvent,
+  BusinessConversionSummary,
+  BusinessConversionTimeseries,
+  ConversionRange,
+  Campaign,
+  CampaignTemplate,
+  CampaignPerformance,
+  CampaignCreate,
+  CampaignType,
+  CampaignOfferKind,
+  CampaignTargeting
+} from '../types'
 import {
   Store, Star, Tag, TrendingUp, Plus,
   MapPin, Phone, Clock, Eye, CheckCircle2, Crown,
-  ArrowUpRight, Flame, ChevronRight, Shield
+  ArrowUpRight, ChevronRight, Shield,
+  BarChart3, Bookmark, MousePointerClick, Ticket, Navigation,
+  Megaphone
 } from 'lucide-react'
 
 const tierDisplayNames: Record<string, string> = {
@@ -24,6 +46,33 @@ const tierDisplayNames: Record<string, string> = {
   pro: 'Standard',
   premium: 'Premium',
 }
+
+const rangeOptions: Array<{ value: ConversionRange; label: string }> = [
+  { value: '7d', label: '7 days' },
+  { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' }
+]
+
+const defaultCampaignForm = () => {
+  const start = new Date()
+  const end = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  return {
+    templateId: '',
+    title: '',
+    description: '',
+    campaignType: 'slow_hour' as CampaignType,
+    offerKind: 'perk' as CampaignOfferKind,
+    perkDescription: '',
+    discountType: 'percentage' as 'percentage' | 'fixed',
+    discountValue: '',
+    startsAt: toLocalDateTimeValue(start),
+    endsAt: toLocalDateTimeValue(end),
+    audience: 'all_visitors' as CampaignTargeting['audience'],
+    linkedEventId: ''
+  }
+}
+
+type CampaignFormState = ReturnType<typeof defaultCampaignForm>
 
 export default function DashboardPage() {
   const { user, isAuthenticated } = useAuth()
@@ -35,6 +84,17 @@ export default function DashboardPage() {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [activityStatus, setActivityStatus] = useState<BusinessActivityStatus | null>(null)
   const [myClaims, setMyClaims] = useState<BusinessClaim[]>([])
+  const [conversionRange, setConversionRange] = useState<ConversionRange>('30d')
+  const [conversionSummary, setConversionSummary] = useState<BusinessConversionSummary | null>(null)
+  const [conversionTimeseries, setConversionTimeseries] = useState<BusinessConversionTimeseries | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsError, setAnalyticsError] = useState('')
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [campaignTemplates, setCampaignTemplates] = useState<CampaignTemplate[]>([])
+  const [campaignPerformance, setCampaignPerformance] = useState<CampaignPerformance | null>(null)
+  const [campaignForm, setCampaignForm] = useState(defaultCampaignForm)
+  const [campaignError, setCampaignError] = useState('')
+  const [isCreatingCampaign, setIsCreatingCampaign] = useState(false)
   const [eventTitle, setEventTitle] = useState('')
   const [eventDescription, setEventDescription] = useState('')
   const [eventStart, setEventStart] = useState('')
@@ -44,8 +104,7 @@ export default function DashboardPage() {
   const [isCreatingEvent, setIsCreatingEvent] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  const selectBusiness = useCallback(async (biz: Business) => {
-    setSelectedBiz(biz)
+  const loadBusinessDetails = useCallback(async (biz: Business, range: ConversionRange) => {
     const bizId = biz.id || biz._id || ''
     try {
       const [bizReviews, bizDeals, bizEvents, bizSub, bizActivity] = await Promise.all([
@@ -63,6 +122,39 @@ export default function DashboardPage() {
     } catch (err) {
       logger.error('Failed to load business data:', err)
     }
+
+    try {
+      setAnalyticsLoading(true)
+      setAnalyticsError('')
+      const [summary, timeseries] = await Promise.all([
+        api.getBusinessConversionSummary(bizId, range),
+        api.getBusinessConversionTimeseries(bizId, range)
+      ])
+      setConversionSummary(summary)
+      setConversionTimeseries(timeseries)
+    } catch (err) {
+      logger.error('Failed to load conversion analytics:', err)
+      setConversionSummary(null)
+      setConversionTimeseries(null)
+      setAnalyticsError(err instanceof Error ? err.message : 'Failed to load conversion analytics')
+    } finally {
+      setAnalyticsLoading(false)
+    }
+
+    try {
+      const [bizCampaigns, templates, performance] = await Promise.all([
+        api.getBusinessCampaigns(bizId, 'all'),
+        api.getCampaignTemplates(),
+        api.getCampaignPerformance(bizId, range).catch(() => null)
+      ])
+      setCampaigns(bizCampaigns)
+      setCampaignTemplates(templates)
+      setCampaignPerformance(performance)
+    } catch (err) {
+      logger.error('Failed to load campaign data:', err)
+      setCampaigns([])
+      setCampaignPerformance(null)
+    }
   }, [])
 
   const loadDashboard = useCallback(async () => {
@@ -78,19 +170,24 @@ export default function DashboardPage() {
       setMyClaims(claims)
 
       if (owned.length > 0) {
-        selectBusiness(owned[0])
+        setSelectedBiz(owned[0])
       }
     } catch (err) {
       logger.error('Dashboard load failed:', err)
     } finally {
       setLoading(false)
     }
-  }, [selectBusiness, user])
+  }, [user])
 
   useEffect(() => {
     if (!isAuthenticated || user?.role !== 'business_owner') return
     loadDashboard()
   }, [isAuthenticated, user, loadDashboard])
+
+  useEffect(() => {
+    if (!selectedBiz) return
+    loadBusinessDetails(selectedBiz, conversionRange)
+  }, [selectedBiz, conversionRange, loadBusinessDetails])
 
   const handleCreateEvent = async () => {
     if (!selectedBiz) return
@@ -134,6 +231,91 @@ export default function DashboardPage() {
       setEventError(err instanceof Error ? err.message : 'Failed to create event')
     } finally {
       setIsCreatingEvent(false)
+    }
+  }
+
+  const applyCampaignTemplate = (templateId: string) => {
+    const template = campaignTemplates.find(item => item.id === templateId)
+    if (!template) {
+      setCampaignForm(current => ({ ...current, templateId }))
+      return
+    }
+
+    const start = new Date()
+    const end = new Date(Date.now() + template.recommended_duration_days * 24 * 60 * 60 * 1000)
+    setCampaignForm({
+      templateId,
+      title: template.title,
+      description: template.description,
+      campaignType: template.campaign_type,
+      offerKind: template.offer_kind,
+      perkDescription: template.perk_description || '',
+      discountType: 'percentage',
+      discountValue: '',
+      startsAt: toLocalDateTimeValue(start),
+      endsAt: toLocalDateTimeValue(end),
+      audience: template.targeting.audience,
+      linkedEventId: ''
+    })
+    setCampaignError('')
+  }
+
+  const handleCreateCampaign = async () => {
+    if (!selectedBiz) return
+    setCampaignError('')
+
+    if (!campaignForm.title.trim() || !campaignForm.description.trim() || !campaignForm.endsAt) {
+      setCampaignError('Add a title, description, and end time.')
+      return
+    }
+
+    const startsAt = new Date(campaignForm.startsAt)
+    const endsAt = new Date(campaignForm.endsAt)
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+      setCampaignError('Add valid start and end times.')
+      return
+    }
+    if (endsAt <= startsAt) {
+      setCampaignError('End time must be after start time.')
+      return
+    }
+
+    const payload: CampaignCreate = {
+      title: campaignForm.title.trim(),
+      description: campaignForm.description.trim(),
+      campaign_type: campaignForm.campaignType,
+      offer_kind: campaignForm.offerKind,
+      perk_description: campaignForm.perkDescription.trim() || undefined,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      targeting: { audience: campaignForm.audience },
+      template_id: campaignForm.templateId || undefined,
+      linked_event_id: campaignForm.linkedEventId || undefined
+    }
+
+    if (campaignForm.offerKind === 'discount') {
+      if (!campaignForm.discountValue.trim()) {
+        setCampaignError('Add a discount value.')
+        return
+      }
+      const discountValue = Number(campaignForm.discountValue)
+      if (!Number.isFinite(discountValue) || discountValue < 0) {
+        setCampaignError('Add a valid discount value.')
+        return
+      }
+      payload.discount_type = campaignForm.discountType
+      payload.discount_value = discountValue
+    }
+
+    try {
+      setIsCreatingCampaign(true)
+      const created = await api.createCampaign(selectedBiz.id || selectedBiz._id || '', payload)
+      setCampaigns(current => [created, ...current])
+      setCampaignForm(defaultCampaignForm())
+    } catch (err) {
+      setCampaignError(err instanceof Error ? err.message : 'Failed to create campaign')
+    } finally {
+      setIsCreatingCampaign(false)
     }
   }
 
@@ -251,57 +433,71 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            {myBusinesses.length > 1 && (
-              <div className="mb-6">
+            <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              {myBusinesses.length > 1 ? (
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {myBusinesses.map(biz => (
-                    <button
-                      key={biz.id || biz._id}
-                      onClick={() => selectBusiness(biz)}
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-ui font-medium whitespace-nowrap transition-all ${
-                        (biz.id || biz._id) === bizId
-                          ? 'gradient-primary text-on-primary shadow-md shadow-brand/25'
-                          : 'card-surface text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]'
-                      }`}
-                    >
-                      <Store className="w-4 h-4" />
-                      {biz.name}
-                    </button>
-                  ))}
+                  {myBusinesses.map(biz => {
+                    const id = biz.id || biz._id || ''
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setSelectedBiz(biz)}
+                        className={`flex min-h-11 items-center gap-2 rounded-xl px-4 py-2.5 text-ui font-medium whitespace-nowrap transition-all ${
+                          id === bizId
+                            ? 'gradient-primary text-on-primary shadow-md shadow-brand/25'
+                            : 'card-surface text-[hsl(var(--foreground))] hover:bg-[hsl(var(--secondary))]'
+                        }`}
+                      >
+                        <Store className="w-4 h-4" />
+                        {biz.name}
+                      </button>
+                    )
+                  })}
                 </div>
+              ) : (
+                <div className="text-ui font-medium text-[hsl(var(--foreground))]">
+                  {selectedBiz?.name}
+                </div>
+              )}
+
+              <div className="inline-flex min-h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/50 p-1">
+                {rangeOptions.map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setConversionRange(option.value)}
+                    className={`min-h-9 rounded-lg px-4 text-ui font-medium transition-colors ${
+                      conversionRange === option.value
+                        ? 'bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm'
+                        : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
+            </div>
+            {selectedBiz && (
+              <ConversionSection
+                summary={conversionSummary}
+                timeseries={conversionTimeseries}
+                loading={analyticsLoading}
+                error={analyticsError}
+              />
             )}
             {selectedBiz && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 animate-fade-in-up">
-                <StatCard
-                  icon={Star}
-                  label="Rating"
-                  value={selectedBiz.rating?.toFixed(1) || '0.0'}
-                  sub={`${selectedBiz.review_count || 0} reviews`}
-                  color="text-warning"
-                />
-                <StatCard
-                  icon={Tag}
-                  label="Active Deals"
-                  value={String(deals.filter(d => d.is_active).length)}
-                  sub={`${deals.length} total`}
-                  color="text-brand"
-                />
-                <StatCard
-                  icon={MapPin}
-                  label="Check-ins Today"
-                  value={String(activityStatus?.checkins_today || 0)}
-                  sub={`${activityStatus?.checkins_this_week || 0} this week`}
-                  color="text-info"
-                />
-                <StatCard
-                  icon={Flame}
-                  label="Trending Score"
-                  value={String(activityStatus?.trending_score?.toFixed(1) || '0.0')}
-                  sub={activityStatus?.is_active_today ? 'Active Today' : 'Not active'}
-                  color="text-warning"
-                />
-              </div>
+              <CampaignToolsPanel
+                campaigns={campaigns}
+                templates={campaignTemplates}
+                ownerEvents={ownerEvents}
+                performance={campaignPerformance}
+                form={campaignForm}
+                error={campaignError}
+                isCreating={isCreatingCampaign}
+                onFormChange={setCampaignForm}
+                onTemplateChange={applyCampaignTemplate}
+                onCreate={() => void handleCreateCampaign()}
+              />
             )}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-6">
@@ -570,7 +766,523 @@ export default function DashboardPage() {
   )
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }: {
+function CampaignToolsPanel({
+  campaigns,
+  templates,
+  ownerEvents,
+  performance,
+  form,
+  error,
+  isCreating,
+  onFormChange,
+  onTemplateChange,
+  onCreate
+}: {
+  campaigns: Campaign[]
+  templates: CampaignTemplate[]
+  ownerEvents: OwnerEvent[]
+  performance: CampaignPerformance | null
+  form: CampaignFormState
+  error: string
+  isCreating: boolean
+  onFormChange: Dispatch<SetStateAction<CampaignFormState>>
+  onTemplateChange: (templateId: string) => void
+  onCreate: () => void
+}) {
+  const visibleCampaigns = campaigns.filter(campaign => campaign.status !== 'cancelled').slice(0, 5)
+  const activeCount = campaigns.filter(campaign => campaign.status === 'active').length
+
+  return (
+    <div className="card-surface mb-8 rounded-2xl p-6 animate-fade-in-up">
+      <div className="mb-5 flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h3 className="text-subheading font-bold text-[hsl(var(--foreground))] font-heading flex items-center gap-2">
+            <Megaphone className="h-5 w-5 text-brand" />
+            Campaigns
+          </h3>
+          <p className="text-ui text-[hsl(var(--muted-foreground))]">
+            Create timely offers for existing surfaces. Campaigns never affect ranking.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <MiniMetric label="Active" value={activeCount} />
+          <MiniMetric label="Claims" value={performance?.totals.claims ?? 0} />
+          <MiniMetric label="Actions" value={
+            (performance?.totals.claims ?? 0) +
+            (performance?.totals.directions_clicks ?? 0) +
+            (performance?.totals.check_ins ?? 0) +
+            (performance?.totals.redemption_placeholders ?? 0)
+          } />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          {error && (
+            <div className="mb-3 rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-caption text-error">
+              {error}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Template
+              </span>
+              <select
+                value={form.templateId}
+                onChange={event => onTemplateChange(event.target.value)}
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui text-[hsl(var(--foreground))]"
+              >
+                <option value="">Start from scratch</option>
+                {templates.map(template => (
+                  <option key={template.id} value={template.id}>{template.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Audience
+              </span>
+              <select
+                value={form.audience}
+                onChange={event => onFormChange(current => ({
+                  ...current,
+                  audience: event.target.value as CampaignTargeting['audience']
+                }))}
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui text-[hsl(var(--foreground))]"
+              >
+                <option value="all_visitors">All visitors</option>
+                <option value="first_time_visitors">First-time visitors</option>
+                <option value="saved_business_users">Saved-business users</option>
+                <option value="slow_hour">Slow-hour window</option>
+                <option value="event_interested">Event-interested visitors</option>
+                <option value="intent_match">Intent match</option>
+                <option value="category_match">Category match</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Title
+              </span>
+              <input
+                value={form.title}
+                onChange={event => onFormChange(current => ({ ...current, title: event.target.value }))}
+                placeholder="Slow-hour local perk"
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui text-[hsl(var(--foreground))]"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Type
+              </span>
+              <select
+                value={form.campaignType}
+                onChange={event => onFormChange(current => ({
+                  ...current,
+                  campaignType: event.target.value as CampaignType,
+                  linkedEventId: event.target.value === 'event_promotion' ? current.linkedEventId : ''
+                }))}
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui text-[hsl(var(--foreground))]"
+              >
+                <option value="slow_hour">Slow-hour campaign</option>
+                <option value="first_time_visitor">First-time visitor offer</option>
+                <option value="event_promotion">Event promotion</option>
+                <option value="limited_time_perk">Limited-time perk</option>
+                <option value="non_discount">Non-discount offer</option>
+                <option value="custom_template">Custom template</option>
+              </select>
+            </label>
+            {form.campaignType === 'event_promotion' && (
+              <label className="block">
+                <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                  Linked event
+                </span>
+                <select
+                  value={form.linkedEventId}
+                  onChange={event => onFormChange(current => ({
+                    ...current,
+                    linkedEventId: event.target.value
+                  }))}
+                  className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui text-[hsl(var(--foreground))]"
+                >
+                  <option value="">No linked event</option>
+                  {ownerEvents.map(event => (
+                    <option key={event.id} value={event.id}>
+                      {event.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+
+          <label className="mt-3 block">
+            <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+              Description
+            </span>
+            <textarea
+              value={form.description}
+              onChange={event => onFormChange(current => ({ ...current, description: event.target.value }))}
+              placeholder="Tell customers why this is worth acting on now."
+              rows={3}
+              className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-ui text-[hsl(var(--foreground))]"
+            />
+          </label>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <label className="block">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Offer kind
+              </span>
+              <select
+                value={form.offerKind}
+                onChange={event => onFormChange(current => ({
+                  ...current,
+                  offerKind: event.target.value as CampaignOfferKind
+                }))}
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui text-[hsl(var(--foreground))]"
+              >
+                <option value="perk">Perk</option>
+                <option value="non_discount">Non-discount</option>
+                <option value="event">Event</option>
+                <option value="discount">Discount</option>
+              </select>
+            </label>
+            <label className="block md:col-span-2">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Perk copy
+              </span>
+              <input
+                value={form.perkDescription}
+                onChange={event => onFormChange(current => ({ ...current, perkDescription: event.target.value }))}
+                placeholder="Free add-on during selected hours"
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui text-[hsl(var(--foreground))]"
+              />
+            </label>
+          </div>
+
+          {form.offerKind === 'discount' && (
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <select
+                value={form.discountType}
+                onChange={event => onFormChange(current => ({
+                  ...current,
+                  discountType: event.target.value as 'percentage' | 'fixed'
+                }))}
+                className="min-h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui"
+              >
+                <option value="percentage">Percentage</option>
+                <option value="fixed">Fixed amount</option>
+              </select>
+              <input
+                value={form.discountValue}
+                onChange={event => onFormChange(current => ({ ...current, discountValue: event.target.value }))}
+                inputMode="decimal"
+                placeholder="Value"
+                className="min-h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui"
+              />
+            </div>
+          )}
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Starts
+              </span>
+              <input
+                type="datetime-local"
+                value={form.startsAt}
+                onChange={event => onFormChange(current => ({ ...current, startsAt: event.target.value }))}
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                Ends
+              </span>
+              <input
+                type="datetime-local"
+                value={form.endsAt}
+                onChange={event => onFormChange(current => ({ ...current, endsAt: event.target.value }))}
+                className="min-h-11 w-full rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 text-ui"
+              />
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={onCreate}
+            disabled={isCreating}
+            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl gradient-primary px-4 text-ui font-medium text-on-primary shadow-lg shadow-brand/20 disabled:opacity-60 md:w-auto"
+          >
+            {isCreating ? 'Publishing...' : 'Publish campaign'}
+          </button>
+        </div>
+
+        <div className="lg:col-span-2">
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4">
+              <div className="mb-2 flex items-center gap-2 text-caption text-[hsl(var(--muted-foreground))]">
+                <MousePointerClick className="h-4 w-4 text-brand" />
+                Open rate
+              </div>
+              <p className="text-subheading font-bold text-[hsl(var(--foreground))]">
+                {formatPercent(performance?.rates.open_rate ?? 0)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4">
+              <div className="mb-2 flex items-center gap-2 text-caption text-[hsl(var(--muted-foreground))]">
+                <Ticket className="h-4 w-4 text-brand" />
+                Claim rate
+              </div>
+              <p className="text-subheading font-bold text-[hsl(var(--foreground))]">
+                {formatPercent(performance?.rates.claim_rate ?? 0)}
+              </p>
+            </div>
+          </div>
+
+          <h4 className="mb-3 text-ui font-semibold text-[hsl(var(--foreground))] font-sub">
+            Recent campaigns
+          </h4>
+          {visibleCampaigns.length === 0 ? (
+            <p className="rounded-xl bg-[hsl(var(--secondary))]/40 p-4 text-ui text-[hsl(var(--muted-foreground))]">
+              No campaigns yet. Start from a template to create one.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {visibleCampaigns.map(campaign => (
+                <div
+                  key={campaign.id || campaign._id}
+                  className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-ui font-semibold text-[hsl(var(--foreground))]">
+                        {campaign.title}
+                      </p>
+                      <p className="text-caption text-[hsl(var(--muted-foreground))]">
+                        {campaignTypeLabel(campaign.campaign_type)} - {campaign.status}
+                      </p>
+                    </div>
+                    <span className="rounded-lg bg-[hsl(var(--secondary))] px-2.5 py-1 text-caption font-medium text-[hsl(var(--foreground))]">
+                      {new Date(campaign.ends_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {campaign.perk_description && (
+                    <p className="mt-2 text-caption text-[hsl(var(--muted-foreground))]">
+                      {campaign.perk_description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {performance?.top_campaigns?.length ? (
+            <div className="mt-4">
+              <h4 className="mb-3 text-ui font-semibold text-[hsl(var(--foreground))] font-sub">
+                Top campaigns
+              </h4>
+              <div className="space-y-2">
+                {performance.top_campaigns.map(item => (
+                  <div key={item.campaign_id} className="flex items-center justify-between gap-3 text-ui">
+                    <span className="truncate text-[hsl(var(--foreground))]">{item.title}</span>
+                    <span className="text-caption font-semibold text-[hsl(var(--muted-foreground))]">
+                      {item.actions} actions
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MiniMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 px-4 py-3">
+      <p className="text-caption text-[hsl(var(--muted-foreground))]">{label}</p>
+      <p className="text-body font-bold text-[hsl(var(--foreground))]">{formatNumber(value)}</p>
+    </div>
+  )
+}
+
+function ConversionSection({
+  summary,
+  timeseries,
+  loading,
+  error
+}: {
+  summary: BusinessConversionSummary | null
+  timeseries: BusinessConversionTimeseries | null
+  loading: boolean
+  error: string
+}) {
+  if (loading) {
+    return (
+      <div className="mb-8 space-y-6 animate-fade-in-up" aria-busy="true">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="card-surface rounded-2xl p-5">
+              <div className="mb-3 h-4 w-24 rounded bg-[hsl(var(--secondary))]" />
+              <div className="mb-2 h-8 w-16 rounded bg-[hsl(var(--secondary))]" />
+              <div className="h-3 w-28 rounded bg-[hsl(var(--secondary))]" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="card-surface rounded-2xl p-6 lg:col-span-2">
+            <div className="mb-5 h-5 w-44 rounded bg-[hsl(var(--secondary))]" />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="h-24 rounded-xl bg-[hsl(var(--secondary))]" />
+              ))}
+            </div>
+          </div>
+          <div className="card-surface rounded-2xl p-6">
+            <div className="mb-5 h-5 w-32 rounded bg-[hsl(var(--secondary))]" />
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="h-9 rounded bg-[hsl(var(--secondary))]" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="card-surface mb-8 rounded-2xl border border-error/30 p-6 text-ui text-error">
+        {error}
+      </div>
+    )
+  }
+
+  if (!summary) {
+    return (
+      <div className="card-surface mb-8 rounded-2xl p-6 text-ui text-[hsl(var(--muted-foreground))]">
+        Conversion analytics appear after match cards record customer actions.
+      </div>
+    )
+  }
+
+  const actions = summary.totals.offer_claims + summary.totals.directions_clicks + summary.totals.check_ins
+  const positiveIntent = summary.totals.saves + summary.totals.matches
+  const headline = [
+    {
+      icon: Eye,
+      label: 'Impressions',
+      value: summary.totals.impressions,
+      sub: 'Seen in match cards',
+      color: 'text-brand'
+    },
+    {
+      icon: Bookmark,
+      label: 'Saves + Matches',
+      value: positiveIntent,
+      sub: `${formatPercent(summary.rates.save_rate + summary.rates.match_rate)} of impressions`,
+      color: 'text-success'
+    },
+    {
+      icon: MousePointerClick,
+      label: 'Profile opens',
+      value: summary.totals.profile_opens,
+      sub: `${formatPercent(summary.rates.profile_open_rate)} open rate`,
+      color: 'text-info'
+    },
+    {
+      icon: BarChart3,
+      label: 'Actions taken',
+      value: actions,
+      sub: `${formatPercent(summary.rates.action_rate)} action rate`,
+      color: 'text-warning'
+    }
+  ]
+
+  return (
+    <div className="mb-8 space-y-6 animate-fade-in-up">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {headline.map(item => (
+          <MetricCard
+            key={item.label}
+            icon={item.icon}
+            label={item.label}
+            value={formatNumber(item.value)}
+            sub={item.sub}
+            color={item.color}
+          />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="card-surface rounded-2xl p-6 lg:col-span-2">
+          <div className="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h3 className="text-body font-semibold text-[hsl(var(--foreground))] font-heading">
+                Conversion funnel
+              </h3>
+              <p className="text-caption text-[hsl(var(--muted-foreground))]">
+                Counts are actions recorded, not unique customers.
+              </p>
+            </div>
+            <span className="text-caption text-[hsl(var(--muted-foreground))]">
+              Last {summary.range.replace('d', '')} days
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            {summary.funnel.map((step, index) => {
+              const previous = index > 0 ? summary.funnel[index - 1].count : 0
+              const dropOff = previous > 0 ? Math.max(0, 1 - step.count / previous) : 0
+              return (
+                <div
+                  key={step.id}
+                  className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4"
+                >
+                  <p className="min-h-10 text-caption font-medium text-[hsl(var(--muted-foreground))]">
+                    {step.label}
+                  </p>
+                  <p className="mt-3 text-subheading font-bold text-[hsl(var(--foreground))]">
+                    {formatNumber(step.count)}
+                  </p>
+                  <p className="mt-1 text-caption text-[hsl(var(--muted-foreground))]">
+                    {index === 0 ? 'Starting point' : `${formatPercent(dropOff)} drop-off`}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <ActionBreakdown summary={summary} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <ReasonsPanel
+          title="Top match reasons"
+          empty="Reason data appears after match cards record reason codes."
+          reasons={summary.top_match_reasons}
+        />
+        <ReasonsPanel
+          title="Skipped with these match reasons"
+          empty="Reason data appears after skipped match cards include reason codes."
+          reasons={summary.top_skipped_reasons}
+        />
+      </div>
+
+      <TrendPanel timeseries={timeseries} />
+    </div>
+  )
+}
+
+function MetricCard({ icon: Icon, label, value, sub, color }: {
   icon: typeof Star
   label: string
   value: string
@@ -587,4 +1299,188 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
       <p className="text-caption text-[hsl(var(--muted-foreground))] mt-0.5">{sub}</p>
     </div>
   )
+}
+
+function ActionBreakdown({ summary }: { summary: BusinessConversionSummary }) {
+  const rows = [
+    {
+      icon: Ticket,
+      label: 'Offer claims',
+      count: summary.totals.offer_claims,
+      rate: summary.rates.claim_rate,
+      rateLabel: 'of profile opens'
+    },
+    {
+      icon: Navigation,
+      label: 'Directions clicks',
+      count: summary.totals.directions_clicks,
+      rate: rateFromImpressions(summary.totals.directions_clicks, summary.totals.impressions),
+      rateLabel: 'of impressions'
+    },
+    {
+      icon: MapPin,
+      label: 'Check-ins',
+      count: summary.totals.check_ins,
+      rate: rateFromImpressions(summary.totals.check_ins, summary.totals.impressions),
+      rateLabel: 'of impressions'
+    },
+    {
+      icon: CheckCircle2,
+      label: 'Use placeholders',
+      count: summary.totals.redemption_placeholders,
+      rate: summary.rates.redemption_placeholder_rate,
+      rateLabel: 'of claims'
+    }
+  ]
+
+  return (
+    <div className="card-surface rounded-2xl p-6">
+      <h3 className="mb-4 text-body font-semibold text-[hsl(var(--foreground))] font-heading">
+        Intent actions
+      </h3>
+      <div className="space-y-3">
+        {rows.map(row => (
+          <div key={row.label} className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--secondary))]">
+                <row.icon className="h-4 w-4 text-brand" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-ui font-medium text-[hsl(var(--foreground))]">{row.label}</p>
+                <p className="text-caption text-[hsl(var(--muted-foreground))]">
+                  {formatPercent(row.rate)} {row.rateLabel}
+                </p>
+              </div>
+            </div>
+            <span className="text-body font-bold text-[hsl(var(--foreground))]">
+              {formatNumber(row.count)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ReasonsPanel({
+  title,
+  empty,
+  reasons
+}: {
+  title: string
+  empty: string
+  reasons: BusinessConversionSummary['top_match_reasons']
+}) {
+  return (
+    <div className="card-surface rounded-2xl p-6">
+      <h3 className="mb-4 text-body font-semibold text-[hsl(var(--foreground))] font-heading">
+        {title}
+      </h3>
+      {reasons.length === 0 ? (
+        <p className="py-4 text-ui text-[hsl(var(--muted-foreground))]">{empty}</p>
+      ) : (
+        <div className="space-y-3">
+          {reasons.map(reason => (
+            <div key={reason.reason_code} className="flex items-center justify-between gap-3">
+              <span className="text-ui text-[hsl(var(--foreground))]">
+                {reason.label || formatReasonCode(reason.reason_code)}
+              </span>
+              <span className="rounded-lg bg-[hsl(var(--secondary))] px-2.5 py-1 text-caption font-semibold text-[hsl(var(--foreground))]">
+                {formatNumber(reason.count)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TrendPanel({ timeseries }: { timeseries: BusinessConversionTimeseries | null }) {
+  const buckets = timeseries?.buckets ?? []
+  const totals = buckets.map(bucket => (
+    bucket.impressions +
+    bucket.saves +
+    bucket.matches +
+    bucket.profile_opens +
+    bucket.offer_claims +
+    bucket.directions_clicks +
+    bucket.check_ins +
+    bucket.redemption_placeholders
+  ))
+  const maxTotal = Math.max(1, ...totals)
+
+  return (
+    <div className="card-surface rounded-2xl p-6">
+      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-body font-semibold text-[hsl(var(--foreground))] font-heading">
+            Daily trend
+          </h3>
+          <p className="text-caption text-[hsl(var(--muted-foreground))]">
+            Combined recorded conversion actions by day.
+          </p>
+        </div>
+        {buckets.length > 0 && (
+          <span className="text-caption text-[hsl(var(--muted-foreground))]">
+            {new Date(buckets[0].date).toLocaleDateString()} - {new Date(buckets[buckets.length - 1].date).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      {buckets.length === 0 ? (
+        <p className="py-4 text-ui text-[hsl(var(--muted-foreground))]">
+          Trend data appears after daily customer actions are recorded.
+        </p>
+      ) : (
+        <div
+          className="grid h-32 items-end gap-1"
+          style={{ gridTemplateColumns: `repeat(${buckets.length}, minmax(3px, 1fr))` }}
+          role="img"
+          aria-label="Daily conversion action trend"
+        >
+          {buckets.map((bucket, index) => {
+            const height = Math.max(8, Math.round((totals[index] / maxTotal) * 100))
+            return (
+              <div
+                key={bucket.date}
+                title={`${bucket.date}: ${totals[index]} actions`}
+                className="rounded-t bg-[hsl(var(--primary))]/70"
+                style={{ height: `${height}%` }}
+              />
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat().format(value)
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`
+}
+
+function toLocalDateTimeValue(date: Date): string {
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
+function campaignTypeLabel(value: string): string {
+  const labels: Record<string, string> = {
+    slow_hour: 'Slow-hour',
+    first_time_visitor: 'First-time visitor',
+    event_promotion: 'Event promotion',
+    limited_time_perk: 'Limited-time perk',
+    non_discount: 'Non-discount',
+    custom_template: 'Custom'
+  }
+  return labels[value] ?? value.replaceAll('_', ' ')
+}
+
+function rateFromImpressions(count: number, impressions: number): number {
+  return impressions > 0 ? count / impressions : 0
 }

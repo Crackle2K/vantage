@@ -12,10 +12,11 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::get,
-    Json, Router,
+    routing::{get, post},
+    Extension, Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
+use rand::{distributions::Alphanumeric, Rng};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -26,6 +27,11 @@ pub fn router() -> Router<Arc<AppState>> {
         .route(
             "/deals/:id",
             get(get_deal).put(update_deal).delete(delete_deal),
+        )
+        .route("/deals/:id/claim", post(claim_deal))
+        .route(
+            "/offer-claims/:id/redeem-placeholder",
+            post(redeem_offer_claim_placeholder),
         )
         .route("/businesses/:id/deals", get(list_business_deals))
         .route("/deals/business/:id", get(list_business_deals))
@@ -263,6 +269,108 @@ async fn delete_deal(
     Ok(Json(json!({ "message": "Deal deleted" })))
 }
 
+#[derive(Deserialize, Default)]
+struct OfferClaimPayload {
+    source_surface: Option<String>,
+    anonymous_session_id: Option<String>,
+    intent: Option<String>,
+    metadata: Option<Value>,
+}
+
+async fn claim_deal(
+    State(state): State<Arc<AppState>>,
+    auth_user: Option<Extension<AuthUser>>,
+    Path(id): Path<String>,
+    Json(payload): Json<OfferClaimPayload>,
+) -> Result<impl IntoResponse> {
+    let deal_id = security::validate_uuid_id(&id, "deal ID")?;
+    let Some(Extension(auth_user)) = auth_user else {
+        return Err(AppError::Unauthorized(
+            "Sign in to claim offers durably".into(),
+        ));
+    };
+
+    let deal = find_deal(&state, &deal_id).await?;
+    if !deal_is_current(&deal) {
+        return Err(AppError::BadRequest("Deal is not active".into()));
+    }
+    let business_id = security::validate_uuid_id(value_str(&deal, "business_id"), "business ID")?;
+    let _business = find_business(&state, &business_id).await?;
+
+    let claimed_at = Utc::now();
+    let body = build_offer_claim_body(&deal, &business_id, &auth_user, claimed_at)?;
+    let claim = state.db.supabase.insert_json("offer_claims", body).await?;
+    let claim_id = value_str(&claim, "id").to_string();
+
+    if let Err(err) = insert_offer_action_event(
+        &state,
+        "offer_claim",
+        &business_id,
+        Some(&deal_id),
+        Some(&claim_id),
+        Some(&auth_user),
+        &payload,
+    )
+    .await
+    {
+        tracing::warn!(error = %err, "Offer claim event tracking failed");
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({
+            "offer_claim_id": claim_id,
+            "deal_id": deal_id,
+            "business_id": business_id,
+            "claim_code": value_str(&claim, "claim_code"),
+            "status": value_str(&claim, "status"),
+            "claimed_at": claim
+                .get("claimed_at")
+                .cloned()
+                .unwrap_or_else(|| json!(claimed_at.to_rfc3339())),
+            "expires_at": claim.get("expires_at").cloned().unwrap_or(Value::Null),
+        })),
+    ))
+}
+
+async fn redeem_offer_claim_placeholder(
+    State(state): State<Arc<AppState>>,
+    auth_user: Option<Extension<AuthUser>>,
+    Path(id): Path<String>,
+    Json(payload): Json<OfferClaimPayload>,
+) -> Result<impl IntoResponse> {
+    let offer_claim_id = security::validate_uuid_id(&id, "offer claim ID")?;
+    let Some(Extension(auth_user)) = auth_user else {
+        return Err(AppError::Unauthorized(
+            "Sign in to record offer placeholder actions".into(),
+        ));
+    };
+    let claim = find_offer_claim(&state, &offer_claim_id).await?;
+    if value_str(&claim, "user_id") != auth_user.id {
+        return Err(AppError::Forbidden("Offer claim belongs to another user".into()));
+    }
+
+    let business_id = security::validate_uuid_id(value_str(&claim, "business_id"), "business ID")?;
+    let deal_id = security::validate_uuid_id(value_str(&claim, "deal_id"), "deal ID")?;
+
+    insert_offer_action_event(
+        &state,
+        "redemption_placeholder",
+        &business_id,
+        Some(&deal_id),
+        Some(&offer_claim_id),
+        Some(&auth_user),
+        &payload,
+    )
+    .await?;
+
+    Ok(Json(json!({
+        "offer_claim_id": offer_claim_id,
+        "status": "recorded",
+        "verified": false,
+    })))
+}
+
 async fn update_business_deal_status(state: &AppState, business_id: &str) -> Result<()> {
     let business_id = security::validate_uuid_id(business_id, "business ID")?;
     match refresh_business_has_deals(state, &business_id).await {
@@ -352,6 +460,16 @@ async fn find_deal(state: &AppState, id: &str) -> Result<Value> {
         .ok_or_else(|| AppError::NotFound("Deal not found".into()))
 }
 
+async fn find_offer_claim(state: &AppState, id: &str) -> Result<Value> {
+    let id = security::validate_uuid_id(id, "offer claim ID")?;
+    state
+        .db
+        .supabase
+        .select_one_json("offer_claims", &[select_all(), eq("id", id)])
+        .await?
+        .ok_or_else(|| AppError::NotFound("Offer claim not found".into()))
+}
+
 async fn find_business(state: &AppState, id: &str) -> Result<Value> {
     let id = security::validate_uuid_id(id, "business ID")?;
     state
@@ -360,6 +478,106 @@ async fn find_business(state: &AppState, id: &str) -> Result<Value> {
         .select_one_json("businesses", &[select_all(), eq("id", id)])
         .await?
         .ok_or_else(|| AppError::NotFound("Business not found".into()))
+}
+
+fn build_offer_claim_body(
+    deal: &Value,
+    business_id: &str,
+    auth_user: &AuthUser,
+    claimed_at: DateTime<Utc>,
+) -> Result<Value> {
+    let raw_deal_id = value_str(deal, "id");
+    let raw_deal_id = if raw_deal_id.is_empty() {
+        value_str(deal, "_id")
+    } else {
+        raw_deal_id
+    };
+    let deal_id = security::validate_uuid_id(raw_deal_id, "deal ID")?;
+    let mut body = Map::new();
+    body.insert("deal_id".into(), json!(deal_id));
+    body.insert("business_id".into(), json!(business_id));
+    body.insert("user_id".into(), json!(auth_user.id));
+    body.insert("claim_code".into(), json!(generate_claim_code()));
+    body.insert("status".into(), json!("claimed"));
+    body.insert("claimed_at".into(), json!(claimed_at.to_rfc3339()));
+    body.insert("created_at".into(), json!(claimed_at.to_rfc3339()));
+    body.insert("updated_at".into(), json!(claimed_at.to_rfc3339()));
+    body.insert("metadata".into(), json!({}));
+    body.insert("affects_lvs".into(), json!(false));
+
+    let valid_until = value_str(deal, "valid_until");
+    if !valid_until.is_empty() {
+        body.insert("expires_at".into(), json!(valid_until));
+    }
+
+    Ok(Value::Object(body))
+}
+
+async fn insert_offer_action_event(
+    state: &AppState,
+    event_type: &str,
+    business_id: &str,
+    deal_id: Option<&str>,
+    offer_claim_id: Option<&str>,
+    auth_user: Option<&AuthUser>,
+    payload: &OfferClaimPayload,
+) -> Result<()> {
+    let mut body = Map::new();
+    body.insert("event_type".into(), json!(event_type));
+    body.insert("business_id".into(), json!(business_id));
+    body.insert(
+        "source_surface".into(),
+        json!(
+            payload
+                .source_surface
+                .as_deref()
+                .and_then(|value| security::sanitize_optional_text(Some(value), 80))
+                .unwrap_or_else(|| "business_modal".into())
+        ),
+    );
+    body.insert("constraints".into(), json!([]));
+    body.insert("match_reason_codes".into(), json!([]));
+    body.insert("location_context".into(), json!({}));
+    body.insert(
+        "metadata".into(),
+        match &payload.metadata {
+            Some(Value::Object(map)) => Value::Object(map.clone()),
+            _ => json!({}),
+        },
+    );
+    body.insert("affects_lvs".into(), json!(false));
+    body.insert("created_at".into(), json!(Utc::now().to_rfc3339()));
+
+    if let Some(user) = auth_user {
+        body.insert("user_id".into(), json!(user.id));
+    }
+    if let Some(session_id) = payload
+        .anonymous_session_id
+        .as_deref()
+        .and_then(|value| security::sanitize_optional_text(Some(value), 120))
+    {
+        body.insert("anonymous_session_id".into(), json!(session_id));
+    }
+    if let Some(intent) = payload
+        .intent
+        .as_deref()
+        .and_then(|value| security::sanitize_optional_text(Some(value), 80))
+    {
+        body.insert("intent".into(), json!(intent));
+    }
+    if let Some(deal_id) = deal_id {
+        body.insert("deal_id".into(), json!(deal_id));
+    }
+    if let Some(offer_claim_id) = offer_claim_id {
+        body.insert("offer_claim_id".into(), json!(offer_claim_id));
+    }
+
+    state
+        .db
+        .supabase
+        .insert_json("customer_events", Value::Object(body))
+        .await?;
+    Ok(())
 }
 
 fn ensure_business_owner(row: &Value, auth_user: &AuthUser) -> Result<()> {
@@ -415,9 +633,20 @@ fn validate_rfc3339(label: &str, value: &str) -> Result<String> {
         .map_err(|_| AppError::BadRequest(format!("{} must be an ISO-8601 timestamp", label)))
 }
 
+fn generate_claim_code() -> String {
+    let suffix: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .map(|value| value.to_ascii_uppercase())
+        .collect();
+    format!("VAN-{}", suffix)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::middleware::auth::AuthUser;
 
     #[test]
     fn deal_is_current_requires_active_unexpired_rows() {
@@ -452,5 +681,46 @@ mod tests {
                 "(valid_until.is.null,valid_until.gt.2026-05-20T12:00:00+00:00)".to_string()
             )
         );
+    }
+
+    #[test]
+    fn generated_claim_codes_have_customer_safe_shape() {
+        let code = generate_claim_code();
+
+        assert_eq!(code.len(), 10);
+        assert!(code.starts_with("VAN-"));
+        assert!(code
+            .chars()
+            .skip(4)
+            .all(|value| value.is_ascii_uppercase() || value.is_ascii_digit()));
+    }
+
+    #[test]
+    fn offer_claim_body_never_affects_visibility_score() {
+        let claimed_at = DateTime::parse_from_rfc3339("2026-06-06T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let auth_user = AuthUser {
+            id: "11111111-1111-4111-8111-111111111111".into(),
+            email: "customer@example.com".into(),
+            name: "Customer".into(),
+            role: "customer".into(),
+        };
+        let deal = json!({
+            "id": "22222222-2222-4222-8222-222222222222",
+            "valid_until": "2026-06-12T12:00:00Z"
+        });
+
+        let body = build_offer_claim_body(
+            &deal,
+            "33333333-3333-4333-8333-333333333333",
+            &auth_user,
+            claimed_at,
+        )
+        .unwrap();
+
+        assert_eq!(body["affects_lvs"], false);
+        assert_eq!(body["status"], "claimed");
+        assert_eq!(body["expires_at"], "2026-06-12T12:00:00Z");
     }
 }
