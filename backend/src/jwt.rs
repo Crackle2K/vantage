@@ -74,8 +74,8 @@ pub fn verify_hs256<T: DeserializeOwned>(token: &str, secret: &str) -> crate::er
     let signing_input = format!("{}.{}", header_b64, payload_b64);
     let expected = hs256_sign(secret.as_bytes(), &signing_input);
 
-    // Constant-time comparison.
-    if !constant_time_eq(sig_b64.as_bytes(), expected.as_bytes()) {
+    // Constant-time comparison using ring's secure verifier.
+    if ring::constant_time::verify_slices_are_equal(sig_b64.as_bytes(), expected.as_bytes()).is_err() {
         return Err(AppError::Unauthorized("Invalid JWT signature".into()));
     }
 
