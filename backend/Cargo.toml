@@ -32,9 +32,13 @@ serde_json = "1"
 # builds do not depend on system OpenSSL headers.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
-# Auth — Supabase JWT verification using pure-Rust HMAC-SHA256
+# Auth — Supabase JWT verification. HS256 (legacy shared secret) via pure-Rust
+# HMAC-SHA256; ES256 (asymmetric JWKS signing keys, the current Supabase
+# default) via ring's ECDSA P-256 verifier. ring is already in the dependency
+# tree through rustls, so this adds no new transitive crates.
 hmac = "0.12"
 sha2 = "0.10"
+ring = "0.17"
 
 # Config / env
 dotenvy = "0.15"

@@ -134,7 +134,7 @@ async fn authenticate_tokens(
     tokens: RequestTokens,
 ) -> Result<(AuthUser, Option<AuthSession>), AppError> {
     if let Some(token) = tokens.access_token.as_deref() {
-        if let Ok(claims) = verify_token(token, &state.config.supabase_jwt_secret) {
+        if let Ok(claims) = verify_token(state, token).await {
             return Ok((claims_to_auth_user(claims)?, None));
         }
     }
@@ -149,12 +149,36 @@ async fn authenticate_tokens(
         .auth_refresh_token(&refresh_token)
         .await
         .map_err(|_| AppError::Unauthorized("Session expired".into()))?;
-    let claims = verify_token(&session.access_token, &state.config.supabase_jwt_secret)?;
+    let claims = verify_token(state, &session.access_token).await?;
     Ok((claims_to_auth_user(claims)?, Some(session)))
 }
 
-pub fn verify_token(token: &str, secret: &str) -> Result<SupabaseJwtClaims, AppError> {
-    jwt::decode(token, secret)
+/// Verifies a Supabase access token, dispatching on its signing algorithm:
+/// legacy HS256 against the shared secret, or ES256 against the project JWKS
+/// public key identified by the token's `kid`.
+pub async fn verify_token(state: &AppState, token: &str) -> Result<SupabaseJwtClaims, AppError> {
+    let header = jwt::decode_header(token)?;
+    match header.alg.as_str() {
+        "HS256" => jwt::verify_hs256(token, &state.config.supabase_jwt_secret),
+        "ES256" => {
+            let kid = header
+                .kid
+                .ok_or_else(|| AppError::Unauthorized("JWT missing key id".into()))?;
+            let jwk = state
+                .db
+                .supabase
+                .jwk_for_kid(&kid)
+                .await
+                .map_err(|_| AppError::Unauthorized("Unable to resolve signing key".into()))?;
+            match (jwk.x.as_deref(), jwk.y.as_deref()) {
+                (Some(x), Some(y)) => jwt::verify_es256(token, x, y),
+                _ => Err(AppError::Unauthorized("Malformed signing key".into())),
+            }
+        }
+        _ => Err(AppError::Unauthorized(
+            "Unsupported JWT signing algorithm".into(),
+        )),
+    }
 }
 
 fn claims_to_auth_user(claims: SupabaseJwtClaims) -> Result<AuthUser, AppError> {
