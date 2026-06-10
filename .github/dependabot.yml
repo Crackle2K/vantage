@@ -13,9 +13,9 @@ updates:
       - "dependencies"
       - "frontend"
 
-  # Backend: pip (FastAPI)
-  - package-ecosystem: "pip"
-    directory: "/backend"
+  # Backend/API: Rust Cargo workspace
+  - package-ecosystem: "cargo"
+    directory: "/"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 67
@@ -25,3 +25,17 @@ updates:
     labels:
       - "dependencies"
       - "backend"
+      - "rust"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "Crackle2K"
+      - "MisplacedOrange"
+    labels:
+      - "dependencies"
+      - "ci"

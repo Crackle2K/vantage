@@ -302,7 +302,7 @@ export function StickySearchFilters({
             <div className="flex h-full flex-col">
               <div className="explore-menu-drawer__header">
                 <Link
-                  to={isAuthenticated ? '/businesses' : '/'}
+                  to="/"
                   className="explore-menu-drawer__brand"
                   onClick={() => setMenuOpen(false)}
                   aria-label="Vantage home"

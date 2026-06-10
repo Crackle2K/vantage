@@ -2,11 +2,10 @@
  * @fileoverview Sign-up page (route `/signup`). Registration form with
  * email/password fields, role selection (Customer or Business Owner),
  * Google OAuth sign-up, and reCAPTCHA Enterprise verification.
- * Redirects authenticated users to the explore page.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, Link, Navigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -158,10 +157,6 @@ export default function SignUpPage() {
     };
   }, [recaptchaEnabled, widgetId]);
 
-  if (isAuthenticated) {
-    return <Navigate to="/businesses" replace />;
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -203,7 +198,7 @@ export default function SignUpPage() {
         setRecaptchaToken('');
       }
     } else {
-      navigate('/businesses');
+      navigate('/');
     }
   };
 
@@ -222,7 +217,7 @@ export default function SignUpPage() {
       setError(err);
       setLoading(false);
     } else {
-      navigate('/businesses');
+      navigate('/');
     }
   };
 
@@ -277,6 +272,12 @@ export default function SignUpPage() {
               current from day one.
             </p>
           </div>
+
+          {isAuthenticated && (
+            <p className="auth-editorial__switch">
+              You are already signed in. <Link to="/">Return home</Link>
+            </p>
+          )}
 
           {error && (
             <div className="auth-editorial__error animate-scale-in">

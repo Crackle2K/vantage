@@ -9,22 +9,17 @@ permissions:
   contents: write
 
 jobs:
-  submit-python-backend-dependencies:
+  submit-rust-workspace-dependencies:
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Submit backend dependency graph
+      - name: Submit Rust workspace dependency graph
         uses: advanced-security/component-detection-dependency-submission-action@v0.1.3
         with:
-          filePath: backend
-          detector-name: python-backend-dependency-submission
+          filePath: .
+          detector-name: rust-workspace-dependency-submission
           detector-version: 1.0.0
           detector-url: https://github.com/advanced-security/component-detection-dependency-submission-action

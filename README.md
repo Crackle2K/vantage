@@ -46,6 +46,18 @@ cargo run -p vantage-backend --bin vantage
 
 Backend default URL: `http://localhost:8000`
 
+### Deployment
+
+The backend is Rust + Axum. Do not deploy it as ASGI and do not run
+`uvicorn main:app`.
+
+- Native/container backend command: `cargo run -p vantage-backend --bin vantage`
+- Production binary build: `cargo build -p vantage-backend --bin vantage --release`
+- Docker build from the repository root:
+  `docker build -f backend/Dockerfile -t vantage-backend .`
+- Vercel routes `/api/*` through the Rust serverless wrapper at `api/index.rs`;
+  `vercel.json` keeps the frontend build command scoped to `frontend`.
+
 ### Frontend
 
 ```bash

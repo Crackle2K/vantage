@@ -4,11 +4,17 @@ on:
   push:
     paths:
       - '.github/workflows/rust.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'backend/**'
+      - 'api/**'
   pull_request:
     paths:
       - '.github/workflows/rust.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - 'backend/**'
+      - 'api/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,9 +24,6 @@ jobs:
   check:
     name: Check & test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +36,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
+          workspaces: "."
 
       - name: Install system dependencies
         run: |
@@ -41,15 +44,15 @@ jobs:
           sudo apt-get install -y pkg-config libssl-dev
 
       - name: Cargo fmt check
-        run: cargo fmt --check
+        run: cargo fmt --all -- --check
 
       - name: Cargo check
-        run: cargo check
+        run: cargo check --workspace
 
       - name: Cargo clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
       - name: Cargo test
-        run: cargo test
+        run: cargo test --workspace
         env:
           SECRET_KEY: test-secret-key-for-ci-only-not-production

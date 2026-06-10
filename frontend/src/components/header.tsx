@@ -125,7 +125,7 @@ export function Header() {
             </button>
           )}
           <Link
-            to={isAuthenticated ? '/businesses' : '/'}
+            to="/"
             className="min-nav__brand"
             aria-label="Vantage homepage"
           >
@@ -186,7 +186,7 @@ export function Header() {
             <div className="flex h-full flex-col">
               <div className="explore-menu-drawer__header">
                 <Link
-                  to={isAuthenticated ? '/businesses' : '/'}
+                  to="/"
                   onClick={() => setSideMenuOpen(false)}
                   className="explore-menu-drawer__brand"
                   aria-label="Vantage home"

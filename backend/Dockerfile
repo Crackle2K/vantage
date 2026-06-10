@@ -7,12 +7,17 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Build from the repository root so Cargo can resolve the workspace members
+# (`backend` and `api`) exactly as CI and local development do.
 COPY Cargo.toml Cargo.lock ./
-# Cache dependencies
-RUN mkdir src && echo "fn main(){}" > src/main.rs && cargo build --release && rm -rf src
+COPY backend/Cargo.toml backend/Cargo.toml
+COPY backend/rust-toolchain.toml backend/rust-toolchain.toml
+COPY api/Cargo.toml api/Cargo.toml
 
-COPY src ./src
-RUN touch src/main.rs && cargo build --release
+COPY backend/src backend/src
+COPY api/index.rs api/index.rs
+
+RUN cargo build -p vantage-backend --bin vantage --release
 
 FROM debian:bookworm-slim AS runtime
 
@@ -24,7 +29,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY --from=builder /app/target/release/vantage /app/vantage
-COPY .env.example .env.example
+COPY backend/.env.example .env.example
 
 EXPOSE 8000
 

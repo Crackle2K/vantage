@@ -6,7 +6,7 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom'
-import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import RootLayout from './layout'
 import './index.css'
@@ -35,20 +35,6 @@ function RouteFallback() {
   )
 }
 
-function HomeRoute() {
-  const { isAuthenticated, loading } = useAuth()
-
-  if (loading) {
-    return <RouteFallback />
-  }
-
-  if (isAuthenticated) {
-    return <Navigate to="/businesses" replace />
-  }
-
-  return <HomePage />
-}
-
 /**
  * Renders the full application tree into the DOM root.
  *
@@ -67,7 +53,7 @@ createRoot(document.getElementById('root')!).render(
           <RootLayout>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
-                <Route path="/" element={<HomeRoute />} />
+                <Route path="/" element={<HomePage />} />
                 <Route path="/businesses" element={<Businesses />} />
                 <Route path="/decide" element={<DecidePage />} />
                 <Route path="/saved" element={<SavedPage />} />

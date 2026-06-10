@@ -1,0 +1,11 @@
+warning: unused imports: `delete` and `put`
+  --> backend\src\routes\campaigns.rs:12:15
+   |
+12 |     routing::{delete, get, post, put},
+   |               ^^^^^^             ^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `vantage-backend` (lib) generated 1 warning (run `cargo fix --lib -p vantage-backend` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 18.94s
+     Running `target\debug\vantage.exe`

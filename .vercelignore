@@ -1,4 +1,4 @@
-# Python cache
+# Local runtime/cache artifacts
 __pycache__/
 *.pyc
 *.pyo
@@ -9,7 +9,6 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-requirements.txt
 
 # Virtual environments
 .venv/
@@ -33,11 +32,6 @@ node_modules/
 
 # Rust build output
 target/
-
-# Test files
-test_*.py
-*_test.py
-tests/
 
 # Documentation
 *.md
