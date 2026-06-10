@@ -56,6 +56,7 @@ pub fn decode_header(token: &str) -> Result<JwtHeader, AppError> {
     Ok(JwtHeader { alg, kid })
 }
 
+#[cfg(test)]
 fn hs256_sign(secret: &[u8], msg: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC accepts any key length");
     mac.update(msg.as_bytes());
@@ -72,10 +73,13 @@ pub fn verify_hs256<T: DeserializeOwned>(token: &str, secret: &str) -> crate::er
 
     let [header_b64, payload_b64, sig_b64] = split(token)?;
     let signing_input = format!("{}.{}", header_b64, payload_b64);
-    let expected = hs256_sign(secret.as_bytes(), &signing_input);
+    let signature = b64decode(sig_b64)?;
 
-    // Constant-time comparison using ring's secure verifier.
-    if ring::constant_time::verify_slices_are_equal(sig_b64.as_bytes(), expected.as_bytes()).is_err() {
+    // HMAC's verify_slice performs a constant-time comparison.
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(signing_input.as_bytes());
+    if mac.verify_slice(&signature).is_err() {
         return Err(AppError::Unauthorized("Invalid JWT signature".into()));
     }
 
@@ -127,16 +131,6 @@ fn parse_claims<T: DeserializeOwned>(payload_b64: &str) -> crate::errors::Result
 
     serde_json::from_value(claims)
         .map_err(|e| AppError::Unauthorized(format!("Invalid JWT claims: {}", e)))
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
 }
 
 #[cfg(test)]
