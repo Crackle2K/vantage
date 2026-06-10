@@ -3,12 +3,48 @@ use anyhow::{bail, Result};
 use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+
+/// How long a fetched JWKS set is treated as fresh before refetching.
+const JWKS_TTL: Duration = Duration::from_secs(600);
+/// Minimum spacing between JWKS network fetches. Caps the cost of unknown-`kid`
+/// lookups (e.g. forged tokens) to one fetch per interval.
+const JWKS_MIN_REFRESH: Duration = Duration::from_secs(60);
+
+/// A single JSON Web Key from the project JWKS. Only the fields needed to
+/// reconstruct a P-256 verifying key are captured.
+#[derive(Clone, Deserialize)]
+pub struct Jwk {
+    pub kid: String,
+    #[serde(default)]
+    pub alg: Option<String>,
+    #[serde(default)]
+    pub x: Option<String>,
+    #[serde(default)]
+    pub y: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct JwksResponse {
+    #[serde(default)]
+    keys: Vec<Jwk>,
+}
+
+#[derive(Default)]
+struct JwksCache {
+    keys: HashMap<String, Jwk>,
+    fetched_at: Option<Instant>,
+}
 
 #[derive(Clone)]
 pub struct SupabaseClient {
     pub url: String,
     pub service_role_key: String,
     pub http: Client,
+    jwks: Arc<RwLock<JwksCache>>,
 }
 
 impl SupabaseClient {
@@ -22,7 +58,65 @@ impl SupabaseClient {
             url: config.supabase_url.clone(),
             service_role_key: config.supabase_service_role_key.clone(),
             http,
+            jwks: Arc::new(RwLock::new(JwksCache::default())),
         }
+    }
+
+    /// Returns the JWKS signing key matching `kid`, fetching and caching the
+    /// project key set as needed. Used to verify ES256 access tokens.
+    pub async fn jwk_for_kid(&self, kid: &str) -> Result<Jwk> {
+        if let Some(jwk) = self.cached_fresh_key(kid).await {
+            return Ok(jwk);
+        }
+        self.refresh_jwks().await?;
+        self.jwks
+            .read()
+            .await
+            .keys
+            .get(kid)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("No JWKS signing key for kid {}", kid))
+    }
+
+    async fn cached_fresh_key(&self, kid: &str) -> Option<Jwk> {
+        let cache = self.jwks.read().await;
+        match cache.fetched_at {
+            Some(at) if at.elapsed() < JWKS_TTL => cache.keys.get(kid).cloned(),
+            _ => None,
+        }
+    }
+
+    async fn refresh_jwks(&self) -> Result<()> {
+        self.ensure_configured()?;
+        // Throttle network fetches so unknown-kid lookups can't trigger one
+        // request per call.
+        {
+            let cache = self.jwks.read().await;
+            if let Some(at) = cache.fetched_at {
+                if at.elapsed() < JWKS_MIN_REFRESH {
+                    return Ok(());
+                }
+            }
+        }
+
+        let url = format!("{}/auth/v1/.well-known/jwks.json", self.url);
+        let resp = self
+            .http
+            .get(&url)
+            .header("apikey", &self.service_role_key)
+            .send()
+            .await?;
+        let data = Self::parse_json_response(resp).await?;
+        let parsed: JwksResponse = serde_json::from_value(data)?;
+
+        let mut cache = self.jwks.write().await;
+        cache.keys = parsed
+            .keys
+            .into_iter()
+            .map(|key| (key.kid.clone(), key))
+            .collect();
+        cache.fetched_at = Some(Instant::now());
+        Ok(())
     }
 
     fn table_url(&self, table: &str) -> String {

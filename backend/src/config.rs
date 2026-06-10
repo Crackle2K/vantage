@@ -104,7 +104,9 @@ impl Config {
     pub fn validate(&self) -> anyhow::Result<()> {
         require_configured("SUPABASE_URL", &self.supabase_url)?;
         require_configured("SUPABASE_SERVICE_ROLE_KEY", &self.supabase_service_role_key)?;
-        require_configured("SUPABASE_JWT_SECRET", &self.supabase_jwt_secret)?;
+        // SUPABASE_JWT_SECRET is optional: it is only used to verify legacy
+        // HS256 access tokens. Projects using asymmetric (ES256) signing keys
+        // are verified against the published JWKS and need no shared secret.
         if self.refresh_token_expire_days <= 0 {
             anyhow::bail!("REFRESH_TOKEN_EXPIRE_DAYS must be greater than zero");
         }
