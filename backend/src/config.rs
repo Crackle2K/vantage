@@ -67,7 +67,11 @@ impl Config {
             api_url: env::var("API_URL").unwrap_or_else(|_| "http://localhost:8000".into()),
             frontend_url: env::var("FRONTEND_URL")
                 .unwrap_or_else(|_| "http://localhost:5173".into()),
-            production_url: env::var("PRODUCTION_URL").unwrap_or_default(),
+            production_url: env::var("PRODUCTION_URL")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .or_else(vercel_deployment_url)
+                .unwrap_or_default(),
             environment: normalized_environment(),
 
             rate_limit_per_minute: env::var("RATE_LIMIT_PER_MINUTE")
@@ -165,6 +169,18 @@ fn require_public_origin(name: &str, value: &str) -> anyhow::Result<()> {
         anyhow::bail!("{} must not point to localhost in production", name);
     }
     Ok(())
+}
+
+/// Resolves the public deployment URL from Vercel's built-in environment
+/// variables when PRODUCTION_URL is not set explicitly. Prefers the stable
+/// production domain over the per-deployment URL.
+fn vercel_deployment_url() -> Option<String> {
+    env::var("VERCEL_PROJECT_PRODUCTION_URL")
+        .or_else(|_| env::var("VERCEL_URL"))
+        .ok()
+        .map(|v| v.trim().trim_start_matches("https://").to_string())
+        .filter(|v| !v.is_empty())
+        .map(|v| format!("https://{}", v))
 }
 
 fn normalized_environment() -> String {
