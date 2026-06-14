@@ -1,10 +1,11 @@
 use anyhow::Result;
+use reqwest::Client;
 use serde_json::Value;
 
 const PLACES_API: &str = "https://maps.googleapis.com/maps/api/place";
-const GOOGLE_HTTP_TIMEOUT_SECS: u64 = 10;
 
 pub async fn search_nearby(
+    client: &Client,
     api_key: &str,
     lat: f64,
     lng: f64,
@@ -20,30 +21,30 @@ pub async fn search_nearby(
         url.push_str(&format!("&keyword={}", urlencoding::encode(kw)));
     }
 
-    let resp = get_google_json(&url).await?;
+    let resp = get_google_json(client, &url).await?;
 
     let results = resp["results"].as_array().cloned().unwrap_or_default();
 
     Ok(results)
 }
 
-pub async fn get_place_details(api_key: &str, place_id: &str) -> Result<Value> {
+pub async fn get_place_details(client: &Client, api_key: &str, place_id: &str) -> Result<Value> {
     let url = format!(
         "{}/details/json?place_id={}&fields=name,formatted_address,geometry,rating,user_ratings_total,opening_hours,photos,price_level,website,formatted_phone_number&key={}",
         PLACES_API, place_id, api_key
     );
 
-    let resp = get_google_json(&url).await?;
+    let resp = get_google_json(client, &url).await?;
     Ok(resp["result"].clone())
 }
 
-pub async fn reverse_geocode(api_key: &str, lat: f64, lng: f64) -> Result<Value> {
+pub async fn reverse_geocode(client: &Client, api_key: &str, lat: f64, lng: f64) -> Result<Value> {
     let url = format!(
         "https://maps.googleapis.com/maps/api/geocode/json?latlng={},{}&key={}",
         lat, lng, api_key
     );
 
-    get_google_json(&url).await
+    get_google_json(client, &url).await
 }
 
 pub async fn get_photo_url(api_key: &str, photo_reference: &str, max_width: u32) -> String {
@@ -53,14 +54,8 @@ pub async fn get_photo_url(api_key: &str, photo_reference: &str, max_width: u32)
     )
 }
 
-pub fn google_http_client() -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(GOOGLE_HTTP_TIMEOUT_SECS))
-        .build()?)
-}
-
-async fn get_google_json(url: &str) -> Result<Value> {
-    let resp = google_http_client()?.get(url).send().await?;
+async fn get_google_json(client: &Client, url: &str) -> Result<Value> {
+    let resp = client.get(url).send().await?;
     let status = resp.status();
     let data: Value = resp.json().await?;
     if !status.is_success() {

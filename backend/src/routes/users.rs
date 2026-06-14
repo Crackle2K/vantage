@@ -47,8 +47,8 @@ async fn update_me(
         set_metadata(&mut user_metadata, "name", json!(cleaned));
     }
     if let Some(profile_picture) = payload["profile_picture"].as_str() {
-        if let Some(cleaned) = security::sanitize_optional_text(Some(profile_picture), 500) {
-            set_metadata(&mut user_metadata, "profile_picture", json!(cleaned));
+        if let Some(url) = security::normalize_url(Some(profile_picture), 500, false)? {
+            set_metadata(&mut user_metadata, "profile_picture", json!(url));
         }
     }
     if let Some(about_me) = payload["about_me"].as_str() {

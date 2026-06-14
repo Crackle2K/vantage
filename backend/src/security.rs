@@ -114,7 +114,11 @@ pub fn normalize_url(
 
 pub fn validate_photo_reference(value: &str) -> Result<String> {
     let cleaned = sanitize_text(value, 512);
-    if cleaned.is_empty() || cleaned.len() > 512 || !PHOTO_REF_RE.is_match(&cleaned) {
+    if cleaned.is_empty()
+        || cleaned.len() > 512
+        || cleaned.contains("..")
+        || !PHOTO_REF_RE.is_match(&cleaned)
+    {
         return Err(AppError::BadRequest("Invalid photo reference".into()));
     }
     Ok(cleaned)
@@ -296,6 +300,12 @@ mod tests {
     fn uuid_validation_rejects_bad_ids() {
         assert!(validate_uuid_id("not-a-uuid", "business ID").is_err());
         assert!(validate_uuid_id("550e8400-e29b-41d4-a716-446655440000", "business ID").is_ok());
+    }
+
+    #[test]
+    fn photo_reference_rejects_parent_path_segments() {
+        assert!(super::validate_photo_reference("safe_photo-ref.1").is_ok());
+        assert!(super::validate_photo_reference("unsafe..photo").is_err());
     }
 
     #[test]

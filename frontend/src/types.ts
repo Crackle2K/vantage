@@ -360,6 +360,7 @@ export interface ActivityFeedItem {
 /** A comment on an activity feed item. */
 export interface ActivityComment {
   id: string;
+  activity_id?: string;
   user_id: string;
   user_name: string;
   profile_picture?: string;

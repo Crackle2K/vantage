@@ -42,19 +42,11 @@ impl SubscriptionTier {
     pub fn analytics_access(&self) -> bool {
         matches!(self, SubscriptionTier::Pro | SubscriptionTier::Premium)
     }
-
-    pub fn visibility_boost(&self) -> bool {
-        matches!(self, SubscriptionTier::Pro | SubscriptionTier::Premium)
-    }
-
-    pub fn featured_placement(&self) -> bool {
-        matches!(self, SubscriptionTier::Premium)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Subscription {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub user_id: String,
     pub business_id: Option<String>,
@@ -89,8 +81,6 @@ pub struct TierInfo {
     pub price_usd: f64,
     pub max_deals: Option<u32>,
     pub analytics: bool,
-    pub visibility_boost: bool,
-    pub featured: bool,
 }
 
 pub fn all_tier_infos() -> Vec<TierInfo> {
@@ -101,8 +91,6 @@ pub fn all_tier_infos() -> Vec<TierInfo> {
             price_usd: 0.0,
             max_deals: Some(1),
             analytics: false,
-            visibility_boost: false,
-            featured: false,
         },
         TierInfo {
             tier: "STARTER".into(),
@@ -110,8 +98,6 @@ pub fn all_tier_infos() -> Vec<TierInfo> {
             price_usd: 9.99,
             max_deals: Some(5),
             analytics: false,
-            visibility_boost: false,
-            featured: false,
         },
         TierInfo {
             tier: "PRO".into(),
@@ -119,8 +105,6 @@ pub fn all_tier_infos() -> Vec<TierInfo> {
             price_usd: 29.99,
             max_deals: Some(20),
             analytics: true,
-            visibility_boost: true,
-            featured: false,
         },
         TierInfo {
             tier: "PREMIUM".into(),
@@ -128,8 +112,6 @@ pub fn all_tier_infos() -> Vec<TierInfo> {
             price_usd: 79.99,
             max_deals: None,
             analytics: true,
-            visibility_boost: true,
-            featured: true,
         },
     ]
 }

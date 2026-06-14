@@ -2,8 +2,8 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{
-        eq, limit, normalize_review, offset, order, q, select_all, unwrap_rpc_items, value_str,
-        QueryParams,
+        eq, limit, normalize_review, offset, order, pagination_headers, pagination_meta,
+        pagination_window, q, select_all, unwrap_rpc_items, value_str, QueryParams,
     },
     security,
     state::AppState,
@@ -15,7 +15,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -35,6 +35,8 @@ pub fn router() -> Router<Arc<AppState>> {
 struct PaginationParams {
     limit: Option<i64>,
     offset: Option<i64>,
+    cursor: Option<String>,
+    include_pagination: Option<bool>,
 }
 
 async fn list_business_reviews(
@@ -43,15 +45,22 @@ async fn list_business_reviews(
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse> {
     let business_id = security::validate_uuid_id(&business_id, "business ID")?;
+    let window = pagination_window(
+        params.limit,
+        params.offset,
+        params.cursor.as_deref(),
+        20,
+        100,
+    )?;
     let query: QueryParams = vec![
         select_all(),
         eq("business_id", business_id),
         order("created_at.desc"),
-        limit(params.limit.unwrap_or(20).clamp(1, 100)),
-        offset(params.offset.unwrap_or(0)),
+        limit(window.limit + 1),
+        offset(window.offset),
     ];
 
-    let reviews = state
+    let mut reviews = state
         .db
         .supabase
         .select_json("reviews", &query)
@@ -59,8 +68,21 @@ async fn list_business_reviews(
         .into_iter()
         .map(normalize_review)
         .collect::<Vec<_>>();
+    let meta = pagination_meta(window.limit, window.offset, reviews.len());
+    reviews.truncate(window.limit as usize);
 
-    Ok(Json(reviews))
+    let body = if params.include_pagination.unwrap_or(false) {
+        json!({
+            "items": reviews,
+            "pagination": &meta,
+            "has_more": meta.has_more,
+            "next_cursor": meta.next_cursor.clone(),
+        })
+    } else {
+        json!(reviews)
+    };
+
+    Ok((pagination_headers(&meta), Json(body)))
 }
 
 async fn get_review(
@@ -111,6 +133,7 @@ async fn create_review(
             "You have already reviewed this business".into(),
         ));
     }
+    ensure_review_rate_allowed(&state, &auth_user.id).await?;
 
     let now = Utc::now().to_rfc3339();
     let mut body = Map::new();
@@ -134,7 +157,8 @@ async fn create_review(
         .db
         .supabase
         .insert_json("reviews", Value::Object(body))
-        .await?;
+        .await
+        .map_err(map_review_insert_error)?;
 
     update_business_rating(&state, &business_id).await?;
 
@@ -167,6 +191,7 @@ async fn update_review(
         .await?
         .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
     ensure_not_owned_business_review(&business, &auth_user)?;
+    ensure_review_update_rate_allowed(&state, &auth_user.id, &id).await?;
 
     let mut body = Map::new();
     body.insert("updated_at".into(), json!(Utc::now().to_rfc3339()));
@@ -322,6 +347,53 @@ fn ensure_not_owned_business_review(business: &Value, auth_user: &AuthUser) -> R
         ));
     }
     Ok(())
+}
+
+async fn ensure_review_rate_allowed(state: &AppState, user_id: &str) -> Result<()> {
+    let since = (Utc::now() - Duration::hours(1)).to_rfc3339();
+    let recent = state
+        .db
+        .supabase
+        .count(
+            "reviews",
+            &[
+                eq("user_id", user_id),
+                crate::routes::support::gte("created_at", since),
+            ],
+        )
+        .await?;
+    if recent >= 8 {
+        return Err(AppError::RateLimited);
+    }
+    Ok(())
+}
+
+async fn ensure_review_update_rate_allowed(
+    state: &AppState,
+    user_id: &str,
+    review_id: &str,
+) -> Result<()> {
+    let allowed = state
+        .rate_limiter
+        .check(
+            &format!("review-update:{}:{}", user_id, review_id),
+            8,
+            std::time::Duration::from_secs(3600),
+        )
+        .await;
+    if !allowed {
+        return Err(AppError::RateLimited);
+    }
+    Ok(())
+}
+
+fn map_review_insert_error(err: anyhow::Error) -> AppError {
+    let message = err.to_string().to_ascii_lowercase();
+    if message.contains("duplicate") || message.contains("unique") {
+        AppError::Conflict("You have already reviewed this business".into())
+    } else {
+        err.into()
+    }
 }
 
 #[cfg(test)]

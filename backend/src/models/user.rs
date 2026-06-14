@@ -29,6 +29,9 @@ pub enum DiscoveryMode {
     #[default]
     Neighborhood,
     Citywide,
+    NewPlaces,
+    Trending,
+    Trusted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -43,7 +46,7 @@ pub struct UserPreferences {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub email: String,
     pub full_name: Option<String>,

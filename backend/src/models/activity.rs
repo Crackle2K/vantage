@@ -13,7 +13,7 @@ pub enum ActivityType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActivityFeedItem {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub activity_type: ActivityType,
     pub business_id: String,
@@ -27,7 +27,7 @@ pub struct ActivityFeedItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckIn {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub business_id: String,
     pub user_id: String,
@@ -46,7 +46,7 @@ pub struct CheckInCreate {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OwnerPost {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub business_id: String,
     pub owner_id: String,

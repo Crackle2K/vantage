@@ -136,17 +136,27 @@ impl Config {
 
     pub fn allowed_origins(&self) -> Vec<String> {
         let mut origins = Vec::new();
-        push_origin(&mut origins, "http://localhost:5173");
-        push_origin(&mut origins, "http://localhost:3000");
-        push_origin(&mut origins, "http://localhost:5174");
-        push_origin(&mut origins, &self.frontend_url);
-        push_origin(&mut origins, &self.production_url);
+        if self.is_production() {
+            if !self.production_url.trim().is_empty() {
+                push_origin(&mut origins, &self.production_url);
+            } else {
+                push_origin(&mut origins, &self.frontend_url);
+            }
+        } else {
+            push_origin(&mut origins, "http://localhost:5173");
+            push_origin(&mut origins, "http://localhost:3000");
+            push_origin(&mut origins, "http://localhost:5174");
+            push_origin(&mut origins, &self.frontend_url);
+            push_origin(&mut origins, &self.production_url);
+        }
 
-        if let Ok(vercel_url) = env::var("VERCEL_URL") {
-            push_origin(
-                &mut origins,
-                format!("https://{}", vercel_url.trim_start_matches("https://")),
-            );
+        if !self.is_production() {
+            if let Ok(vercel_url) = env::var("VERCEL_URL") {
+                push_origin(
+                    &mut origins,
+                    format!("https://{}", vercel_url.trim_start_matches("https://")),
+                );
+            }
         }
         origins
     }
@@ -263,5 +273,13 @@ mod tests {
 
         config.stripe_webhook_secret = "whsec_test".into();
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn production_cors_does_not_include_dev_origins() {
+        let origins = config("production", "https://vantage.example", "").allowed_origins();
+
+        assert!(!origins.contains(&"http://localhost:5173".to_string()));
+        assert_eq!(origins, vec!["https://vantage.example".to_string()]);
     }
 }

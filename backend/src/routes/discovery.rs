@@ -121,6 +121,8 @@ async fn explore_lanes(
         lane_params.lng = Some(lng);
         lane_params.limit = Some(10);
         lane_params.category = category.map(str::to_string);
+        lane_params.q = None;
+        lane_params.search = None;
         lane_params.sort = Some(if id == "trusted" {
             "rating".into()
         } else {
@@ -143,11 +145,12 @@ async fn explore_lanes(
 
 async fn decide_from_params(state: &AppState, mut params: DiscoverParams) -> Result<Value> {
     let intent = params.intent.clone().unwrap_or_else(|| "EXPLORE".into());
+    let requested_limit = params.limit.unwrap_or(3).clamp(1, 10);
     if params.category.is_none() {
         params.category = category_for_intent(&intent).map(str::to_string);
     }
     params.sort = Some("canonical".into());
-    params.limit = Some(params.limit.unwrap_or(3).clamp(1, 10) * 5);
+    params.limit = Some(requested_limit * 5);
 
     let constraints = params
         .constraints
@@ -160,7 +163,7 @@ async fn decide_from_params(state: &AppState, mut params: DiscoverParams) -> Res
 
     let mut rows = discover_rows(state, &params).await?;
     rows.retain(|row| passes_decide_constraints(row, &constraints));
-    rows.truncate(params.limit.unwrap_or(15).min(5) as usize);
+    rows.truncate(requested_limit as usize);
 
     Ok(json!({
         "items": rows,
@@ -335,15 +338,15 @@ async fn discover_rows_geo(
         })
         .collect::<Vec<_>>();
 
-    match Some(sort) {
-        Some("distance") => results.sort_by(|a, b| {
+    match sort {
+        "distance" => results.sort_by(|a, b| {
             a["distance_km"]
                 .as_f64()
                 .unwrap_or(f64::MAX)
                 .partial_cmp(&b["distance_km"].as_f64().unwrap_or(f64::MAX))
                 .unwrap_or(std::cmp::Ordering::Equal)
         }),
-        Some("rating") | Some("most_reviewed") => results.sort_by(|a, b| {
+        "rating" | "most_reviewed" => results.sort_by(|a, b| {
             let left = (
                 b["rating"].as_f64().unwrap_or(0.0),
                 b["review_count"].as_i64().unwrap_or(0),
@@ -355,7 +358,7 @@ async fn discover_rows_geo(
             left.partial_cmp(&right)
                 .unwrap_or(std::cmp::Ordering::Equal)
         }),
-        Some("newest") => results.sort_by(|a, b| {
+        "newest" => results.sort_by(|a, b| {
             b["created_at"]
                 .as_str()
                 .unwrap_or("")
@@ -387,7 +390,7 @@ fn passes_decide_constraints(row: &Value, constraints: &[String]) -> bool {
     constraints
         .iter()
         .all(|constraint| match constraint.as_str() {
-            "OPEN_NOW" => row["open_now"].as_bool().unwrap_or(true),
+            "OPEN_NOW" => row["open_now"].as_bool().unwrap_or(false),
             "CHEAP" => row["price_level"].as_i64().unwrap_or(2) <= 1,
             "MOST_TRUSTED" => row["rating"].as_f64().unwrap_or(0.0) >= 4.0,
             "HIDDEN_GEM" => row["review_count"].as_i64().unwrap_or(0) < 50,

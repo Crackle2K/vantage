@@ -1,6 +1,6 @@
 # Next Agent Handoff
 
-Last updated: May 21, 2026
+Last updated: June 12, 2026
 
 ## Safe Current State
 
@@ -15,6 +15,18 @@ Last updated: May 21, 2026
 - Recent backend consistency fixes are in place:
   - deal create/update/delete now refresh `businesses.has_deals`
   - activity-related write failures now propagate instead of being dropped
+  - route-level contract tests now cover unauthenticated protected routes,
+    owner-only authorization, malformed saved/review/check-in/subscription/feed
+    requests, local deployment smoke routes, and Vercel API/SPA rewrites
+  - business, review, feed, and activity-comment reads expose cursor pagination
+    metadata while preserving existing default response shapes
+  - business activity summaries use count queries instead of loading all
+    check-in/feed rows
+- Recent realtime and abuse fixes are in place:
+  - frontend feed items, feed comments, and owner events subscribe to Supabase
+    Realtime when `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set
+  - repeated check-ins, high-frequency reviews, repeated comments, and rapid
+    activity likes/comments/posts have baseline abuse guards
 
 ## Verified Before Handoff
 
@@ -32,18 +44,12 @@ Known external blocker still reproduces:
 
 ## Remaining Checklist
 
-- Add route-level integration tests for auth, owner checks, saved businesses,
-  reviews, check-ins, subscriptions, and activity feed.
-- Add backend pagination/cursor contracts for high-volume feed, review,
-  business, and activity routes.
-- Add Supabase realtime subscriptions in the frontend for feed, comments, and
-  owner events.
-- Add abuse/fraud detection for repeated check-ins, suspicious review patterns,
-  and coordinated likes/comments.
-- Add deployment smoke tests for `/api/health`, `/api/discover`,
-  `/api/stripe/webhook`, `/api/auth/me`, and SPA fallback routes.
 - Apply and smoke-test the Supabase PostGIS, review-summary, and deal-status
   migrations in the target Supabase project.
+- Run live deployment smoke tests for `/api/health`, `/api/discover`,
+  `/api/stripe/webhook`, `/api/auth/me`, Supabase Realtime, and SPA fallback
+  routes against the target environment.
+- Smoke-test signed Stripe webhook delivery against the deployed endpoint.
 - Link or pull Vercel project settings locally, then rerun `npx vercel build`.
 
 ## External Completion Blockers
@@ -56,11 +62,9 @@ Known external blocker still reproduces:
 
 ## Suggested Next Moves
 
-1. Add protected-route integration coverage first; it gives the best signal for
-   auth, ownership, and subscription regressions.
-2. After tests, clear deployment blockers in order:
+1. Clear deployment blockers in order:
    - Supabase migrations + smoke tests
    - deployed Stripe webhook smoke
    - `vercel pull` / `npx vercel build`
-3. Only mark the goal complete after those external checks are evidenced, not
+2. Only mark the goal complete after those external checks are evidenced, not
    just after local green builds.

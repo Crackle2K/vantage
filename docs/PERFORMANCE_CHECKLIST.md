@@ -1,6 +1,6 @@
 # Vantage Performance Checklist
 
-Audited: May 21, 2026
+Audited: June 12, 2026
 Stack: React 19 + Vite + Rust Axum + Supabase + Vercel Serverless
 
 ## Completed In Current Baseline
@@ -80,19 +80,24 @@ Stack: React 19 + Vite + Rust Axum + Supabase + Vercel Serverless
 - [x] Verified backend workspace compile.
 - [x] Verified backend Clippy with `-D warnings`.
 - [x] Verified high-severity npm audit reports 0 vulnerabilities.
+- [x] Added route-level contract tests for auth, owner-only guards, saved
+  businesses, reviews, check-ins, subscriptions, activity feed mutations,
+  deploy smoke endpoints, and Vercel SPA/API rewrites.
+- [x] Added cursor/metadata pagination contracts for business, review, feed,
+  and activity comment reads while preserving existing array responses by
+  default.
+- [x] Replaced unbounded business activity summary row loads with PostgREST
+  count queries plus a single latest-check-in lookup.
+- [x] Added frontend Supabase Realtime subscriptions for feed items, feed
+  comments, and owner events, gated behind optional public Supabase env vars.
+- [x] Added baseline abuse guards for repeated check-ins, high-frequency review
+  creation, repeated comments, and rapid activity likes/comments/posts.
 
 ## Highest Priority Remaining Work
 
-- [ ] Add route-level integration tests for auth, owner checks, saved businesses,
-  reviews, check-ins, subscriptions, and activity feed.
-- [ ] Add backend pagination/cursor contracts for high-volume feed, review,
-  business, and activity routes.
-- [ ] Add Supabase realtime subscriptions in the frontend for feed, comments,
-  and owner events.
-- [ ] Add abuse/fraud detection for repeated check-ins, suspicious review
-  patterns, and coordinated likes/comments.
-- [ ] Add deployment smoke tests for `/api/health`, `/api/discover`,
-  `/api/stripe/webhook`, `/api/auth/me`, and SPA fallback routes.
+- [ ] Run live deployment smoke tests for `/api/health`, `/api/discover`,
+  `/api/stripe/webhook`, `/api/auth/me`, Supabase Realtime, and SPA fallback
+  routes against the target environment.
 - [ ] Apply and smoke-test the PostGIS, review-summary, and deal-status
   migrations in the target Supabase project.
 - [ ] Link or pull Vercel project settings locally, then rerun `npx vercel build`.

@@ -1,8 +1,10 @@
 use crate::config::Config;
 use anyhow::{bail, Result};
+use reqwest::Client;
 use serde_json::Value;
 
 pub async fn verify_recaptcha_token(
+    client: &Client,
     config: &Config,
     token: &str,
     expected_action: &str,
@@ -23,12 +25,6 @@ pub async fn verify_recaptcha_token(
             "expectedAction": expected_action,
         }
     });
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(
-            config.recaptcha_verify_timeout_secs,
-        ))
-        .build()?;
 
     let resp: Value = client.post(&url).json(&body).send().await?.json().await?;
 

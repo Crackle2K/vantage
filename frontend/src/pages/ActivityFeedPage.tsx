@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../api'
 import { logger } from '@/lib/logger'
+import { subscribeToTable } from '@/lib/supabaseRealtime'
 import type { ActivityFeedItem, UserCredibility, CredibilityTier, ActivityComment } from '../types'
 import {
   MapPin, Star, Tag, Calendar, Award, TrendingUp,
@@ -128,6 +129,65 @@ export default function ActivityFeedPage() {
   useEffect(() => {
     loadFeed(1)
   }, [loadFeed])
+
+  useEffect(() => {
+    const feedSubscription = subscribeToTable<ActivityFeedItem>({
+      table: 'activity_feed',
+      onChange: ({ type, record, old_record }) => {
+        const id = record?.id || old_record?.id
+        if (!id) return
+
+        setFeedItems(prev => {
+          if (type === 'DELETE') return prev.filter(item => item.id !== id)
+          if (!record) return prev
+
+          const exists = prev.some(item => item.id === record.id)
+          if (type === 'INSERT' && !exists) return [record, ...prev]
+          if (!exists) return prev
+          return prev.map(item => item.id === record.id ? { ...item, ...record } : item)
+        })
+
+        if (user?.id && record?.liked_by) {
+          setLikedItems(prev => {
+            const next = new Set(prev)
+            if (record.liked_by?.includes(user.id)) next.add(record.id)
+            else next.delete(record.id)
+            return next
+          })
+        }
+      },
+    })
+
+    const commentSubscription = subscribeToTable<ActivityComment>({
+      table: 'activity_comments',
+      onChange: ({ type, record, old_record }) => {
+        const activityId = record?.activity_id || old_record?.activity_id
+        const commentId = record?.id || old_record?.id
+        if (!activityId || !commentId) return
+
+        setCommentsByItem(prev => {
+          const current = prev[activityId]
+          if (!current) return prev
+
+          if (type === 'DELETE') {
+            return { ...prev, [activityId]: current.filter(comment => comment.id !== commentId) }
+          }
+
+          if (!record) return prev
+          const exists = current.some(comment => comment.id === record.id)
+          const nextComments = exists
+            ? current.map(comment => comment.id === record.id ? { ...comment, ...record } : comment)
+            : [...current, record]
+          return { ...prev, [activityId]: nextComments }
+        })
+      },
+    })
+
+    return () => {
+      feedSubscription.unsubscribe()
+      commentSubscription.unsubscribe()
+    }
+  }, [user?.id])
 
   const loadComments = useCallback(async (activityId: string) => {
     try {

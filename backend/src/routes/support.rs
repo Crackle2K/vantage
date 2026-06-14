@@ -1,6 +1,11 @@
+use crate::{errors::AppError, errors::Result};
+use axum::http::{HeaderMap, HeaderValue};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use serde::Serialize;
 use serde_json::{json, Value};
 
 pub type QueryParams = Vec<(String, String)>;
+const CURSOR_PREFIX: &str = "offset:";
 
 pub fn q(key: impl Into<String>, value: impl Into<String>) -> (String, String) {
     (key.into(), value.into())
@@ -8,6 +13,10 @@ pub fn q(key: impl Into<String>, value: impl Into<String>) -> (String, String) {
 
 pub fn eq(column: &str, value: impl ToString) -> (String, String) {
     q(column, format!("eq.{}", value.to_string()))
+}
+
+pub fn gte(column: &str, value: impl ToString) -> (String, String) {
+    q(column, format!("gte.{}", value.to_string()))
 }
 
 pub fn is_true(column: &str) -> (String, String) {
@@ -28,6 +37,94 @@ pub fn offset(value: i64) -> (String, String) {
 
 pub fn order(value: &str) -> (String, String) {
     q("order", value)
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PaginationMeta {
+    pub limit: i64,
+    pub offset: i64,
+    pub has_more: bool,
+    pub next_offset: Option<i64>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaginationWindow {
+    pub limit: i64,
+    pub offset: i64,
+}
+
+pub fn pagination_window(
+    limit_value: Option<i64>,
+    offset_value: Option<i64>,
+    cursor_value: Option<&str>,
+    default_limit: i64,
+    max_limit: i64,
+) -> Result<PaginationWindow> {
+    let limit = limit_value.unwrap_or(default_limit).clamp(1, max_limit);
+    let offset_from_cursor = cursor_value
+        .filter(|value| !value.trim().is_empty())
+        .map(decode_offset_cursor)
+        .transpose()?;
+    let offset = offset_from_cursor.or(offset_value).unwrap_or(0).max(0);
+
+    Ok(PaginationWindow { limit, offset })
+}
+
+pub fn pagination_meta(limit: i64, offset: i64, fetched_count: usize) -> PaginationMeta {
+    let has_more = fetched_count > limit as usize;
+    let next_offset = has_more.then_some(offset + limit);
+    let next_cursor = next_offset.map(encode_offset_cursor);
+
+    PaginationMeta {
+        limit,
+        offset,
+        has_more,
+        next_offset,
+        next_cursor,
+    }
+}
+
+pub fn pagination_headers(meta: &PaginationMeta) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-page-limit",
+        HeaderValue::from_str(&meta.limit.to_string())
+            .unwrap_or_else(|_| HeaderValue::from_static("0")),
+    );
+    headers.insert(
+        "x-page-offset",
+        HeaderValue::from_str(&meta.offset.to_string())
+            .unwrap_or_else(|_| HeaderValue::from_static("0")),
+    );
+    headers.insert(
+        "x-has-more",
+        HeaderValue::from_static(if meta.has_more { "true" } else { "false" }),
+    );
+    if let Some(cursor) = &meta.next_cursor {
+        if let Ok(value) = HeaderValue::from_str(cursor) {
+            headers.insert("x-next-cursor", value);
+        }
+    }
+    headers
+}
+
+fn encode_offset_cursor(offset: i64) -> String {
+    URL_SAFE_NO_PAD.encode(format!("{}{}", CURSOR_PREFIX, offset.max(0)))
+}
+
+fn decode_offset_cursor(cursor: &str) -> Result<i64> {
+    let decoded = URL_SAFE_NO_PAD
+        .decode(cursor.trim())
+        .map_err(|_| AppError::BadRequest("Invalid pagination cursor".into()))?;
+    let decoded = String::from_utf8(decoded)
+        .map_err(|_| AppError::BadRequest("Invalid pagination cursor".into()))?;
+    let offset = decoded
+        .strip_prefix(CURSOR_PREFIX)
+        .ok_or_else(|| AppError::BadRequest("Invalid pagination cursor".into()))?
+        .parse::<i64>()
+        .map_err(|_| AppError::BadRequest("Invalid pagination cursor".into()))?;
+    Ok(offset.max(0))
 }
 
 pub fn ilike_or_filter(columns: &[&str], raw: &str) -> Option<(String, String)> {
@@ -190,5 +287,18 @@ mod tests {
         assert!(!geo_rpc_unavailable(
             "permission denied for table businesses"
         ));
+    }
+
+    #[test]
+    fn pagination_cursor_round_trips_offset_and_rejects_bad_values() {
+        let meta = pagination_meta(20, 40, 21);
+        assert!(meta.has_more);
+        assert_eq!(meta.next_offset, Some(60));
+
+        let window = pagination_window(None, None, meta.next_cursor.as_deref(), 10, 50).unwrap();
+        assert_eq!(window.limit, 10);
+        assert_eq!(window.offset, 60);
+
+        assert!(pagination_window(None, None, Some("not-a-cursor"), 10, 50).is_err());
     }
 }

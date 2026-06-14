@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { logger } from '@/lib/logger'
+import { subscribeToTable } from '@/lib/supabaseRealtime'
 import type { Business, Deal, Review, Subscription, BusinessActivityStatus, BusinessClaim, OwnerEvent } from '../types'
 import {
   Store, Star, Tag, TrendingUp, Plus,
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   const [eventError, setEventError] = useState('')
   const [isCreatingEvent, setIsCreatingEvent] = useState(false)
   const [loading, setLoading] = useState(true)
+  const selectedBizId = selectedBiz?.id || selectedBiz?._id || ''
 
   const selectBusiness = useCallback(async (biz: Business) => {
     setSelectedBiz(biz)
@@ -91,6 +93,31 @@ export default function DashboardPage() {
     if (!isAuthenticated || user?.role !== 'business_owner') return
     loadDashboard()
   }, [isAuthenticated, user, loadDashboard])
+
+  useEffect(() => {
+    if (!selectedBizId || !isAuthenticated || user?.role !== 'business_owner') return
+
+    const subscription = subscribeToTable<OwnerEvent>({
+      table: 'owner_events',
+      filter: `business_id=eq.${selectedBizId}`,
+      onChange: ({ type, record, old_record }) => {
+        const id = record?.id || old_record?.id
+        if (!id) return
+
+        setOwnerEvents(current => {
+          if (type === 'DELETE') return current.filter(event => event.id !== id)
+          if (!record) return current
+
+          const exists = current.some(event => event.id === record.id)
+          if (type === 'INSERT' && !exists) return [record, ...current]
+          if (!exists) return current
+          return current.map(event => event.id === record.id ? { ...event, ...record } : event)
+        })
+      },
+    })
+
+    return () => subscription.unsubscribe()
+  }, [isAuthenticated, selectedBizId, user?.role])
 
   const handleCreateEvent = async () => {
     if (!selectedBiz) return
@@ -171,7 +198,7 @@ export default function DashboardPage() {
     )
   }
 
-  const bizId = selectedBiz?.id || selectedBiz?._id || ''
+  const bizId = selectedBizId
 
   return (
     <div className="min-h-[60vh] py-8 px-4">

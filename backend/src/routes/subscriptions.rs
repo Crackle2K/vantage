@@ -1,7 +1,7 @@
 use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
-    routes::support::{eq, normalize_id_alias, order, select_all, value_str},
+    routes::support::{eq, normalize_id_alias, order, q, select_all, value_str},
     security,
     state::AppState,
 };
@@ -63,7 +63,7 @@ async fn get_tiers() -> impl IntoResponse {
             "description": "Analytics and publishing tools for growing teams.",
             "monthly_price": 29.99,
             "yearly_price": 287.90,
-            "features": ["Analytics", "Priority event placement", "Expanded media"],
+            "features": ["Analytics", "Expanded owner events", "Expanded media"],
             "highlighted": true
         },
         {
@@ -185,6 +185,7 @@ async fn create_subscription(
         let success_url = checkout_return_url(&state, "success");
         let cancel_url = checkout_return_url(&state, "cancel");
         let checkout = crate::services::stripe::create_checkout_session(
+            &state.stripe_http,
             crate::services::stripe::CheckoutSessionRequest {
                 secret_key: &state.config.stripe_secret_key,
                 email: &auth_user.email,
@@ -198,7 +199,7 @@ async fn create_subscription(
             },
         )
         .await
-        .map_err(|e| AppError::Internal(format!("Stripe error: {}", e)))?;
+        .map_err(|_| AppError::ServiceUnavailable("Stripe checkout is unavailable".into()))?;
 
         let checkout_url = checkout["url"]
             .as_str()
@@ -390,6 +391,19 @@ async fn stripe_webhook(
         "customer.subscription.deleted" => {
             cancel_stripe_subscription_from_webhook(&state, object).await?
         }
+        "invoice.payment_failed"
+        | "customer.subscription.past_due"
+        | "customer.subscription.unpaid" => {
+            mark_stripe_subscription_payment_problem(&state, object, event_type).await?
+        }
+        "customer.subscription.updated"
+            if matches!(
+                object["status"].as_str(),
+                Some("past_due" | "unpaid" | "incomplete_expired")
+            ) =>
+        {
+            mark_stripe_subscription_payment_problem(&state, object, event_type).await?
+        }
         _ => json!({ "status": "ignored", "event_type": event_type }),
     };
 
@@ -458,45 +472,14 @@ async fn activate_checkout_subscription(
         }));
     }
 
-    let active_for_business = state
-        .db
-        .supabase
-        .select_json(
-            "subscriptions",
-            &[
-                select_all(),
-                eq("user_id", &user_id),
-                eq("business_id", &business_id),
-                eq("status", "active"),
-            ],
-        )
-        .await?;
-    for active_subscription in &active_for_business {
-        cancel_stripe_subscription_if_needed(state, active_subscription).await?;
-    }
-
     let now = Utc::now().to_rfc3339();
-    state
-        .db
-        .supabase
-        .update_json(
-            "subscriptions",
-            &[
-                eq("user_id", &user_id),
-                eq("business_id", &business_id),
-                eq("status", "active"),
-            ],
-            json!({ "status": "canceled", "updated_at": now }),
-        )
-        .await?;
-
     let subscription_id = value_str(&subscription, "id").to_string();
     let updated = state
         .db
         .supabase
         .update_json(
             "subscriptions",
-            &[eq("id", &subscription_id)],
+            &[eq("id", &subscription_id), eq("status", "pending_checkout")],
             json!({
                 "status": "active",
                 "tier": tier,
@@ -508,10 +491,56 @@ async fn activate_checkout_subscription(
         )
         .await?;
 
-    let activated = updated
-        .into_iter()
-        .next()
-        .ok_or_else(|| AppError::Internal("Subscription activation updated no rows".into()))?;
+    let Some(activated) = updated.into_iter().next() else {
+        let current = state
+            .db
+            .supabase
+            .select_one_json("subscriptions", &[select_all(), eq("id", &subscription_id)])
+            .await?;
+        if let Some(current) = current {
+            refresh_auth_subscription_tier_from_active_subscriptions(state, &user_id).await?;
+            return Ok(json!({
+                "status": if value_str(&current, "status") == "active" { "already_active" } else { "ignored" },
+                "subscription": normalize_id_alias(current),
+            }));
+        }
+        return Err(AppError::Internal(
+            "Subscription activation updated no rows".into(),
+        ));
+    };
+
+    let active_for_business = state
+        .db
+        .supabase
+        .select_json(
+            "subscriptions",
+            &[
+                select_all(),
+                eq("user_id", &user_id),
+                eq("business_id", &business_id),
+                eq("status", "active"),
+                q("id", format!("neq.{}", subscription_id)),
+            ],
+        )
+        .await?;
+    for active_subscription in &active_for_business {
+        cancel_stripe_subscription_if_needed(state, active_subscription).await?;
+    }
+
+    state
+        .db
+        .supabase
+        .update_json(
+            "subscriptions",
+            &[
+                eq("user_id", &user_id),
+                eq("business_id", &business_id),
+                eq("status", "active"),
+                q("id", format!("neq.{}", subscription_id)),
+            ],
+            json!({ "status": "canceled", "updated_at": now }),
+        )
+        .await?;
 
     refresh_auth_subscription_tier_from_active_subscriptions(state, &user_id).await?;
 
@@ -586,13 +615,77 @@ async fn cancel_stripe_subscription_from_webhook(
     }))
 }
 
+async fn mark_stripe_subscription_payment_problem(
+    state: &AppState,
+    stripe_object: &Value,
+    event_type: &str,
+) -> Result<Value> {
+    let stripe_subscription_id = stripe_ref_id(&stripe_object["subscription"])
+        .or_else(|| stripe_ref_id(&stripe_object["id"]))
+        .ok_or_else(|| AppError::BadRequest("Stripe subscription id missing".into()))?;
+    let status = stripe_object["status"]
+        .as_str()
+        .filter(|value| matches!(*value, "past_due" | "unpaid" | "incomplete_expired"))
+        .unwrap_or("past_due");
+
+    let Some(subscription) = state
+        .db
+        .supabase
+        .select_one_json(
+            "subscriptions",
+            &[
+                select_all(),
+                eq("stripe_subscription_id", &stripe_subscription_id),
+                order("created_at.desc"),
+            ],
+        )
+        .await?
+    else {
+        return Ok(json!({
+            "status": "ignored",
+            "reason": "subscription_not_found",
+            "stripe_subscription_id": stripe_subscription_id,
+            "event_type": event_type,
+        }));
+    };
+
+    let user_id = security::validate_uuid_id(value_str(&subscription, "user_id"), "user ID")?;
+    let updated = state
+        .db
+        .supabase
+        .update_json(
+            "subscriptions",
+            &[eq("id", value_str(&subscription, "id"))],
+            json!({
+                "status": status,
+                "tier": "free",
+                "cancel_at_period_end": true,
+                "updated_at": Utc::now().to_rfc3339(),
+            }),
+        )
+        .await?;
+
+    let subscription = updated
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::Internal("Subscription payment status updated no rows".into()))?;
+
+    refresh_auth_subscription_tier_from_active_subscriptions(state, &user_id).await?;
+
+    Ok(json!({
+        "status": "payment_problem_marked",
+        "event_type": event_type,
+        "subscription": normalize_id_alias(subscription),
+    }))
+}
+
 fn price_id_for(tier: &str, billing_cycle: &str) -> Result<String> {
     let key = format!(
         "STRIPE_PRICE_{}_{}",
         tier.to_ascii_uppercase(),
         billing_cycle.to_ascii_uppercase()
     );
-    env::var(&key).map_err(|_| AppError::BadRequest(format!("{} is not configured", key)))
+    env::var(&key).map_err(|_| AppError::BadRequest("Pricing not available for this tier".into()))
 }
 
 fn checkout_return_url(state: &AppState, result: &str) -> String {
@@ -648,11 +741,17 @@ async fn cancel_stripe_subscription_if_needed(
         return Ok(());
     }
     if state.config.stripe_secret_key.is_empty() {
-        return Err(AppError::BadRequest("Stripe not configured".into()));
+        return Err(AppError::ServiceUnavailable(
+            "Stripe is not configured".into(),
+        ));
     }
-    crate::services::stripe::cancel_subscription(&state.config.stripe_secret_key, sub_id)
-        .await
-        .map_err(|_| AppError::BadRequest("Stripe subscription cancellation failed".into()))?;
+    crate::services::stripe::cancel_subscription(
+        &state.stripe_http,
+        &state.config.stripe_secret_key,
+        sub_id,
+    )
+    .await
+    .map_err(|_| AppError::ServiceUnavailable("Stripe subscription cancellation failed".into()))?;
     Ok(())
 }
 

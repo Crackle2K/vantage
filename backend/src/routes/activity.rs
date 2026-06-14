@@ -2,8 +2,9 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{
-        business_lat_lng, eq, geo_rpc_unavailable, limit, normalize_id_alias, offset, order,
-        select_all, unwrap_rpc_items, value_i64, value_str,
+        business_lat_lng, eq, geo_rpc_unavailable, gte, limit, normalize_id_alias, offset, order,
+        pagination_headers, pagination_meta, pagination_window, q, select_all, unwrap_rpc_items,
+        value_i64, value_str,
     },
     security,
     state::AppState,
@@ -15,10 +16,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -41,8 +42,10 @@ pub fn router() -> Router<Arc<AppState>> {
 struct FeedParams {
     limit: Option<i64>,
     offset: Option<i64>,
+    cursor: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
+    include_pagination: Option<bool>,
     business_id: Option<String>,
     lat: Option<f64>,
     lng: Option<f64>,
@@ -53,16 +56,23 @@ async fn get_feed(
     State(state): State<Arc<AppState>>,
     Query(params): Query<FeedParams>,
 ) -> Result<impl IntoResponse> {
-    let page_size = params.page_size.or(params.limit).unwrap_or(20).clamp(1, 50);
-    let offset_value = params
+    let requested_limit = params.page_size.or(params.limit).unwrap_or(20).clamp(1, 50);
+    let page_offset = params
         .offset
-        .unwrap_or_else(|| (params.page.unwrap_or(1).max(1) - 1) * page_size);
+        .or_else(|| params.page.map(|page| (page.max(1) - 1) * requested_limit));
+    let window = pagination_window(
+        Some(requested_limit),
+        page_offset,
+        params.cursor.as_deref(),
+        20,
+        50,
+    )?;
 
     let mut query = vec![
         select_all(),
         order("created_at.desc"),
-        limit(page_size + 1),
-        offset(offset_value),
+        limit(window.limit + 1),
+        offset(window.offset),
     ];
     if let Some(business_id) = params
         .business_id
@@ -83,10 +93,17 @@ async fn get_feed(
         .into_iter()
         .map(normalize_activity_item)
         .collect::<Vec<_>>();
-    let has_more = rows.len() > page_size as usize;
-    rows.truncate(page_size as usize);
+    let meta = pagination_meta(window.limit, window.offset, rows.len());
+    rows.truncate(window.limit as usize);
 
-    Ok(Json(json!({ "items": rows, "has_more": has_more })))
+    let body = json!({
+        "items": rows,
+        "has_more": meta.has_more,
+        "next_cursor": meta.next_cursor.clone(),
+        "pagination": &meta,
+    });
+
+    Ok((pagination_headers(&meta), Json(body)))
 }
 
 async fn check_in(
@@ -97,12 +114,14 @@ async fn check_in(
     let business_id = payload["business_id"]
         .as_str()
         .ok_or_else(|| AppError::BadRequest("business_id required".into()))?;
+    let business_id = security::validate_uuid_id(business_id, "business ID")?;
 
     let coordinates = checkin_coordinates(&payload)?;
     let lat = coordinates.map(|(lat, _)| lat);
     let lng = coordinates.map(|(_, lng)| lng);
 
-    let business = find_business(&state, business_id).await?;
+    let business = find_business(&state, &business_id).await?;
+    ensure_recent_checkin_allowed(&state, &auth_user.id, &business_id).await?;
     let distance = if let (Some((user_lat, user_lng)), Some((biz_lat, biz_lng))) =
         (coordinates, business_lat_lng(&business))
     {
@@ -126,7 +145,7 @@ async fn check_in(
         .insert_json(
             "checkins",
             json!({
-                "business_id": business_id,
+                "business_id": &business_id,
                 "user_id": auth_user.id,
                 "status": status,
                 "latitude": lat,
@@ -155,7 +174,7 @@ async fn check_in(
             "activity_type": "checkin",
             "user_id": auth_user.id,
             "user_name": auth_user.display_name(),
-            "business_id": business_id,
+            "business_id": &business_id,
             "business_name": value_str(&business, "name"),
             "business_category": value_str(&business, "category"),
             "title": title,
@@ -199,6 +218,9 @@ async fn toggle_like(
     auth_user: AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
+    let id = security::validate_uuid_id(&id, "activity ID")?;
+    ensure_activity_action_allowed(&state, &auth_user.id, "like", 40, Duration::minutes(10))
+        .await?;
     let existing = find_activity(&state, &id).await?;
     let mut liked_by = existing["liked_by"]
         .as_array()
@@ -236,9 +258,17 @@ async fn toggle_like(
 async fn get_comments(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(params): Query<CommentParams>,
 ) -> Result<impl IntoResponse> {
     let id = security::validate_uuid_id(&id, "activity ID")?;
-    let comments = state
+    let window = pagination_window(
+        params.limit,
+        params.offset,
+        params.cursor.as_deref(),
+        50,
+        100,
+    )?;
+    let mut comments = state
         .db
         .supabase
         .select_json(
@@ -247,14 +277,29 @@ async fn get_comments(
                 select_all(),
                 eq("activity_id", &id),
                 order("created_at.asc"),
+                limit(window.limit + 1),
+                offset(window.offset),
             ],
         )
         .await?
         .into_iter()
         .map(normalize_comment)
         .collect::<Vec<_>>();
+    let meta = pagination_meta(window.limit, window.offset, comments.len());
+    comments.truncate(window.limit as usize);
 
-    Ok(Json(comments))
+    let body = if params.include_pagination.unwrap_or(false) {
+        json!({
+            "items": comments,
+            "pagination": &meta,
+            "has_more": meta.has_more,
+            "next_cursor": meta.next_cursor.clone(),
+        })
+    } else {
+        json!(comments)
+    };
+
+    Ok((pagination_headers(&meta), Json(body)))
 }
 
 async fn add_comment(
@@ -271,6 +316,9 @@ async fn add_comment(
     if content.is_empty() {
         return Err(AppError::BadRequest("content required".into()));
     }
+    ensure_activity_action_allowed(&state, &auth_user.id, "comment", 20, Duration::minutes(10))
+        .await?;
+    ensure_recent_comment_allowed(&state, &id, &auth_user.id).await?;
 
     let now = Utc::now().to_rfc3339();
     let comment = state
@@ -324,6 +372,8 @@ async fn create_feed_post(
     if content.is_empty() {
         return Err(AppError::BadRequest("content required".into()));
     }
+    ensure_activity_action_allowed(&state, &auth_user.id, "post", 12, Duration::minutes(10))
+        .await?;
 
     let business = if let Some(business_id) = payload["business_id"].as_str() {
         Some(find_business(&state, business_id).await?)
@@ -386,21 +436,21 @@ async fn get_activity_pulse(
         )
         .await?;
 
+    let business_ids = rows
+        .iter()
+        .filter_map(|row| {
+            let id = value_str(row, "business_id");
+            (!id.is_empty()).then(|| id.to_string())
+        })
+        .collect::<Vec<_>>();
+    let businesses = fetch_businesses_by_ids(&state, &business_ids).await?;
+
     let mut items = Vec::new();
     for row in rows {
         let business_id = value_str(&row, "business_id").to_string();
-        let business = if business_id.is_empty() {
-            None
-        } else {
-            match find_business(&state, &business_id).await {
-                Ok(business) => Some(business),
-                Err(AppError::NotFound(_)) => None,
-                Err(err) => return Err(err),
-            }
-        };
+        let business = businesses.get(&business_id);
 
-        if let (Some(lat), Some(lng), Some(business)) = (params.lat, params.lng, business.as_ref())
-        {
+        if let (Some(lat), Some(lng), Some(business)) = (params.lat, params.lng, business) {
             let Some((biz_lat, biz_lng)) = business_lat_lng(business) else {
                 continue;
             };
@@ -419,9 +469,9 @@ async fn get_activity_pulse(
             "timestamp": value_str(&row, "created_at"),
             "business": {
                 "business_id": value_str(&row, "business_id"),
-                "name": business.as_ref().map(|item| value_str(item, "name")).unwrap_or_else(|| value_str(&row, "business_name")),
-                "category": business.as_ref().map(|item| value_str(item, "category")).unwrap_or_else(|| value_str(&row, "business_category")),
-                "image_url": business.as_ref().and_then(|item| item.get("primary_image_url").or_else(|| item.get("image_url"))).cloned().unwrap_or(Value::Null),
+                "name": business.map(|item| value_str(item, "name")).unwrap_or_else(|| value_str(&row, "business_name")),
+                "category": business.map(|item| value_str(item, "category")).unwrap_or_else(|| value_str(&row, "business_category")),
+                "image_url": business.and_then(|item| item.get("primary_image_url").or_else(|| item.get("image_url"))).cloned().unwrap_or(Value::Null),
             }
         }));
 
@@ -461,46 +511,79 @@ async fn get_business_activity(
     Path(business_id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let business_id = security::validate_uuid_id(&business_id, "business ID")?;
-    let checkins = state
+    let now = Utc::now();
+    let today_start = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .expect("midnight is a valid time")
+        .and_utc()
+        .to_rfc3339();
+    let week_start = (now - Duration::days(7)).to_rfc3339();
+
+    let checkins_today = state
         .db
         .supabase
-        .select_json(
+        .count(
+            "checkins",
+            &[
+                eq("business_id", &business_id),
+                gte("created_at", &today_start),
+            ],
+        )
+        .await? as i64;
+    let checkins_this_week = state
+        .db
+        .supabase
+        .count(
+            "checkins",
+            &[
+                eq("business_id", &business_id),
+                gte("created_at", &week_start),
+            ],
+        )
+        .await? as i64;
+    let last_checkin = state
+        .db
+        .supabase
+        .select_one_json(
             "checkins",
             &[
                 select_all(),
                 eq("business_id", &business_id),
                 order("created_at.desc"),
+                limit(1),
             ],
         )
         .await?;
-    let feed = state
+    let recent_activity_count = state
         .db
         .supabase
-        .select_json(
+        .count(
             "activity_feed",
             &[
-                select_all(),
                 eq("business_id", &business_id),
-                order("created_at.desc"),
+                gte("created_at", &week_start),
             ],
         )
-        .await?;
-
-    let today_prefix = Utc::now().format("%Y-%m-%d").to_string();
-    let checkins_today = checkins
-        .iter()
-        .filter(|row| value_str(row, "created_at").starts_with(&today_prefix))
-        .count() as i64;
+        .await? as i64;
 
     Ok(Json(json!({
         "business_id": business_id,
         "is_active_today": checkins_today > 0,
         "checkins_today": checkins_today,
-        "checkins_this_week": checkins.len(),
-        "last_checkin_at": checkins.first().and_then(|row| row.get("created_at")).cloned(),
-        "recent_activity_count": feed.len(),
-        "trending_score": (checkins_today as f64 * 2.0) + feed.len() as f64,
+        "checkins_this_week": checkins_this_week,
+        "last_checkin_at": last_checkin.and_then(|row| row.get("created_at").cloned()),
+        "recent_activity_count": recent_activity_count,
+        "trending_score": (checkins_today as f64 * 2.0) + recent_activity_count as f64,
     })))
+}
+
+#[derive(Deserialize)]
+struct CommentParams {
+    limit: Option<i64>,
+    offset: Option<i64>,
+    cursor: Option<String>,
+    include_pagination: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -566,10 +649,19 @@ async fn list_owner_events(
         events.retain(|event| value_str(event, "end_time") >= now.as_str());
     }
 
+    let business_ids = events
+        .iter()
+        .filter_map(|event| {
+            let id = value_str(event, "business_id");
+            (!id.is_empty()).then(|| id.to_string())
+        })
+        .collect::<Vec<_>>();
+    let businesses = fetch_businesses_by_ids(&state, &business_ids).await?;
+
     for event in &mut events {
-        if let Ok(business) = find_business(&state, value_str(event, "business_id")).await {
+        if let Some(business) = businesses.get(value_str(event, "business_id")) {
             if let (Some(lat), Some(lng)) = (params.lat, params.lng) {
-                let Some((biz_lat, biz_lng)) = business_lat_lng(&business) else {
+                let Some((biz_lat, biz_lng)) = business_lat_lng(business) else {
                     event["__exclude"] = json!(true);
                     continue;
                 };
@@ -581,8 +673,8 @@ async fn list_owner_events(
                     continue;
                 }
             }
-            event["business_name"] = json!(value_str(&business, "name"));
-            event["business_category"] = json!(value_str(&business, "category"));
+            event["business_name"] = json!(value_str(business, "name"));
+            event["business_category"] = json!(value_str(business, "category"));
             event["business_image_url"] = business
                 .get("primary_image_url")
                 .or_else(|| business.get("image_url"))
@@ -795,6 +887,43 @@ async fn find_business(state: &AppState, id: &str) -> Result<Value> {
         .ok_or_else(|| AppError::NotFound("Business not found".into()))
 }
 
+async fn fetch_businesses_by_ids(
+    state: &AppState,
+    business_ids: &[String],
+) -> Result<HashMap<String, Value>> {
+    if business_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut unique_ids = Vec::new();
+    for id in business_ids {
+        let id = security::validate_uuid_id(id, "business ID")?;
+        if !unique_ids.contains(&id) {
+            unique_ids.push(id);
+        }
+    }
+
+    let rows = state
+        .db
+        .supabase
+        .select_json(
+            "businesses",
+            &[
+                select_all(),
+                q("id", format!("in.({})", unique_ids.join(","))),
+            ],
+        )
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let id = value_str(&row, "id").to_string();
+            (!id.is_empty()).then_some((id, row))
+        })
+        .collect())
+}
+
 async fn find_activity(state: &AppState, id: &str) -> Result<Value> {
     let id = security::validate_uuid_id(id, "activity ID")?;
     state
@@ -807,6 +936,82 @@ async fn find_activity(state: &AppState, id: &str) -> Result<Value> {
 
 async fn insert_activity(state: &AppState, body: Value) -> Result<Value> {
     Ok(state.db.supabase.insert_json("activity_feed", body).await?)
+}
+
+async fn ensure_recent_checkin_allowed(
+    state: &AppState,
+    user_id: &str,
+    business_id: &str,
+) -> Result<()> {
+    let since = (Utc::now() - Duration::minutes(30)).to_rfc3339();
+    let recent = state
+        .db
+        .supabase
+        .count(
+            "checkins",
+            &[
+                eq("user_id", user_id),
+                eq("business_id", business_id),
+                gte("created_at", since),
+            ],
+        )
+        .await?;
+    if recent > 0 {
+        return Err(AppError::Conflict(
+            "You recently checked in at this business".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn ensure_recent_comment_allowed(
+    state: &AppState,
+    activity_id: &str,
+    user_id: &str,
+) -> Result<()> {
+    let since = (Utc::now() - Duration::minutes(1)).to_rfc3339();
+    let recent = state
+        .db
+        .supabase
+        .count(
+            "activity_comments",
+            &[
+                eq("activity_id", activity_id),
+                eq("user_id", user_id),
+                gte("created_at", since),
+            ],
+        )
+        .await?;
+    if recent > 0 {
+        return Err(AppError::Conflict(
+            "Please wait before commenting again on this activity".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn ensure_activity_action_allowed(
+    state: &AppState,
+    user_id: &str,
+    action: &str,
+    limit: u32,
+    window: Duration,
+) -> Result<()> {
+    let key = format!("activity:{}:{}", action, user_id);
+    if state
+        .rate_limiter
+        .check(
+            &key,
+            limit,
+            window
+                .to_std()
+                .unwrap_or(std::time::Duration::from_secs(60)),
+        )
+        .await
+    {
+        return Ok(());
+    }
+    Err(AppError::RateLimited)
 }
 
 fn ensure_business_owner(row: &Value, auth_user: &AuthUser) -> Result<()> {
