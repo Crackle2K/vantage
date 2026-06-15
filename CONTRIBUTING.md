@@ -31,6 +31,7 @@ The stack:
 
 - [Rust](https://rustup.rs/) (stable)
 - [Node.js](https://nodejs.org/) 20+
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (for local database development and migrations)
 - A Supabase project with the migrations applied (see `scripts/supabase/migrations/`)
 
 ### Backend
