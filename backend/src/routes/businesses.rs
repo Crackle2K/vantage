@@ -4,7 +4,8 @@ use crate::{
     models::business::{BusinessCreate, BusinessSearchQuery, BusinessUpdate},
     routes::support::{
         business_lat_lng, eq, geo_rpc_unavailable, ilike_or_filter, is_true, limit,
-        normalize_business, offset, order, select_all, unwrap_rpc_items, value_str, QueryParams,
+        normalize_business, offset, order, pagination_headers, pagination_meta, pagination_window,
+        select_all, unwrap_rpc_items, value_str, QueryParams,
     },
     security,
     state::AppState,
@@ -21,6 +22,8 @@ use chrono::Utc;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 use validator::Validate;
+
+const MAX_GOOGLE_PHOTO_BYTES: u64 = 8 * 1024 * 1024;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -44,8 +47,29 @@ async fn list_businesses(
     State(state): State<Arc<AppState>>,
     Query(params): Query<BusinessSearchQuery>,
 ) -> Result<impl IntoResponse> {
-    let rows = query_businesses(&state, &params, params.limit.unwrap_or(100).clamp(1, 200)).await?;
-    Ok(Json(rows))
+    let window = pagination_window(
+        params.limit,
+        params.offset,
+        params.cursor.as_deref(),
+        100,
+        200,
+    )?;
+    let mut rows = query_businesses(&state, &params, window.limit + 1, window.offset).await?;
+    let meta = pagination_meta(window.limit, window.offset, rows.len());
+    rows.truncate(window.limit as usize);
+
+    let body = if params.include_pagination.unwrap_or(false) {
+        json!({
+            "items": rows,
+            "pagination": &meta,
+            "has_more": meta.has_more,
+            "next_cursor": meta.next_cursor.clone(),
+        })
+    } else {
+        json!(rows)
+    };
+
+    Ok((pagination_headers(&meta), Json(body)))
 }
 
 async fn nearby_businesses(
@@ -53,8 +77,29 @@ async fn nearby_businesses(
     Query(mut params): Query<BusinessSearchQuery>,
 ) -> Result<impl IntoResponse> {
     params.sort = Some("distance".into());
-    let rows = query_businesses(&state, &params, params.limit.unwrap_or(50).clamp(1, 100)).await?;
-    Ok(Json(rows))
+    let window = pagination_window(
+        params.limit,
+        params.offset,
+        params.cursor.as_deref(),
+        50,
+        100,
+    )?;
+    let mut rows = query_businesses(&state, &params, window.limit + 1, window.offset).await?;
+    let meta = pagination_meta(window.limit, window.offset, rows.len());
+    rows.truncate(window.limit as usize);
+
+    let body = if params.include_pagination.unwrap_or(false) {
+        json!({
+            "items": rows,
+            "pagination": &meta,
+            "has_more": meta.has_more,
+            "next_cursor": meta.next_cursor.clone(),
+        })
+    } else {
+        json!(rows)
+    };
+
+    Ok((pagination_headers(&meta), Json(body)))
 }
 
 async fn get_business(
@@ -90,7 +135,7 @@ async fn create_business(
         json!(security::sanitize_text(&payload.address, 300)),
     );
     body.insert("is_verified".into(), json!(false));
-    body.insert("is_claimed".into(), json!(false));
+    body.insert("is_claimed".into(), json!(true));
     body.insert("owner_id".into(), json!(auth_user.id));
     body.insert("review_count".into(), json!(0));
     body.insert("photos".into(), json!([]));
@@ -135,6 +180,9 @@ async fn update_business(
     Json(payload): Json<BusinessUpdate>,
 ) -> Result<impl IntoResponse> {
     let id = security::validate_uuid_id(&id, "business ID")?;
+    payload
+        .validate()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     let existing = find_business(&state, &id).await?;
     ensure_business_owner(&existing, &auth_user)?;
 
@@ -270,10 +318,13 @@ async fn get_google_place_photo(
         return Err(AppError::BadRequest("Google API not configured".into()));
     }
 
-    let details =
-        crate::services::google_places::get_place_details(&state.config.google_api_key, &place_id)
-            .await
-            .map_err(|_| AppError::BadRequest("Google place details are unavailable".into()))?;
+    let details = crate::services::google_places::get_place_details(
+        &state.google_http,
+        &state.config.google_api_key,
+        &place_id,
+    )
+    .await
+    .map_err(|_| AppError::BadRequest("Google place details are unavailable".into()))?;
     let photo_ref = details["photos"]
         .as_array()
         .and_then(|photos| photos.first())
@@ -307,14 +358,17 @@ async fn proxy_google_photo(
     )
     .await;
 
-    let response = crate::services::google_places::google_http_client()
-        .map_err(|_| AppError::Internal("Google HTTP client unavailable".into()))?
+    let mut response = state
+        .google_http
         .get(&url)
         .send()
         .await
-        .map_err(|_| AppError::BadRequest("Photo is unavailable".into()))?;
+        .map_err(|_| AppError::ServiceUnavailable("Photo is unavailable".into()))?;
     if !response.status().is_success() {
-        return Err(AppError::BadRequest("Photo is unavailable".into()));
+        return Err(AppError::ServiceUnavailable("Photo is unavailable".into()));
+    }
+    if response.content_length().unwrap_or(0) > MAX_GOOGLE_PHOTO_BYTES {
+        return Err(AppError::BadRequest("Photo is too large".into()));
     }
 
     let content_type = response
@@ -322,10 +376,7 @@ async fn proxy_google_photo(
         .get(header::CONTENT_TYPE)
         .cloned()
         .unwrap_or_else(|| HeaderValue::from_static("image/jpeg"));
-    let body: Bytes = response
-        .bytes()
-        .await
-        .map_err(|_| AppError::BadRequest("Photo is unavailable".into()))?;
+    let body = read_limited_response_bytes(&mut response, MAX_GOOGLE_PHOTO_BYTES).await?;
 
     Ok((
         [
@@ -340,15 +391,34 @@ async fn proxy_google_photo(
         .into_response())
 }
 
+async fn read_limited_response_bytes(
+    response: &mut reqwest::Response,
+    max_bytes: u64,
+) -> Result<Bytes> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| AppError::ServiceUnavailable("Photo is unavailable".into()))?
+    {
+        if body.len() as u64 + chunk.len() as u64 > max_bytes {
+            return Err(AppError::BadRequest("Photo is too large".into()));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(Bytes::from(body))
+}
+
 async fn query_businesses(
     state: &AppState,
     params: &BusinessSearchQuery,
     limit_value: i64,
+    offset_value: i64,
 ) -> Result<Vec<Value>> {
     let has_coordinates = security::validate_optional_lat_lng(params.lat, params.lng)?.is_some();
 
     if has_coordinates {
-        match query_businesses_geo(state, params, limit_value).await {
+        match query_businesses_geo(state, params, limit_value, offset_value).await {
             Ok(rows) => return Ok(rows),
             Err(err) if geo_rpc_unavailable(&err.to_string()) => {
                 tracing::warn!(
@@ -367,7 +437,7 @@ async fn query_businesses(
         } else {
             limit_value
         }),
-        offset(params.offset.unwrap_or(0)),
+        offset(offset_value),
     ];
 
     if let Some(category) = params.category.as_ref().filter(|value| !value.is_empty()) {
@@ -447,6 +517,7 @@ async fn query_businesses_geo(
     state: &AppState,
     params: &BusinessSearchQuery,
     limit_value: i64,
+    offset_value: i64,
 ) -> anyhow::Result<Vec<Value>> {
     let lat = params.lat.expect("validated before geospatial query");
     let lng = params.lng.expect("validated before geospatial query");
@@ -477,7 +548,7 @@ async fn query_businesses_geo(
                 "p_lng": lng,
                 "p_radius_km": params.radius_km.or(params.radius).unwrap_or(25.0).clamp(0.1, 150.0),
                 "p_limit": (limit_value * 3).clamp(1, 600),
-                "p_offset": params.offset.unwrap_or(0).max(0),
+                "p_offset": offset_value.max(0),
                 "p_category": category,
                 "p_search": search,
                 "p_verified_only": params.verified_only.unwrap_or(false),
@@ -491,15 +562,15 @@ async fn query_businesses_geo(
         .map(normalize_business)
         .collect::<Vec<_>>();
 
-    match Some(sort) {
-        Some("distance") => businesses.sort_by(|a, b| {
+    match sort {
+        "distance" => businesses.sort_by(|a, b| {
             a["distance_km"]
                 .as_f64()
                 .unwrap_or(f64::MAX)
                 .partial_cmp(&b["distance_km"].as_f64().unwrap_or(f64::MAX))
                 .unwrap_or(std::cmp::Ordering::Equal)
         }),
-        Some("rating") => businesses.sort_by(|a, b| {
+        "rating" => businesses.sort_by(|a, b| {
             b["rating"]
                 .as_f64()
                 .unwrap_or(0.0)

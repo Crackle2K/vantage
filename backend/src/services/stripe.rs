@@ -1,10 +1,15 @@
 use anyhow::Result;
+use reqwest::Client;
 use serde_json::{json, Value};
 
 const STRIPE_API: &str = "https://api.stripe.com/v1";
 
-async fn stripe_post(secret_key: &str, path: &str, params: &[(&str, &str)]) -> Result<Value> {
-    let client = stripe_client()?;
+async fn stripe_post(
+    client: &Client,
+    secret_key: &str,
+    path: &str,
+    params: &[(&str, &str)],
+) -> Result<Value> {
     let resp = client
         .post(format!("{}{}", STRIPE_API, path))
         .basic_auth(secret_key, Option::<&str>::None)
@@ -37,8 +42,7 @@ async fn parse_stripe_response(resp: reqwest::Response) -> Result<Value> {
     Ok(data)
 }
 
-async fn stripe_delete(secret_key: &str, path: &str) -> Result<Value> {
-    let client = stripe_client()?;
+async fn stripe_delete(client: &Client, secret_key: &str, path: &str) -> Result<Value> {
     let resp = client
         .delete(format!("{}{}", STRIPE_API, path))
         .basic_auth(secret_key, Option::<&str>::None)
@@ -48,8 +52,17 @@ async fn stripe_delete(secret_key: &str, path: &str) -> Result<Value> {
     parse_stripe_response(resp).await
 }
 
-pub async fn cancel_subscription(secret_key: &str, subscription_id: &str) -> Result<Value> {
-    stripe_delete(secret_key, &format!("/subscriptions/{}", subscription_id)).await
+pub async fn cancel_subscription(
+    client: &Client,
+    secret_key: &str,
+    subscription_id: &str,
+) -> Result<Value> {
+    stripe_delete(
+        client,
+        secret_key,
+        &format!("/subscriptions/{}", subscription_id),
+    )
+    .await
 }
 
 pub struct CheckoutSessionRequest<'a> {
@@ -64,8 +77,12 @@ pub struct CheckoutSessionRequest<'a> {
     pub billing_cycle: &'a str,
 }
 
-pub async fn create_checkout_session(request: CheckoutSessionRequest<'_>) -> Result<Value> {
+pub async fn create_checkout_session(
+    client: &Client,
+    request: CheckoutSessionRequest<'_>,
+) -> Result<Value> {
     stripe_post(
+        client,
         request.secret_key,
         "/checkout/sessions",
         &[
@@ -92,10 +109,4 @@ pub async fn create_checkout_session(request: CheckoutSessionRequest<'_>) -> Res
         ],
     )
     .await
-}
-
-fn stripe_client() -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()?)
 }

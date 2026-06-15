@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// How long a fetched JWKS set is treated as fresh before refetching.
 const JWKS_TTL: Duration = Duration::from_secs(600);
@@ -45,6 +45,7 @@ pub struct SupabaseClient {
     pub service_role_key: String,
     pub http: Client,
     jwks: Arc<RwLock<JwksCache>>,
+    jwks_refresh: Arc<Mutex<()>>,
 }
 
 impl SupabaseClient {
@@ -59,6 +60,7 @@ impl SupabaseClient {
             service_role_key: config.supabase_service_role_key.clone(),
             http,
             jwks: Arc::new(RwLock::new(JwksCache::default())),
+            jwks_refresh: Arc::new(Mutex::new(())),
         }
     }
 
@@ -88,8 +90,8 @@ impl SupabaseClient {
 
     async fn refresh_jwks(&self) -> Result<()> {
         self.ensure_configured()?;
-        // Throttle network fetches so unknown-kid lookups can't trigger one
-        // request per call.
+        let _refresh_guard = self.jwks_refresh.lock().await;
+
         {
             let cache = self.jwks.read().await;
             if let Some(at) = cache.fetched_at {
@@ -344,8 +346,12 @@ impl SupabaseClient {
         table: &str,
         query: &[(&str, &str)],
     ) -> Result<Option<T>> {
-        let mut results = self.select::<T>(table, query).await?;
-        Ok(results.pop())
+        let mut scoped = query.to_vec();
+        if !scoped.iter().any(|(key, _)| *key == "limit") {
+            scoped.push(("limit", "1"));
+        }
+        let results = self.select::<T>(table, &scoped).await?;
+        Ok(results.into_iter().next())
     }
 
     pub async fn insert<B: Serialize, T: DeserializeOwned>(
@@ -549,6 +555,20 @@ impl SupabaseClient {
             .delete(&url)
             .header("apikey", &self.service_role_key)
             .header("Authorization", format!("Bearer {}", self.service_role_key))
+            .send()
+            .await?;
+        Self::parse_json_response(resp).await?;
+        Ok(())
+    }
+
+    pub async fn auth_logout(&self, access_token: &str) -> Result<()> {
+        self.ensure_configured()?;
+        let url = format!("{}/auth/v1/logout?scope=global", self.url);
+        let resp = self
+            .http
+            .post(&url)
+            .header("apikey", &self.service_role_key)
+            .header("Authorization", format!("Bearer {}", access_token))
             .send()
             .await?;
         Self::parse_json_response(resp).await?;

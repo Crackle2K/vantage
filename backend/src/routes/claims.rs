@@ -1,7 +1,7 @@
 use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
-    routes::support::{eq, normalize_id_alias, order, select_all, value_str},
+    routes::support::{eq, normalize_id_alias, order, q, select_all, value_str},
     security,
     state::AppState,
 };
@@ -104,7 +104,8 @@ async fn submit_claim(
         .db
         .supabase
         .insert_json("claims", Value::Object(body))
-        .await?;
+        .await
+        .map_err(map_claim_insert_error)?;
 
     Ok((StatusCode::CREATED, Json(normalize_id_alias(created))))
 }
@@ -139,7 +140,7 @@ async fn my_claims(
         .map(normalize_id_alias)
         .collect::<Vec<_>>();
 
-    Ok(Json(json!({ "items": claims, "claims": claims })))
+    Ok(Json(json!({ "items": claims })))
 }
 
 async fn review_claim(
@@ -166,6 +167,10 @@ async fn review_claim(
     };
 
     let existing = find_claim(&state, &id).await?;
+    if value_str(&existing, "status") != "pending" {
+        return Err(AppError::Conflict("Claim has already been reviewed".into()));
+    }
+
     if normalized_status == "verified" {
         let business_id = value_str(&existing, "business_id").to_string();
         let claimant_id = value_str(&existing, "user_id").to_string();
@@ -176,12 +181,18 @@ async fn review_claim(
             .await?
             .ok_or_else(|| AppError::NotFound("Business not found".into()))?;
         ensure_business_can_be_verified_for_claim(&business, &claimant_id)?;
-        state
+        let updated_business = state
             .db
             .supabase
             .update_json(
                 "businesses",
-                &[eq("id", &business_id)],
+                &[
+                    eq("id", &business_id),
+                    q(
+                        "or",
+                        format!("(owner_id.is.null,owner_id.eq.{})", claimant_id),
+                    ),
+                ],
                 json!({
                     "is_claimed": true,
                     "owner_id": claimant_id,
@@ -189,6 +200,9 @@ async fn review_claim(
                 }),
             )
             .await?;
+        if updated_business.is_empty() {
+            return Err(AppError::Conflict("Business is already claimed".into()));
+        }
     }
 
     let now = Utc::now().to_rfc3339();
@@ -197,7 +211,7 @@ async fn review_claim(
         .supabase
         .update_json(
             "claims",
-            &[eq("id", &id)],
+            &[eq("id", &id), eq("status", "pending")],
             json!({
                 "status": normalized_status,
                 "reviewed_by": auth_user.id,
@@ -211,7 +225,7 @@ async fn review_claim(
     let claim = updated
         .into_iter()
         .next()
-        .ok_or_else(|| AppError::NotFound("Claim not found".into()))?;
+        .ok_or_else(|| AppError::Conflict("Claim has already been reviewed".into()))?;
     Ok(Json(normalize_id_alias(claim)))
 }
 
@@ -252,6 +266,15 @@ fn ensure_business_can_be_verified_for_claim(business: &Value, claimant_id: &str
 fn insert_optional(body: &mut Map<String, Value>, key: &str, value: Option<&str>, max: usize) {
     if let Some(value) = value.and_then(|raw| security::sanitize_optional_text(Some(raw), max)) {
         body.insert(key.into(), json!(value));
+    }
+}
+
+fn map_claim_insert_error(err: anyhow::Error) -> AppError {
+    let message = err.to_string().to_ascii_lowercase();
+    if message.contains("duplicate") || message.contains("unique") {
+        AppError::Conflict("Claim already pending".into())
+    } else {
+        err.into()
     }
 }
 

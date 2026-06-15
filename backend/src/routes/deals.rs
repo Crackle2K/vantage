@@ -2,8 +2,8 @@ use crate::{
     errors::{AppError, Result},
     middleware::auth::AuthUser,
     routes::support::{
-        eq, is_true, limit, normalize_deal, order, q, select_all, unwrap_rpc_items, value_str,
-        QueryParams,
+        eq, is_true, limit, normalize_deal, offset, order, q, select_all, unwrap_rpc_items,
+        value_str, QueryParams,
     },
     security,
     state::AppState,
@@ -46,6 +46,7 @@ async fn list_deals(
         is_true("is_active"),
         order("created_at.desc"),
         limit(params.limit.unwrap_or(50).clamp(1, 100)),
+        offset(params.offset.unwrap_or(0).max(0)),
     ];
     let deals = state
         .db
@@ -71,6 +72,7 @@ async fn list_business_deals(
         is_true("is_active"),
         order("created_at.desc"),
         limit(params.limit.unwrap_or(20).clamp(1, 100)),
+        offset(params.offset.unwrap_or(0).max(0)),
     ];
     let deals = state
         .db
@@ -117,13 +119,15 @@ async fn create_deal(
     let business_id = security::validate_uuid_id(&payload.business_id, "business ID")?;
     let business = find_business(&state, &business_id).await?;
     ensure_business_owner(&business, &auth_user)?;
+    ensure_deal_limit_available(&state, &business_id).await?;
 
     let now = Utc::now();
-    let discount_value = payload
-        .discount_value
-        .or(payload.discount_percent)
-        .unwrap_or(0.0)
-        .max(0.0);
+    let title = validate_deal_title(&payload.title)?;
+    let discount_type = validate_discount_type(payload.discount_type.as_deref())?;
+    let discount_value = validate_discount_value(
+        discount_type,
+        payload.discount_value.or(payload.discount_percent),
+    )?;
     let valid_until = match payload.valid_until {
         Some(value) => validate_rfc3339("valid_until", &value)?,
         None => (now + Duration::days(30)).to_rfc3339(),
@@ -131,10 +135,7 @@ async fn create_deal(
 
     let mut body = Map::new();
     body.insert("business_id".into(), json!(&business_id));
-    body.insert(
-        "title".into(),
-        json!(security::sanitize_text(&payload.title, 200)),
-    );
+    body.insert("title".into(), json!(title));
     body.insert(
         "description".into(),
         json!(
@@ -142,10 +143,7 @@ async fn create_deal(
                 .unwrap_or_default()
         ),
     );
-    body.insert(
-        "discount_type".into(),
-        json!(validate_discount_type(payload.discount_type.as_deref())?),
-    );
+    body.insert("discount_type".into(), json!(discount_type));
     body.insert("discount_value".into(), json!(discount_value));
     body.insert("discount_percent".into(), json!(discount_value));
     body.insert("valid_until".into(), json!(valid_until));
@@ -186,6 +184,8 @@ struct DealUpdate {
     discount_value: Option<f64>,
     code: Option<String>,
     valid_until: Option<String>,
+    original_price: Option<f64>,
+    deal_price: Option<f64>,
     is_active: Option<bool>,
 }
 
@@ -201,13 +201,19 @@ async fn update_deal(
 
     let mut body = Map::new();
     body.insert("updated_at".into(), json!(Utc::now().to_rfc3339()));
-    insert_optional(&mut body, "title", payload.title.as_deref(), 200);
+    if let Some(title) = payload.title.as_deref() {
+        body.insert("title".into(), json!(validate_deal_title(title)?));
+    }
     insert_optional(
         &mut body,
         "description",
         payload.description.as_deref(),
         1000,
     );
+    let effective_discount_type = payload.discount_type.as_deref().or_else(|| {
+        let existing_type = value_str(&existing, "discount_type");
+        (!existing_type.is_empty()).then_some(existing_type)
+    });
     if payload.discount_type.is_some() {
         body.insert(
             "discount_type".into(),
@@ -221,12 +227,26 @@ async fn update_deal(
             json!(validate_rfc3339("valid_until", &valid_until)?),
         );
     }
-    if let Some(value) = payload.discount_value.or(payload.discount_percent) {
-        if !value.is_finite() || value < 0.0 {
-            return Err(AppError::BadRequest("Invalid discount value".into()));
-        }
+    if payload.discount_value.is_some() || payload.discount_percent.is_some() {
+        let discount_type = validate_discount_type(effective_discount_type)?;
+        let value = validate_discount_value(
+            discount_type,
+            payload.discount_value.or(payload.discount_percent),
+        )?;
         body.insert("discount_value".into(), json!(value));
         body.insert("discount_percent".into(), json!(value));
+    }
+    if let Some(value) = payload.original_price {
+        body.insert(
+            "original_price".into(),
+            json!(validate_price("original_price", value)?),
+        );
+    }
+    if let Some(value) = payload.deal_price {
+        body.insert(
+            "deal_price".into(),
+            json!(validate_price("deal_price", value)?),
+        );
     }
     if let Some(active) = payload.is_active {
         body.insert("is_active".into(), json!(active));
@@ -377,6 +397,75 @@ fn ensure_business_owner(row: &Value, auth_user: &AuthUser) -> Result<()> {
     Ok(())
 }
 
+async fn ensure_deal_limit_available(state: &AppState, business_id: &str) -> Result<()> {
+    let Some(max_deals) = active_deal_limit_for_business(state, business_id).await? else {
+        return Ok(());
+    };
+
+    let active_count = state
+        .db
+        .supabase
+        .count(
+            "deals",
+            &[
+                eq("business_id", business_id),
+                is_true("is_active"),
+                current_deals_filter(Utc::now()),
+            ],
+        )
+        .await?;
+
+    if active_count >= max_deals as usize {
+        return Err(AppError::BadRequest(
+            "Active deal limit reached for the current plan".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn active_deal_limit_for_business(
+    state: &AppState,
+    business_id: &str,
+) -> Result<Option<u32>> {
+    let rows = state
+        .db
+        .supabase
+        .select_json(
+            "subscriptions",
+            &[
+                q("select", "tier"),
+                eq("business_id", business_id),
+                eq("status", "active"),
+            ],
+        )
+        .await?;
+    let tier = rows
+        .iter()
+        .filter_map(|row| row.get("tier").and_then(Value::as_str))
+        .max_by_key(|tier| subscription_tier_rank(tier))
+        .unwrap_or("free");
+
+    Ok(max_deals_for_tier(tier))
+}
+
+fn max_deals_for_tier(tier: &str) -> Option<u32> {
+    match tier.to_ascii_lowercase().as_str() {
+        "premium" => None,
+        "pro" => Some(20),
+        "starter" => Some(5),
+        _ => Some(1),
+    }
+}
+
+fn subscription_tier_rank(tier: &str) -> u8 {
+    match tier.to_ascii_lowercase().as_str() {
+        "premium" => 3,
+        "pro" => 2,
+        "starter" => 1,
+        _ => 0,
+    }
+}
+
 fn insert_optional(body: &mut Map<String, Value>, key: &str, value: Option<&str>, max: usize) {
     if let Some(value) = value.and_then(|raw| security::sanitize_optional_text(Some(raw), max)) {
         body.insert(key.into(), json!(value));
@@ -394,6 +483,34 @@ fn validate_discount_type(value: Option<&str>) -> Result<&'static str> {
         "fixed" | "fixed_amount" | "amount" => Ok("fixed"),
         _ => Err(AppError::BadRequest("Invalid discount type".into())),
     }
+}
+
+fn validate_deal_title(value: &str) -> Result<String> {
+    let title = security::sanitize_text(value, 200);
+    if title.is_empty() {
+        return Err(AppError::BadRequest("Deal title required".into()));
+    }
+    Ok(title)
+}
+
+fn validate_discount_value(discount_type: &str, value: Option<f64>) -> Result<f64> {
+    let value = value.unwrap_or(0.0);
+    if !value.is_finite() || value < 0.0 {
+        return Err(AppError::BadRequest("Invalid discount value".into()));
+    }
+    if discount_type == "percentage" && value > 100.0 {
+        return Err(AppError::BadRequest(
+            "Percentage discount cannot exceed 100".into(),
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_price(label: &str, value: f64) -> Result<f64> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(AppError::BadRequest(format!("Invalid {}", label)));
+    }
+    Ok(value)
 }
 
 fn deal_is_current(row: &Value) -> bool {

@@ -11,6 +11,9 @@ pub enum AppError {
     #[error("Database unavailable: {0}")]
     DatabaseUnavailable(String),
 
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -39,7 +42,12 @@ impl IntoResponse for AppError {
             AppError::DatabaseUnavailable(msg) => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "database_unavailable",
-                msg.as_str(),
+                public_5xx_message(msg, "Database temporarily unavailable"),
+            ),
+            AppError::ServiceUnavailable(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "service_unavailable",
+                public_5xx_message(msg, "Service temporarily unavailable"),
             ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg.as_str()),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "unauthorized", msg.as_str()),
@@ -49,7 +57,7 @@ impl IntoResponse for AppError {
             AppError::Internal(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
-                msg.as_str(),
+                public_5xx_message(msg, "Internal server error"),
             ),
             AppError::RateLimited => (
                 StatusCode::TOO_MANY_REQUESTS,
@@ -66,12 +74,18 @@ impl IntoResponse for AppError {
 impl From<anyhow::Error> for AppError {
     fn from(e: anyhow::Error) -> Self {
         let message = e.to_string();
+        tracing::error!(error = %message, "Internal backend error");
         if message.to_ascii_lowercase().contains("supabase") {
-            AppError::DatabaseUnavailable(message)
+            AppError::DatabaseUnavailable("Database temporarily unavailable".into())
         } else {
-            AppError::Internal(message)
+            AppError::Internal("Internal server error".into())
         }
     }
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
+
+fn public_5xx_message<'a>(msg: &'a str, fallback: &'static str) -> &'a str {
+    tracing::error!(error = %msg, "Returning sanitized server error");
+    fallback
+}

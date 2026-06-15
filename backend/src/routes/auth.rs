@@ -45,6 +45,7 @@ async fn register(
             .ok_or_else(|| AppError::BadRequest("reCAPTCHA token required".into()))?;
 
         recaptcha::verify_recaptcha_token(
+            &state.recaptcha_http,
             &state.config,
             token,
             &state.config.recaptcha_signup_action,
@@ -68,8 +69,26 @@ async fn register(
 
     // Force metadata into Supabase Auth before login so the newly minted JWT
     // carries the selected registration role immediately.
-    let user =
-        update_registration_metadata(&state, created_user, role, full_name.as_deref()).await?;
+    let user = match update_registration_metadata(
+        &state,
+        created_user.clone(),
+        role,
+        full_name.as_deref(),
+    )
+    .await
+    {
+        Ok(user) => user,
+        Err(err) => {
+            if let Err(delete_err) = state.db.supabase.auth_delete_user(&created_user.id).await {
+                tracing::warn!(
+                    error = %delete_err,
+                    user_id = %created_user.id,
+                    "Failed to roll back Supabase user after registration metadata failure"
+                );
+            }
+            return Err(err);
+        }
+    };
 
     let session = state
         .db
@@ -108,7 +127,13 @@ async fn login(
     ))
 }
 
-async fn logout(State(state): State<Arc<AppState>>) -> Response {
+async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
+    if let Some(access_token) = auth::access_token_from_headers(&headers) {
+        if let Err(err) = state.db.supabase.auth_logout(&access_token).await {
+            tracing::warn!(error = %err, "Supabase logout token revocation failed");
+        }
+    }
+
     (
         clear_session_headers(&state.config),
         Json(json!({ "message": "Logged out successfully" })),

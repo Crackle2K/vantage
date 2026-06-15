@@ -3,7 +3,7 @@ use crate::{
     models::user::SupabaseJwtClaims, security, state::AppState,
 };
 use async_trait::async_trait;
-use axum::http::HeaderValue;
+use axum::http::{HeaderMap, HeaderValue};
 use axum::{
     body::Body,
     extract::{FromRequestParts, Request, State},
@@ -74,6 +74,10 @@ pub async fn optional_auth(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
+    if req.uri().path() == "/api/auth/logout" {
+        return next.run(req).await;
+    }
+
     let tokens = extract_tokens(&req);
     let refreshed = if tokens.access_token.is_some() || tokens.refresh_token.is_some() {
         match authenticate_tokens(&state, tokens).await {
@@ -119,7 +123,9 @@ fn extract_tokens(req: &Request<Body>) -> RequestTokens {
         for part in cookie_header.split(';') {
             let part = part.trim();
             if let Some(value) = part.strip_prefix("session=") {
-                tokens.access_token = Some(value.to_string());
+                if tokens.access_token.is_none() {
+                    tokens.access_token = Some(value.to_string());
+                }
             } else if let Some(value) = part.strip_prefix("refresh_token=") {
                 tokens.refresh_token = Some(value.to_string());
             }
@@ -127,6 +133,29 @@ fn extract_tokens(req: &Request<Body>) -> RequestTokens {
     }
 
     tokens
+}
+
+pub fn access_token_from_headers(headers: &HeaderMap) -> Option<String> {
+    if let Some(token) = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|value| !value.trim().is_empty())
+    {
+        return Some(token.to_string());
+    }
+
+    headers
+        .get(COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookie_header| {
+            cookie_header.split(';').find_map(|part| {
+                part.trim()
+                    .strip_prefix("session=")
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_string)
+            })
+        })
 }
 
 async fn authenticate_tokens(

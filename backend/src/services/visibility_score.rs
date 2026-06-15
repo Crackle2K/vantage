@@ -6,18 +6,10 @@ use serde_json::Value;
 /// - Average rating (0-5) weighted by review count
 /// - Review count (log-scaled)
 /// - Whether the business is verified
-/// - Stored visibility_score override (if already computed externally)
 ///
 /// Business claiming is intentionally excluded from the score. Ranking is
 /// earned by activity and credibility, never by ownership status.
 pub fn compute(row: &Value) -> f64 {
-    // Use stored score if available
-    if let Some(stored) = row.get("visibility_score").and_then(Value::as_f64) {
-        if stored > 0.0 {
-            return stored;
-        }
-    }
-
     let mut score: f64 = 0.0;
 
     // Rating signal (0-40 points)
@@ -118,5 +110,19 @@ mod tests {
         claimed["is_claimed"] = json!(true);
 
         assert_eq!(compute(&unclaimed), compute(&claimed));
+    }
+
+    #[test]
+    fn stored_visibility_score_does_not_override_organic_signals() {
+        let row = json!({
+            "visibility_score": 99.0,
+            "rating": 5.0,
+            "review_count": 0,
+            "is_verified": false,
+            "description": "",
+            "photos": [],
+        });
+
+        assert_eq!(compute(&row), 0.0);
     }
 }

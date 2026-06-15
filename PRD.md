@@ -4,8 +4,8 @@
 
 | Field | Value |
 |---|---|
-| Version | v2.1 — Supabase + Production Hardening Baseline |
-| Last Updated | May 21, 2026 |
+| Version | v2.2 — Deep Backend Audit Pass |
+| Last Updated | June 11, 2026 |
 | Stack | React 19 / TypeScript / Vite / Rust Axum / Supabase / Vercel |
 
 ## 1. Product Vision
@@ -147,9 +147,22 @@ Current Rust implementation computes a 0-100 score from:
 - Verified status
 - Description presence
 - Photo presence
-- Stored positive score override
 
 `is_claimed` and `owner_id` are intentionally excluded.
+
+**Known invariant violation (unfixed):** `visibility_score.rs` lines 15–18 return
+any stored `visibility_score > 0` verbatim before computing organic signals. A
+single non-zero value written to the DB permanently freezes that business's
+ranking. The stored-override path must be removed or gated behind an explicit
+admin override flag.
+
+**Known deceptive advertising (unfixed):** `SubscriptionTier::visibility_boost()`
+and `featured_placement()` return `true` for PRO/PREMIUM and are surfaced in the
+`/subscriptions/tiers` response, but `visibility_score::compute()` never reads
+them. Paid subscribers are promised ranking benefits that do not exist. Either
+remove the flags from `TierInfo`, or honour them in the scoring function without
+violating the LVS invariant (e.g. as a tie-breaker after organic score, never
+boosting above organic score).
 
 Business owners cannot create or update reviews for their own listings, because
 rating and review-count signals contribute to discovery trust and visibility.
@@ -332,30 +345,140 @@ Completed in the current baseline:
   `cd frontend && npm run lint`, `cd frontend && npm run build`,
   `npm audit --audit-level=high`.
 
-Known limitations:
+Known limitations and open bugs (June 2026 audit pass):
 
-- Supabase migration has been authored but not applied from this session.
-- There are only focused backend route/unit tests so far; full integration tests
-  are still needed for auth guards, owner checks, saved businesses, reviews,
-  check-ins, subscriptions, and activity flows.
-- Stripe webhook code is implemented, but live webhook delivery still needs to
-  be smoke-tested against the deployed `/api/stripe/webhook` endpoint.
-- PostGIS radius RPCs have been authored and wired into the backend, but the
-  target Supabase project still needs the migration applied and smoke-tested.
-- Realtime is enabled at the database publication level, but the frontend still
-  polls/fetches instead of subscribing to Supabase realtime channels.
-- `npx vercel build` could not be verified locally because the checkout does not
-  have linked Vercel project settings. Run `vercel pull` or configure local
-  project settings before repeating that gate.
+**Broken by default (data correctness):**
+
+- All domain model structs (`Business`, `User`, `Review`, `Subscription`,
+  `ActivityFeedItem`, `CheckIn`, `OwnerPost`, `BusinessClaim`, `Deal`,
+  `SavedRecord`) have `#[serde(rename = "_id")]` on `id`. Supabase columns are
+  named `id`, not `_id`. These structs fail to deserialize DB rows; `id` is
+  always `None` when these types are used directly. The `normalize_id_alias`
+  helper in `routes/support.rs` patches this only in JSON-blob paths.
+- `create_business` sets `owner_id: auth_user.id` and `is_claimed: false`
+  simultaneously. `ensure_business_open_for_claim_submission` blocks claims when
+  `owner_id` is non-null. Owner-created listings can never be formally claimed.
+- `SubscriptionTier::max_deals()` defines per-tier deal limits that are never
+  enforced in `routes/deals.rs`. Free-tier businesses can create unlimited deals.
+
+**Security (unfixed):**
+
+- `middleware/auth.rs:121–122`: Session cookie overwrites an already-extracted
+  Bearer token. A valid `Authorization: Bearer` header is discarded if a stale
+  `session=` cookie is also present.
+- `middleware/rate_limit.rs:51`: `X-Forwarded-For` uses the leftmost
+  (client-controlled) IP via `.split(',').next()`. Rate limiting is trivially
+  bypassed by prepending a spoofed IP.
+- `middleware/security_headers.rs:25`: `is_localhost` is derived from the
+  client-supplied `Host` header. Sending `Host: localhost` bypasses all security
+  headers in production.
+- `config.rs`: Dev origins (`http://localhost:5173`, `:3000`, `:5174`) and all
+  Vercel preview `VERCEL_URL` values are included in the CORS allowlist
+  unconditionally, combined with `allow_credentials(true)`.
+- `routes/auth.rs`: Logout clears cookies but never calls Supabase token
+  revocation. A stolen refresh token stays valid for up to 7 days.
+- `jwt.rs`: `nbf` (not-before) claim is never verified. A token with a future
+  `nbf` is accepted immediately.
+
+**Race conditions (unfixed):**
+
+- `reviews.rs`: `create_review` duplicate-check and insert are two separate DB
+  calls (TOCTOU). Concurrent requests both see no duplicate and both insert.
+- `subscriptions.rs:415–521`: Stripe webhook activation is a non-atomic 4-step
+  sequence. Duplicate at-least-once webhook deliveries create two active
+  subscriptions.
+- `saved.rs:77–102`: `save_business` checks then inserts in two separate calls.
+  Concurrent saves create duplicate saved records.
+- `claims.rs:168–215`: Already-approved claims can be re-reviewed. Claim
+  approval is a non-atomic read+write.
+
+**Performance / resource (unfixed):**
+
+- `saved.rs:43–57`: `list_saved` calls `select_one_json` per saved business (N+1
+  round-trips). No pagination limit on the initial `saved_businesses` query.
+- `activity.rs:438–480`: `get_activity_pulse` calls `find_business` inside a
+  loop — up to 90 sequential DB round-trips per request.
+- `activity.rs:651–673`: `list_owner_events` calls `find_business` per event —
+  up to 100 sequential round-trips.
+- `stripe.rs`, `google_places.rs`, `recaptcha.rs`: New `reqwest::Client` per
+  call. TLS connection pooling is completely defeated. All three services should
+  use a shared client stored in `AppState`.
+
+**Behaviour bugs (unfixed):**
+
+- `discovery.rs:150+163`: `/decide` always returns exactly 5 results regardless
+  of the `limit` parameter. The over-fetch multiplier corrupts the truncation
+  target.
+- `discovery.rs:118–139`: `/explore/lanes` inherits `q`/`search` from the caller.
+  A request with `?q=keyword` distorts all 5 curated lanes with the user's search.
+- `location.rs:49`: Any Google geocoding API error (rate limit, auth, network)
+  returns 400 Bad Request, misleading clients into thinking their coordinates
+  were invalid.
+- `models/deal.rs`: `DealUpdate` has no `#[derive(Validate)]`. Update requests
+  can set `title` to empty or `discount_percent` to `999.0`.
+- `models/business.rs`: `BusinessUpdate` has no `#[derive(Validate)]`. Name and
+  address are unconstrained on update. `BusinessCreate.address` has no max
+  length.
+
+**Migration / deployment (unchanged):**
+
+- Supabase migration has been authored but not applied to the live project.
+- Full integration tests for auth guards, owner checks, saved businesses,
+  reviews, check-ins, subscriptions, and activity flows are still needed.
+- Stripe webhook delivery needs smoke-testing against the deployed endpoint.
+- PostGIS RPCs need migration applied and smoke-tested.
+- Frontend still polls rather than subscribing to Supabase Realtime channels.
+- `npx vercel build` cannot be verified locally without linked Vercel project
+  settings.
 
 ## 9. Next Priorities
 
-1. Apply the Supabase migrations in the target project and verify
-   table/storage/PostGIS RPC permissions with real anon/authenticated/service-role
-   requests.
-2. Add backend integration tests for all protected route families.
-3. Add fraud-resistant moderation for review/check-in abuse and coordinated
-   engagement.
-4. Add frontend realtime subscriptions for activity feed, comments, and events.
-5. Add deployment smoke tests for `/api/health`, `/api/discover`,
-   `/api/stripe/webhook`, `/api/auth/me`, and SPA fallback routes.
+**P0 — Must fix before production launch:**
+
+1. Remove `#[serde(rename = "_id")]` from all model structs and replace with
+   `#[serde(rename = "id")]` or plain `pub id`, so Supabase rows deserialize
+   correctly.
+2. Fix `create_business`: either set `owner_id` but also set `is_claimed: true`,
+   or clear `owner_id` and let the claims workflow handle ownership. Currently
+   owner-created listings are in an unclaimable limbo state.
+3. Remove the stored-override early-return from `visibility_score::compute()`.
+   If admin overrides are needed, model them as an explicit flag separate from
+   the organic LVS.
+4. Fix `X-Forwarded-For` IP extraction to use the rightmost trusted IP, not the
+   leftmost client-controlled one.
+5. Fix `is_localhost` to use the server's configured origin list, not the
+   client-supplied `Host` header.
+6. Enforce `max_deals()` in `create_deal` — read the business's active
+   subscription tier and reject requests that exceed the tier limit.
+
+**P1 — Fix before exposing paid features:**
+
+7. Remove or rename `visibility_boost`/`featured_placement` from `TierInfo` until
+   they are actually wired into the scoring function.
+8. Replace the 4-step non-atomic Stripe webhook activation with a single
+   conditional upsert or idempotency key check.
+9. Add Stripe token revocation to the logout path.
+10. Add `nbf` check to `jwt.rs::parse_claims`.
+11. Fix `middleware/auth.rs:121–122` cookie-overwrites-Bearer bug.
+
+**P2 — Stability and performance:**
+
+12. Batch-fetch businesses in `list_saved` instead of N+1 round-trips.
+13. Batch-fetch businesses in `get_activity_pulse` and `list_owner_events`.
+14. Move `reqwest::Client` construction out of per-call functions and into
+    `AppState` for Stripe, Google Places, and reCAPTCHA.
+15. Fix `/decide` limit truncation — preserve original limit through the
+    over-fetch multiplier.
+16. Add `#[derive(Validate)]` and constraints to `DealUpdate` and `BusinessUpdate`.
+17. Guard CORS dev origins behind an environment check.
+
+**P3 — Integration and deployment:**
+
+18. Apply the Supabase migrations and verify table/storage/PostGIS RPC
+    permissions with real anon/authenticated/service-role requests.
+19. Add backend integration tests for all protected route families.
+20. Add fraud-resistant moderation for review/check-in abuse and coordinated
+    engagement.
+21. Add frontend realtime subscriptions for activity feed, comments, and events.
+22. Add deployment smoke tests for `/api/health`, `/api/discover`,
+    `/api/stripe/webhook`, `/api/auth/me`, and SPA fallback routes.

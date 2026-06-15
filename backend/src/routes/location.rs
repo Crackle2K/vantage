@@ -41,12 +41,13 @@ async fn reverse_geocode(
     }
 
     let resp = crate::services::google_places::reverse_geocode(
+        &state.google_http,
         &state.config.google_api_key,
         params.lat,
         params.lng,
     )
     .await
-    .map_err(|_| AppError::BadRequest("Reverse geocoding is unavailable".into()))?;
+    .map_err(|_| AppError::ServiceUnavailable("Reverse geocoding is unavailable".into()))?;
 
     let results = resp["results"].as_array().cloned().unwrap_or_default();
     if results.is_empty() {

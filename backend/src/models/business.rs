@@ -70,7 +70,7 @@ pub struct BusinessHours {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Business {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub name: String,
     pub category: Option<String>,
@@ -105,7 +105,7 @@ pub struct BusinessCreate {
     #[validate(length(min = 1, max = 200))]
     pub name: String,
     pub category: Option<String>,
-    #[validate(length(min = 1))]
+    #[validate(length(min = 1, max = 300))]
     pub address: String,
     pub city: Option<String>,
     pub state: Option<String>,
@@ -117,16 +117,25 @@ pub struct BusinessCreate {
     pub lng: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct BusinessUpdate {
+    #[validate(length(min = 1, max = 200))]
     pub name: Option<String>,
+    #[validate(length(max = 80))]
     pub category: Option<String>,
+    #[validate(length(min = 1, max = 300))]
     pub address: Option<String>,
+    #[validate(length(max = 120))]
     pub city: Option<String>,
+    #[validate(length(max = 80))]
     pub state: Option<String>,
+    #[validate(length(max = 20))]
     pub zip_code: Option<String>,
+    #[validate(length(max = 40))]
     pub phone: Option<String>,
+    #[validate(length(max = 500))]
     pub website: Option<String>,
+    #[validate(length(max = 1000))]
     pub description: Option<String>,
     pub hours: Option<BusinessHours>,
     pub lat: Option<f64>,
@@ -145,6 +154,8 @@ pub struct BusinessSearchQuery {
     pub radius: Option<f64>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub cursor: Option<String>,
+    pub include_pagination: Option<bool>,
     pub verified_only: Option<bool>,
     pub open_now: Option<bool>,
     pub sort: Option<String>,

@@ -83,6 +83,7 @@ Authoritative migrations are applied in order:
 scripts/supabase/migrations/202605180001_supabase_single_source.sql
 scripts/supabase/migrations/202605200001_postgis_geo_queries.sql
 scripts/supabase/migrations/202605200002_review_summary_rpc.sql
+scripts/supabase/migrations/202605200003_deal_status_consistency.sql
 ```
 
 Protected backend routes verify Supabase-signed access tokens from httpOnly

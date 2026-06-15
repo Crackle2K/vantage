@@ -4,7 +4,7 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deal {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub business_id: String,
     pub title: String,
@@ -34,10 +34,13 @@ pub struct DealCreate {
     pub valid_until: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct DealUpdate {
+    #[validate(length(min = 1, max = 200))]
     pub title: Option<String>,
+    #[validate(length(max = 1000))]
     pub description: Option<String>,
+    #[validate(range(min = 0.0, max = 100.0))]
     pub discount_percent: Option<f64>,
     pub original_price: Option<f64>,
     pub deal_price: Option<f64>,

@@ -91,6 +91,9 @@ scripts/supabase/migrations/202605200003_deal_status_consistency.sql
   do not expose bearer tokens to frontend JavaScript.
 - Google sign-in requires the Google provider to be enabled in Supabase Auth;
   the frontend still needs `VITE_GOOGLE_CLIENT_ID` for the Google button.
+- Frontend realtime updates for feed items, comments, and owner events require
+  `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; without them, the app falls
+  back to ordinary API polling/loading behavior.
 - Business, discovery, activity, saved businesses, claims, deals, reviews, and subscriptions use Supabase PostgREST through the Rust API.
 - Subscription cancellation is business-scoped when needed and auth
   subscription metadata is recomputed from the user's highest active business
@@ -117,8 +120,10 @@ scripts/supabase/migrations/202605200003_deal_status_consistency.sql
 ## Next Steps
 
 - Consolidate repeated frontend view helpers into shared utilities.
-- Add route-level backend tests for ranking, auth guards, and saved/check-in flows.
-- Add stronger moderation tooling for fake reviews and coordinated engagement.
+- Run live Supabase migration and realtime smoke tests against the target
+  project.
+- Add stronger moderation tooling beyond the current baseline abuse guards for
+  fake reviews and coordinated engagement.
 - Smoke-test signed Stripe webhook delivery against the deployed
   `/api/stripe/webhook` endpoint.
 - Link or pull Vercel project settings locally before rerunning `npx vercel build`.
