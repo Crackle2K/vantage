@@ -24,10 +24,7 @@ pub async fn add_security_headers(req: Request<Body>, next: Next) -> Response {
         HeaderValue::from_static("nosniff"),
     );
     headers.insert("X-Frame-Options", HeaderValue::from_static("DENY"));
-    headers.insert(
-        "X-XSS-Protection",
-        HeaderValue::from_static("0"),
-    );
+    headers.insert("X-XSS-Protection", HeaderValue::from_static("0"));
     headers.insert(
         "Referrer-Policy",
         HeaderValue::from_static("strict-origin-when-cross-origin"),
