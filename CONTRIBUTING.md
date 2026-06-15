@@ -129,7 +129,7 @@ PRs are squash-merged, so your branch history does not need to be perfectly clea
 - Run `cargo fmt --all` before committing.
 - Run `cargo clippy --all-targets --all-features -- -D warnings` and fix all warnings.
 - Use `cargo test` to confirm nothing is broken.
-- Data access goes through the Supabase/PostgREST helpers in `backend/src/db/`. Do not bypass them.
+- Data access goes through the Supabase/PostgREST helpers in `backend/src/db/supabase.rs`. Do not bypass them.
 
 ### TypeScript / React
 
