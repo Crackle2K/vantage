@@ -52,6 +52,8 @@ const credibilityBadges: Record<CredibilityTier, {
 function timeAgo(dateStr: string): string {
   const now = new Date()
   const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return ''
+
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
 
   if (seconds < 60) return 'just now'
