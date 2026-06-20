@@ -180,7 +180,14 @@ export type CustomerEventType =
   | 'campaign_open'
   | 'campaign_claim'
   | 'campaign_directions_click'
-  | 'campaign_redemption_placeholder';
+  | 'campaign_redemption_placeholder'
+  | 'sponsored_impression'
+  | 'sponsored_open'
+  | 'sponsored_profile_open'
+  | 'sponsored_offer_claim'
+  | 'sponsored_directions_click'
+  | 'sponsored_check_in_placeholder'
+  | 'sponsored_redemption_placeholder';
 
 /** Payload for best-effort customer action tracking. */
 export interface CustomerEventCreate {

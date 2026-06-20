@@ -55,9 +55,8 @@ async fn discover(
 
 async fn decide_get(
     State(state): State<Arc<AppState>>,
-    Query(mut params): Query<DiscoverParams>,
+    Query(params): Query<DiscoverParams>,
 ) -> Result<impl IntoResponse> {
-    params.limit = Some(params.limit.unwrap_or(3).clamp(1, 10));
     let response = decide_from_params(&state, params).await?;
     Ok(Json(response))
 }
@@ -85,7 +84,7 @@ async fn decide_post(
         category: payload["category"].as_str().map(str::to_string),
         q: None,
         search: None,
-        limit: payload["limit"].as_i64().or(Some(3)),
+        limit: payload["limit"].as_i64(),
         offset: None,
         sort: None,
         sort_mode: None,
@@ -142,12 +141,13 @@ async fn explore_lanes(
 }
 
 async fn decide_from_params(state: &AppState, mut params: DiscoverParams) -> Result<Value> {
+    let (response_limit, candidate_limit) = decide_limits(params.limit);
     let intent = params.intent.clone().unwrap_or_else(|| "EXPLORE".into());
     if params.category.is_none() {
         params.category = category_for_intent(&intent).map(str::to_string);
     }
     params.sort = Some("canonical".into());
-    params.limit = Some(params.limit.unwrap_or(3).clamp(1, 10) * 5);
+    params.limit = Some(candidate_limit);
 
     let constraints = params
         .constraints
@@ -160,12 +160,17 @@ async fn decide_from_params(state: &AppState, mut params: DiscoverParams) -> Res
 
     let mut rows = discover_rows(state, &params).await?;
     rows.retain(|row| passes_decide_constraints(row, &constraints));
-    rows.truncate(params.limit.unwrap_or(15).min(5) as usize);
+    rows.truncate(response_limit as usize);
 
     Ok(json!({
         "items": rows,
         "intent_explanation": intent_explanation(&intent, &constraints),
     }))
+}
+
+fn decide_limits(requested: Option<i64>) -> (i64, i64) {
+    let response_limit = requested.unwrap_or(3).clamp(1, 3);
+    (response_limit, response_limit * 5)
 }
 
 async fn discover_rows(state: &AppState, params: &DiscoverParams) -> Result<Vec<Value>> {
@@ -376,9 +381,9 @@ async fn discover_rows_geo(
 
 fn category_for_intent(intent: &str) -> Option<&'static str> {
     match intent.to_ascii_uppercase().as_str() {
-        "DINNER" | "QUICK_BITE" | "DESSERT" => Some("restaurant"),
-        "COFFEE" | "STUDY" => Some("cafe"),
-        "DATE_NIGHT" => Some("bar"),
+        "DINNER" | "QUICK_BITE" | "DESSERT" => Some("Restaurants"),
+        "COFFEE" | "STUDY" => Some("Cafes & Coffee"),
+        "DATE_NIGHT" => Some("Bars & Nightlife"),
         _ => None,
     }
 }
@@ -416,5 +421,25 @@ fn lane_subtitle(id: &str) -> &'static str {
         "coffee" => "Cafe picks around you",
         "trusted" => "High-rating places with review confidence",
         _ => "Recommended local businesses",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decide_limits_default_to_three_and_never_exceed_requested_cap() {
+        assert_eq!(decide_limits(None), (3, 15));
+        assert_eq!(decide_limits(Some(2)), (2, 10));
+        assert_eq!(decide_limits(Some(20)), (3, 15));
+        assert_eq!(decide_limits(Some(0)), (1, 5));
+    }
+
+    #[test]
+    fn intent_category_defaults_match_frontend_launch_categories() {
+        assert_eq!(category_for_intent("DINNER"), Some("Restaurants"));
+        assert_eq!(category_for_intent("COFFEE"), Some("Cafes & Coffee"));
+        assert_eq!(category_for_intent("DATE_NIGHT"), Some("Bars & Nightlife"));
     }
 }

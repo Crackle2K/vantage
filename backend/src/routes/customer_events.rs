@@ -6,11 +6,8 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::post,
-    Extension, Json, Router,
+    extract::State, http::StatusCode, response::IntoResponse, routing::post, Extension, Json,
+    Router,
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -33,6 +30,13 @@ const CUSTOMER_EVENT_TYPES: &[&str] = &[
     "campaign_claim",
     "campaign_directions_click",
     "campaign_redemption_placeholder",
+    "sponsored_impression",
+    "sponsored_open",
+    "sponsored_profile_open",
+    "sponsored_offer_claim",
+    "sponsored_directions_click",
+    "sponsored_check_in_placeholder",
+    "sponsored_redemption_placeholder",
 ];
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -61,8 +65,13 @@ async fn create_customer_event(
     auth_user: Option<Extension<AuthUser>>,
     Json(payload): Json<CustomerEventCreate>,
 ) -> Result<impl IntoResponse> {
-    let body = build_customer_event_body(payload, auth_user.as_ref().map(|extension| &extension.0))?;
-    let created = state.db.supabase.insert_json("customer_events", body).await?;
+    let body =
+        build_customer_event_body(payload, auth_user.as_ref().map(|extension| &extension.0))?;
+    let created = state
+        .db
+        .supabase
+        .insert_json("customer_events", body)
+        .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -123,7 +132,10 @@ fn build_customer_event_body(
     if let Some(offer_claim_id) = payload.offer_claim_id.as_deref() {
         body.insert(
             "offer_claim_id".into(),
-            json!(security::validate_uuid_id(offer_claim_id, "offer claim ID")?),
+            json!(security::validate_uuid_id(
+                offer_claim_id,
+                "offer claim ID"
+            )?),
         );
     }
     if let Some(campaign_id) = payload.campaign_id.as_deref() {
@@ -200,7 +212,10 @@ mod tests {
     fn event_type_allowlist_rejects_ranking_or_paid_events() {
         assert!(validate_customer_event_type("match").is_ok());
         assert!(validate_customer_event_type("directions_click").is_ok());
+        assert!(validate_customer_event_type("sponsored_offer_claim").is_ok());
         assert!(validate_customer_event_type("sponsored_rank_boost").is_err());
+        assert!(validate_customer_event_type("paid_rank_boost").is_err());
+        assert!(validate_customer_event_type("paid_visibility_boost").is_err());
     }
 
     #[test]
@@ -227,7 +242,7 @@ mod tests {
     #[test]
     fn event_body_always_marks_lvs_as_unaffected() {
         let payload = CustomerEventCreate {
-            event_type: "save".into(),
+            event_type: "sponsored_offer_claim".into(),
             business_id: "550e8400-e29b-41d4-a716-446655440000".into(),
             source_surface: "saved".into(),
             anonymous_session_id: Some("anon_session".into()),

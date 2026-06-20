@@ -9,7 +9,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Extension, Json, Router,
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -45,7 +45,9 @@ pub fn router() -> Router<Arc<AppState>> {
         )
         .route(
             "/campaigns/:id",
-            get(get_campaign).put(update_campaign).delete(cancel_campaign),
+            get(get_campaign)
+                .put(update_campaign)
+                .delete(cancel_campaign),
         )
         .route("/campaigns/:id/claim", post(claim_campaign))
         .route(
@@ -361,7 +363,11 @@ async fn claim_campaign(
 
     let claimed_at = Utc::now();
     let body = build_campaign_claim_body(&campaign, &auth_user, claimed_at)?;
-    let claim = state.db.supabase.insert_json("campaign_claims", body).await?;
+    let claim = state
+        .db
+        .supabase
+        .insert_json("campaign_claims", body)
+        .await?;
     let claim_id = value_str(&claim, "id").to_string();
     let business_id = value_str(&campaign, "business_id").to_string();
 
@@ -462,12 +468,12 @@ async fn get_campaign_performance(
         .select_json(
             "customer_events",
             &[
-                (
-                    "select".into(),
-                    "event_type,campaign_id,created_at".into(),
-                ),
+                ("select".into(), "event_type,campaign_id,created_at".into()),
                 eq("business_id", &business_id),
-                ("created_at".into(), format!("gte.{}", range_start.to_rfc3339())),
+                (
+                    "created_at".into(),
+                    format!("gte.{}", range_start.to_rfc3339()),
+                ),
                 (
                     "event_type".into(),
                     format!("in.({})", CAMPAIGN_EVENT_TYPES.join(",")),
@@ -513,7 +519,10 @@ fn build_campaign_body(
     let mut body = Map::new();
     body.insert("business_id".into(), json!(business_id));
     body.insert("owner_id".into(), json!(owner_id));
-    body.insert("title".into(), json!(required_text(&payload.title, "title", 160)?));
+    body.insert(
+        "title".into(),
+        json!(required_text(&payload.title, "title", 160)?),
+    );
     body.insert(
         "description".into(),
         json!(required_text(&payload.description, "description", 1000)?),
@@ -529,17 +538,20 @@ fn build_campaign_body(
     body.insert("starts_at".into(), json!(starts_at));
     body.insert("ends_at".into(), json!(ends_at));
     body.insert("status".into(), json!(status));
+    body.insert("targeting".into(), normalize_targeting(payload.targeting)?);
     body.insert(
-        "targeting".into(),
-        normalize_targeting(payload.targeting)?,
+        "metadata".into(),
+        normalize_object(payload.metadata, "metadata")?,
     );
-    body.insert("metadata".into(), normalize_object(payload.metadata, "metadata")?);
     body.insert("affects_lvs".into(), json!(false));
     body.insert("created_at".into(), json!(now.to_rfc3339()));
     body.insert("updated_at".into(), json!(now.to_rfc3339()));
 
     if let Some(discount_type) = payload.discount_type.as_deref() {
-        body.insert("discount_type".into(), json!(validate_discount_type(discount_type)?));
+        body.insert(
+            "discount_type".into(),
+            json!(validate_discount_type(discount_type)?),
+        );
     }
     if let Some(value) = validate_optional_non_negative(payload.discount_value, "discount_value")? {
         body.insert("discount_value".into(), json!(value));
@@ -591,25 +603,40 @@ fn build_campaign_update_body(payload: CampaignUpdate) -> Result<Value> {
         500,
     );
     if let Some(value) = payload.campaign_type.as_deref() {
-        body.insert("campaign_type".into(), json!(validate_campaign_type(value)?));
+        body.insert(
+            "campaign_type".into(),
+            json!(validate_campaign_type(value)?),
+        );
     }
     if let Some(value) = payload.offer_kind.as_deref() {
-        body.insert("offer_kind".into(), json!(validate_offer_kind(Some(value))?));
+        body.insert(
+            "offer_kind".into(),
+            json!(validate_offer_kind(Some(value))?),
+        );
     }
     if let Some(value) = payload.discount_type.as_deref() {
-        body.insert("discount_type".into(), json!(validate_discount_type(value)?));
+        body.insert(
+            "discount_type".into(),
+            json!(validate_discount_type(value)?),
+        );
     }
     if let Some(value) = validate_optional_non_negative(payload.discount_value, "discount_value")? {
         body.insert("discount_value".into(), json!(value));
     }
     if let Some(value) = payload.starts_at.as_deref() {
-        body.insert("starts_at".into(), json!(validate_rfc3339("starts_at", value)?));
+        body.insert(
+            "starts_at".into(),
+            json!(validate_rfc3339("starts_at", value)?),
+        );
     }
     if let Some(value) = payload.ends_at.as_deref() {
         body.insert("ends_at".into(), json!(validate_rfc3339("ends_at", value)?));
     }
     if let Some(value) = payload.status.as_deref() {
-        body.insert("status".into(), json!(validate_campaign_status(Some(value))?));
+        body.insert(
+            "status".into(),
+            json!(validate_campaign_status(Some(value))?),
+        );
     }
     if payload.targeting.is_some() {
         body.insert("targeting".into(), normalize_targeting(payload.targeting)?);
@@ -633,7 +660,10 @@ fn build_campaign_update_body(payload: CampaignUpdate) -> Result<Value> {
         body.insert("per_user_limit".into(), json!(value));
     }
     if payload.metadata.is_some() {
-        body.insert("metadata".into(), normalize_object(payload.metadata, "metadata")?);
+        body.insert(
+            "metadata".into(),
+            normalize_object(payload.metadata, "metadata")?,
+        );
     }
 
     Ok(Value::Object(body))
@@ -645,7 +675,8 @@ fn build_campaign_claim_body(
     claimed_at: DateTime<Utc>,
 ) -> Result<Value> {
     let campaign_id = security::validate_uuid_id(value_str(campaign, "id"), "campaign ID")?;
-    let business_id = security::validate_uuid_id(value_str(campaign, "business_id"), "business ID")?;
+    let business_id =
+        security::validate_uuid_id(value_str(campaign, "business_id"), "business ID")?;
     let mut body = Map::new();
     body.insert("campaign_id".into(), json!(campaign_id));
     body.insert("business_id".into(), json!(business_id));
@@ -693,15 +724,20 @@ fn build_campaign_performance(
     for event in events {
         let event_type = value_str(event, "event_type");
         let campaign_id = value_str(event, "campaign_id").to_string();
+        if event_type == "check_in_placeholder" && campaign_id.is_empty() {
+            continue;
+        }
         increment_campaign_totals(&mut totals, event_type);
         if !campaign_id.is_empty() {
             increment_campaign_totals(per_campaign.entry(campaign_id).or_default(), event_type);
         }
         if let Some(date) = event_date(event) {
-            let bucket = buckets.entry(date).or_insert_with(|| CampaignPerformanceBucket {
-                date: date.to_string(),
-                ..Default::default()
-            });
+            let bucket = buckets
+                .entry(date)
+                .or_insert_with(|| CampaignPerformanceBucket {
+                    date: date.to_string(),
+                    ..Default::default()
+                });
             increment_campaign_bucket(bucket, event_type);
         }
     }
@@ -713,11 +749,10 @@ fn build_campaign_performance(
     let mut top_campaigns = per_campaign
         .into_iter()
         .map(|(campaign_id, campaign_totals)| {
-            let (title, campaign_type, status) = campaign_titles.get(&campaign_id).cloned().unwrap_or((
-                "Campaign".into(),
-                String::new(),
-                String::new(),
-            ));
+            let (title, campaign_type, status) = campaign_titles
+                .get(&campaign_id)
+                .cloned()
+                .unwrap_or(("Campaign".into(), String::new(), String::new()));
             TopCampaign {
                 campaign_id,
                 title,
@@ -732,7 +767,11 @@ fn build_campaign_performance(
             }
         })
         .collect::<Vec<_>>();
-    top_campaigns.sort_by(|a, b| b.actions.cmp(&a.actions).then_with(|| b.claims.cmp(&a.claims)));
+    top_campaigns.sort_by(|a, b| {
+        b.actions
+            .cmp(&a.actions)
+            .then_with(|| b.claims.cmp(&a.claims))
+    });
     top_campaigns.truncate(5);
 
     CampaignPerformance {
@@ -788,18 +827,19 @@ async fn insert_campaign_event(
     body.insert("business_id".into(), json!(business_id));
     body.insert(
         "source_surface".into(),
-        json!(
-            payload
-                .source_surface
-                .as_deref()
-                .and_then(|value| security::sanitize_optional_text(Some(value), 80))
-                .unwrap_or_else(|| "business_modal".into())
-        ),
+        json!(payload
+            .source_surface
+            .as_deref()
+            .and_then(|value| security::sanitize_optional_text(Some(value), 80))
+            .unwrap_or_else(|| "business_modal".into())),
     );
     body.insert("constraints".into(), json!([]));
     body.insert("match_reason_codes".into(), json!([]));
     body.insert("location_context".into(), json!({}));
-    body.insert("metadata".into(), normalize_object(payload.metadata.clone(), "metadata")?);
+    body.insert(
+        "metadata".into(),
+        normalize_object(payload.metadata.clone(), "metadata")?,
+    );
     body.insert("affects_lvs".into(), json!(false));
     body.insert("created_at".into(), json!(Utc::now().to_rfc3339()));
 
@@ -916,7 +956,12 @@ fn validate_campaign_type(value: &str) -> Result<&'static str> {
 }
 
 fn validate_campaign_status(value: Option<&str>) -> Result<&'static str> {
-    match value.unwrap_or("active").trim().to_ascii_lowercase().as_str() {
+    match value
+        .unwrap_or("active")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "draft" => Ok("draft"),
         "scheduled" => Ok("scheduled"),
         "active" => Ok("active"),
@@ -1184,8 +1229,8 @@ mod tests {
 
     #[test]
     fn campaign_payload_defaults_targeting_to_all_visitors() {
-        let starts_at = "2026-06-06T12:00:00Z";
-        let ends_at = "2026-06-07T12:00:00Z";
+        let starts_at = (Utc::now() + Duration::days(1)).to_rfc3339();
+        let ends_at = (Utc::now() + Duration::days(2)).to_rfc3339();
         let payload = CampaignCreate {
             title: "Slow lunch perk".into(),
             description: "A quiet-hour add-on for nearby customers.".into(),
@@ -1194,8 +1239,8 @@ mod tests {
             discount_type: None,
             discount_value: None,
             perk_description: Some("Free pastry with coffee".into()),
-            starts_at: Some(starts_at.into()),
-            ends_at: ends_at.into(),
+            starts_at: Some(starts_at),
+            ends_at,
             status: None,
             targeting: None,
             template_id: None,
@@ -1234,13 +1279,47 @@ mod tests {
             }),
         ];
         let events = vec![
-            event("campaign_impression", "22222222-2222-4222-8222-222222222222", "2026-06-01T10:00:00Z"),
-            event("campaign_impression", "22222222-2222-4222-8222-222222222222", "2026-06-01T11:00:00Z"),
-            event("campaign_open", "22222222-2222-4222-8222-222222222222", "2026-06-01T12:00:00Z"),
-            event("campaign_claim", "22222222-2222-4222-8222-222222222222", "2026-06-02T10:00:00Z"),
-            event("campaign_directions_click", "22222222-2222-4222-8222-222222222222", "2026-06-02T11:00:00Z"),
-            event("campaign_redemption_placeholder", "22222222-2222-4222-8222-222222222222", "2026-06-03T10:00:00Z"),
-            event("campaign_impression", "44444444-4444-4444-8444-444444444444", "2026-06-03T11:00:00Z"),
+            event(
+                "campaign_impression",
+                "22222222-2222-4222-8222-222222222222",
+                "2026-06-01T10:00:00Z",
+            ),
+            event(
+                "campaign_impression",
+                "22222222-2222-4222-8222-222222222222",
+                "2026-06-01T11:00:00Z",
+            ),
+            event(
+                "campaign_open",
+                "22222222-2222-4222-8222-222222222222",
+                "2026-06-01T12:00:00Z",
+            ),
+            event(
+                "campaign_claim",
+                "22222222-2222-4222-8222-222222222222",
+                "2026-06-02T10:00:00Z",
+            ),
+            event(
+                "campaign_directions_click",
+                "22222222-2222-4222-8222-222222222222",
+                "2026-06-02T11:00:00Z",
+            ),
+            event(
+                "campaign_redemption_placeholder",
+                "22222222-2222-4222-8222-222222222222",
+                "2026-06-03T10:00:00Z",
+            ),
+            event(
+                "check_in_placeholder",
+                "22222222-2222-4222-8222-222222222222",
+                "2026-06-03T10:15:00Z",
+            ),
+            event("check_in_placeholder", "", "2026-06-03T10:30:00Z"),
+            event(
+                "campaign_impression",
+                "44444444-4444-4444-8444-444444444444",
+                "2026-06-03T11:00:00Z",
+            ),
         ];
 
         let performance = build_campaign_performance(
@@ -1254,10 +1333,14 @@ mod tests {
         assert_eq!(performance.totals.opens, 1);
         assert_eq!(performance.totals.claims, 1);
         assert_eq!(performance.totals.directions_clicks, 1);
+        assert_eq!(performance.totals.check_ins, 1);
         assert_eq!(performance.totals.redemption_placeholders, 1);
         assert_eq!(performance.rates.open_rate, 1.0 / 3.0);
         assert_eq!(performance.rates.claim_rate, 1.0);
-        assert_eq!(performance.top_campaigns[0].campaign_id, "22222222-2222-4222-8222-222222222222");
+        assert_eq!(
+            performance.top_campaigns[0].campaign_id,
+            "22222222-2222-4222-8222-222222222222"
+        );
         assert_eq!(performance.buckets.len(), 3);
     }
 

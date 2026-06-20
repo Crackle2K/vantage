@@ -24,6 +24,14 @@ const DEFAULT_LNG = -79.3832;
 const DEFAULT_RADIUS = 8;
 const MIN_RADIUS = 1;
 const MAX_RADIUS = 50;
+const DECIDE_RESULT_LIMIT = 3;
+const SWIPE_DISTANCE_THRESHOLD = 110;
+const SWIPE_VELOCITY_THRESHOLD = 0.38;
+const LAUNCH_MARKET = {
+  label: 'Toronto core launch',
+  audience: 'Urban local explorers, students, date-night planners, and independent-business regulars',
+  categories: 'Cafes, restaurants, dessert, bars, wellness, and local experiences',
+};
 const PRIMARY_INTENTS: Array<{ label: string; value: DecideIntent }> = [
   { label: 'Dinner', value: 'DINNER' },
   { label: 'Coffee', value: 'COFFEE' },
@@ -45,6 +53,12 @@ const CATEGORY_OPTIONS = ['Any', 'Restaurants', 'Cafes & Coffee', 'Bars & Nightl
 interface UserLocation {
   latitude: number;
   longitude: number;
+}
+
+interface SwipeDragState {
+  businessId: string;
+  deltaX: number;
+  deltaY: number;
 }
 
 function getBusinessId(business: Business) {
@@ -117,7 +131,8 @@ export default function DecidePage() {
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const modalScrollRef = useRef(0);
   const impressedIdsRef = useRef<Set<string>>(new Set());
-  const pointerStartRef = useRef<{ businessId: string; x: number } | null>(null);
+  const pointerStartRef = useRef<{ businessId: string; x: number; y: number; startedAt: number } | null>(null);
+  const [swipeDrag, setSwipeDrag] = useState<SwipeDragState | null>(null);
 
   const fetchLocation = useCallback((onSuccess?: () => void) => {
     if (!navigator.geolocation) {
@@ -163,17 +178,9 @@ export default function DecidePage() {
 
   const requestShape = useMemo(() => {
     if (!primaryIntent) return null;
-    const rankingLens = ['TRENDING', 'HIDDEN_GEM', 'MOST_TRUSTED'].find((intent) => toggles.includes(intent as DecideIntent)) as DecideIntent | undefined;
-    const constraints = toggles.filter((intent) => intent !== rankingLens);
-    if (rankingLens) {
-      return {
-        intent: rankingLens,
-        constraints: [primaryIntent, ...constraints],
-      };
-    }
     return {
       intent: primaryIntent,
-      constraints,
+      constraints: toggles,
     };
   }, [primaryIntent, toggles]);
 
@@ -181,6 +188,8 @@ export default function DecidePage() {
     const dismissed = new Set(dismissedIds);
     return results.filter((business) => !dismissed.has(getBusinessId(business)));
   }, [dismissedIds, results]);
+
+  const deckResults = useMemo(() => activeResults.slice(0, DECIDE_RESULT_LIMIT), [activeResults]);
 
   const eventContext = useMemo(() => ({
     source_surface: 'decide',
@@ -194,22 +203,22 @@ export default function DecidePage() {
   }), [primaryIntent, radius, requestShape, selectedCategory, usingDefaultArea]);
 
   useEffect(() => {
-    activeResults.forEach((business, index) => {
-      const businessId = getBusinessId(business);
-      if (impressedIdsRef.current.has(businessId)) return;
-      impressedIdsRef.current.add(businessId);
-      void trackCustomerEvent({
-        event_type: 'match_card_impression',
-        business_id: businessId,
-        source_surface: eventContext.source_surface,
-        intent: eventContext.intent,
-        constraints: eventContext.constraints,
-        match_reason_codes: rankingReasonCodesFor(business),
-        location_context: eventContext.location_context,
-        metadata: { card_index: index },
-      });
+    const business = deckResults[0];
+    if (!business) return;
+    const businessId = getBusinessId(business);
+    if (impressedIdsRef.current.has(businessId)) return;
+    impressedIdsRef.current.add(businessId);
+    void trackCustomerEvent({
+      event_type: 'match_card_impression',
+      business_id: businessId,
+      source_surface: eventContext.source_surface,
+      intent: eventContext.intent,
+      constraints: eventContext.constraints,
+      match_reason_codes: rankingReasonCodesFor(business),
+      location_context: eventContext.location_context,
+      metadata: { card_index: dismissedIds.length },
     });
-  }, [activeResults, eventContext]);
+  }, [deckResults, dismissedIds.length, eventContext]);
 
   const toggleExtraIntent = (intent: DecideIntent) => {
     setToggles((current) => {
@@ -319,15 +328,43 @@ export default function DecidePage() {
   };
 
   const handlePointerDown = (business: Business, event: PointerEvent<HTMLElement>) => {
-    pointerStartRef.current = { businessId: getBusinessId(business), x: event.clientX };
+    const businessId = getBusinessId(business);
+    if (deckResults[0] && getBusinessId(deckResults[0]) !== businessId) return;
+    pointerStartRef.current = {
+      businessId,
+      x: event.clientX,
+      y: event.clientY,
+      startedAt: event.timeStamp,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSwipeDrag({ businessId, deltaX: 0, deltaY: 0 });
+  };
+
+  const handlePointerMove = (business: Business, event: PointerEvent<HTMLElement>) => {
+    const start = pointerStartRef.current;
+    const businessId = getBusinessId(business);
+    if (!start || start.businessId !== businessId) return;
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    setSwipeDrag({
+      businessId,
+      deltaX,
+      deltaY: Math.max(-36, Math.min(36, deltaY)),
+    });
   };
 
   const handlePointerUp = (business: Business, event: PointerEvent<HTMLElement>) => {
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
+    setSwipeDrag(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     if (!start || start.businessId !== getBusinessId(business)) return;
     const deltaX = event.clientX - start.x;
-    if (Math.abs(deltaX) < 90) return;
+    const elapsed = Math.max(1, event.timeStamp - start.startedAt);
+    const velocity = Math.abs(deltaX) / elapsed;
+    if (Math.abs(deltaX) < SWIPE_DISTANCE_THRESHOLD && velocity < SWIPE_VELOCITY_THRESHOLD) return;
     if (deltaX < 0) {
       handleShowAnother(business);
     } else {
@@ -349,6 +386,16 @@ export default function DecidePage() {
           <p className="mt-3 max-w-3xl text-body text-[hsl(var(--muted-foreground))]">
             Tell us what you want - we&apos;ll pick the best right now using Live Visibility.
           </p>
+          <div className="mt-5 grid gap-3 rounded-2xl border border-[hsl(var(--border))/0.75] bg-[hsl(var(--card))]/0.72 p-4 text-ui text-[hsl(var(--muted-foreground))] sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <div>
+              <p className="font-semibold text-[hsl(var(--foreground))]">{LAUNCH_MARKET.label}</p>
+              <p className="mt-1">{LAUNCH_MARKET.audience}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-[hsl(var(--foreground))]">Seed categories</p>
+              <p className="mt-1">{LAUNCH_MARKET.categories}</p>
+            </div>
+          </div>
 
           <div className="mt-8 rounded-[30px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))]/0.92 p-5 sm:p-6">
             <div className="flex flex-col gap-5">
@@ -485,7 +532,7 @@ export default function DecidePage() {
                 </div>
               </div>
 
-              {activeResults.length === 0 ? (
+              {deckResults.length === 0 ? (
                 <div className="rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] px-6 py-12 text-center">
                   <h2 className="text-subheading font-semibold text-[hsl(var(--foreground))]">You reviewed this set</h2>
                   <p className="mt-2 text-ui text-[hsl(var(--muted-foreground))]">
@@ -501,18 +548,42 @@ export default function DecidePage() {
                   </div>
                 </div>
               ) : (
-              <div className="grid gap-6 lg:grid-cols-3">
-                {activeResults.map((business, index) => {
+              <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="relative min-h-[650px] sm:min-h-[690px]">
+                {deckResults.map((business, index) => {
                   const businessId = getBusinessId(business);
                   const isSaved = savedIds.includes(businessId);
                   const images = imageCandidatesFor(business);
                   const reasonCodes = rankingReasonCodesFor(business);
+                  const isTopCard = index === 0;
+                  const activeDrag = isTopCard && swipeDrag?.businessId === businessId ? swipeDrag : null;
+                  const rotation = activeDrag ? Math.max(-9, Math.min(9, activeDrag.deltaX / 18)) : 0;
+                  const decisionLabel = activeDrag && Math.abs(activeDrag.deltaX) > 32
+                    ? activeDrag.deltaX > 0 ? 'Match' : 'Show another'
+                    : null;
                   return (
                     <article
                       key={businessId}
+                      aria-label={`${business.name}, match ${index + 1} of ${deckResults.length}`}
                       onPointerDown={(event) => handlePointerDown(business, event)}
+                      onPointerMove={(event) => handlePointerMove(business, event)}
                       onPointerUp={(event) => handlePointerUp(business, event)}
-                      className="flex min-h-[570px] flex-col overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.6)] transition duration-200 motion-reduce:transition-none"
+                      onPointerCancel={() => {
+                        pointerStartRef.current = null;
+                        setSwipeDrag(null);
+                      }}
+                      className={cn(
+                        'absolute inset-x-0 top-0 flex min-h-[620px] touch-pan-y select-none flex-col overflow-hidden rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))] shadow-[0_18px_38px_-24px_hsl(var(--shadow-soft)/0.6)] transition-[opacity,transform] duration-200 motion-reduce:transition-none',
+                        isTopCard ? 'z-30 cursor-grab active:cursor-grabbing' : 'pointer-events-none',
+                        index === 1 && 'z-20 opacity-80',
+                        index === 2 && 'z-10 opacity-55'
+                      )}
+                      style={{
+                        transform: activeDrag
+                          ? `translate3d(${activeDrag.deltaX}px, ${activeDrag.deltaY}px, 0) rotate(${rotation}deg)`
+                          : `translate3d(0, ${index * 18}px, 0) scale(${1 - index * 0.035})`,
+                        transformOrigin: activeDrag?.deltaX && activeDrag.deltaX > 0 ? '80% 90%' : '20% 90%',
+                      }}
                     >
                       <div className="relative aspect-[16/10] overflow-hidden bg-[hsl(var(--secondary))]">
                         <BusinessImage
@@ -528,12 +599,24 @@ export default function DecidePage() {
                             {business.category}
                           </span>
                           <span className="rounded-full border border-white/15 bg-black/35 px-3 py-1 text-caption font-medium text-white">
-                            #{index + 1} match
+                            {index + 1} of {deckResults.length}
                           </span>
                           <span className="rounded-full border border-white/15 bg-black/35 px-3 py-1 text-caption font-medium text-white">
                             Score {Math.round(business.canonical_rank_score ?? business.ranking_components?.final_score ?? 0)}
                           </span>
                         </div>
+                        {decisionLabel && (
+                          <div
+                            className={cn(
+                              'absolute inset-x-5 bottom-5 rounded-2xl border px-4 py-3 text-center text-ui font-semibold text-white backdrop-blur-sm',
+                              activeDrag && activeDrag.deltaX > 0
+                                ? 'border-white/20 bg-[hsl(var(--success))/0.86]'
+                                : 'border-white/20 bg-black/62'
+                            )}
+                          >
+                            {decisionLabel}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex flex-1 flex-col space-y-4 p-5">
@@ -560,21 +643,22 @@ export default function DecidePage() {
 
                         <div className="mt-auto grid gap-3">
                           <div className="grid grid-cols-2 gap-3">
-                            <Button type="button" variant="outline" onClick={() => handleShowAnother(business)} className="rounded-full">
+                            <Button type="button" variant="outline" onClick={() => handleShowAnother(business)} disabled={!isTopCard} className="rounded-full">
                               Show another
                             </Button>
-                            <Button type="button" onClick={() => handleMatch(business)} className="rounded-full">
+                            <Button type="button" onClick={() => handleMatch(business)} disabled={!isTopCard} className="rounded-full">
                               Match
                             </Button>
                           </div>
                           <div className="flex gap-3">
-                          <Button type="button" variant="outline" onClick={() => openBusiness(business)} className="flex-1 rounded-full">
+                          <Button type="button" variant="outline" onClick={() => openBusiness(business)} disabled={!isTopCard} className="flex-1 rounded-full">
                             Open business
                           </Button>
                           <Button
                             type="button"
                             variant={isSaved ? 'default' : 'outline'}
                             onClick={() => void handleSave(business, isSaved)}
+                            disabled={!isTopCard}
                             className="flex-1 rounded-full"
                           >
                             {isSaved ? 'Saved' : 'Save place'}
@@ -585,6 +669,34 @@ export default function DecidePage() {
                     </article>
                   );
                 })}
+                </div>
+                <aside className="rounded-[28px] border border-[hsl(var(--border))/0.8] bg-[hsl(var(--card))]/0.86 p-5">
+                  <h2 className="text-subheading font-semibold text-[hsl(var(--foreground))]">Decision queue</h2>
+                  <p className="mt-2 text-ui text-[hsl(var(--muted-foreground))]">
+                    Swipe right to match, left to pass. Buttons below each card do the same thing.
+                  </p>
+                  <div className="mt-5 space-y-3">
+                    {deckResults.map((business, index) => (
+                      <div
+                        key={`queue-${getBusinessId(business)}`}
+                        className={cn(
+                          'rounded-2xl border p-3',
+                          index === 0
+                            ? 'border-[hsl(var(--primary))/0.28] bg-[hsl(var(--primary))/0.06]'
+                            : 'border-[hsl(var(--border))] bg-[hsl(var(--background))/0.55]'
+                        )}
+                      >
+                        <p className="text-ui font-semibold text-[hsl(var(--foreground))]">{business.name}</p>
+                        <p className="mt-1 text-caption text-[hsl(var(--muted-foreground))]">
+                          {index === 0 ? 'Up now' : `Next ${index + 1}`} · {business.category}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5 rounded-2xl bg-[hsl(var(--secondary))]/0.6 p-4 text-caption text-[hsl(var(--muted-foreground))]">
+                    Matches are intent signals, not visits. Offers, directions, check-ins, and redemptions are tracked separately for businesses.
+                  </div>
+                </aside>
               </div>
               )}
             </>

@@ -12,7 +12,12 @@ import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
 import { logger } from '@/lib/logger'
-import { formatReasonCode } from '../lib/conversionAnalytics'
+import {
+  describeFunnelStep,
+  formatCampaignAudience,
+  formatCampaignType,
+  formatReasonCode
+} from '../lib/conversionAnalytics'
 import type {
   Business,
   Deal,
@@ -51,6 +56,73 @@ const rangeOptions: Array<{ value: ConversionRange; label: string }> = [
   { value: '7d', label: '7 days' },
   { value: '30d', label: '30 days' },
   { value: '90d', label: '90 days' }
+]
+
+const campaignPlayPresets: Array<{
+  id: string
+  label: string
+  detail: string
+  icon: typeof Star
+  campaignType: CampaignType
+  offerKind: CampaignOfferKind
+  audience: CampaignTargeting['audience']
+  title: string
+  description: string
+  perkDescription: string
+  durationDays: number
+}> = [
+  {
+    id: 'slow-hour',
+    label: 'Slow-hour',
+    detail: 'Fill quieter windows with a time-bound reason to visit.',
+    icon: Clock,
+    campaignType: 'slow_hour',
+    offerKind: 'perk',
+    audience: 'slow_hour',
+    title: 'Slow-hour local perk',
+    description: 'Bring nearby customers in during a quieter window.',
+    perkDescription: 'Off-peak visit perk',
+    durationDays: 7
+  },
+  {
+    id: 'first-visit',
+    label: 'First-time visitor',
+    detail: 'Give matched customers a clear first reason to come in.',
+    icon: Ticket,
+    campaignType: 'first_time_visitor',
+    offerKind: 'perk',
+    audience: 'first_time_visitors',
+    title: 'First visit welcome',
+    description: 'Convert nearby interest from new customers into a first visit.',
+    perkDescription: 'First-visit welcome perk',
+    durationDays: 14
+  },
+  {
+    id: 'event',
+    label: 'Event promotion',
+    detail: 'Move event interest toward RSVP, directions, or check-in.',
+    icon: Megaphone,
+    campaignType: 'event_promotion',
+    offerKind: 'event',
+    audience: 'event_interested',
+    title: 'Event push',
+    description: 'Promote a timely event to customers showing local intent.',
+    perkDescription: 'Event reminder',
+    durationDays: 10
+  },
+  {
+    id: 'retention',
+    label: 'Retention',
+    detail: 'Bring saved, matched, or previous customers back again.',
+    icon: Bookmark,
+    campaignType: 'limited_time_perk',
+    offerKind: 'perk',
+    audience: 'saved_business_users',
+    title: 'Come back this week',
+    description: 'Give saved or matched customers a timely reason to return.',
+    perkDescription: 'Return-visit perk',
+    durationDays: 7
+  }
 ]
 
 const defaultCampaignForm = () => {
@@ -361,10 +433,10 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 animate-fade-in-up">
           <div>
             <h1 className="text-heading font-bold text-[hsl(var(--foreground))] font-heading">
-              Business <span className="gradient-text font-serif">Dashboard</span>
+              Business <span className="font-serif">Dashboard</span>
             </h1>
             <p className="text-[hsl(var(--muted-foreground))] mt-1">
-              Manage your business, track performance, engage your community
+              Free discovery stays organic. Paid tools turn nearby intent into measurable visits.
             </p>
           </div>
 
@@ -420,7 +492,7 @@ export default function DashboardPage() {
                 No claimed businesses yet
               </h3>
               <p className="text-[hsl(var(--muted-foreground))] mb-6 max-w-md mx-auto">
-                Find your business in our directory and claim it to unlock analytics, deal posting, event creation, and more.
+                Claiming verifies owner access and unlocks conversion tools. It does not change organic rank or Live Visibility Score.
               </p>
               <Link
                 to="/businesses"
@@ -618,7 +690,7 @@ export default function DashboardPage() {
                   ) : (
                     <div>
                       <p className="text-ui text-[hsl(var(--muted-foreground))] mb-3">
-                        Free plan - upgrade to unlock analytics, more deals, events & boosts.
+                        Free discovery remains available. Paid plans add conversion analytics, campaigns, offers, and retention tools.
                       </p>
                       <Link
                         to="/pricing"
@@ -791,6 +863,11 @@ function CampaignToolsPanel({
 }) {
   const visibleCampaigns = campaigns.filter(campaign => campaign.status !== 'cancelled').slice(0, 5)
   const activeCount = campaigns.filter(campaign => campaign.status === 'active').length
+  const actionTotal =
+    (performance?.totals.claims ?? 0) +
+    (performance?.totals.directions_clicks ?? 0) +
+    (performance?.totals.check_ins ?? 0) +
+    (performance?.totals.redemption_placeholders ?? 0)
 
   return (
     <div className="card-surface mb-8 rounded-2xl p-6 animate-fade-in-up">
@@ -801,18 +878,56 @@ function CampaignToolsPanel({
             Campaigns
           </h3>
           <p className="text-ui text-[hsl(var(--muted-foreground))]">
-            Create timely offers for existing surfaces. Campaigns never affect ranking.
+            Build slow-hour, first-time visitor, event, and retention prompts. Paid tools drive conversion; organic rank stays earned.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           <MiniMetric label="Active" value={activeCount} />
           <MiniMetric label="Claims" value={performance?.totals.claims ?? 0} />
-          <MiniMetric label="Actions" value={
-            (performance?.totals.claims ?? 0) +
-            (performance?.totals.directions_clicks ?? 0) +
-            (performance?.totals.check_ins ?? 0) +
-            (performance?.totals.redemption_placeholders ?? 0)
-          } />
+          <MiniMetric label="Actions" value={actionTotal} />
+        </div>
+      </div>
+
+      <div className="mb-5">
+        <h4 className="mb-3 text-ui font-semibold text-[hsl(var(--foreground))] font-sub">
+          Conversion plays
+        </h4>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {campaignPlayPresets.map(play => {
+            const Icon = play.icon
+            return (
+              <button
+                key={play.id}
+                type="button"
+                onClick={() => {
+                  const start = new Date()
+                  const end = new Date(Date.now() + play.durationDays * 24 * 60 * 60 * 1000)
+                  onFormChange(current => ({
+                    ...current,
+                    templateId: '',
+                    title: play.title,
+                    description: play.description,
+                    campaignType: play.campaignType,
+                    offerKind: play.offerKind,
+                    audience: play.audience,
+                    perkDescription: play.perkDescription,
+                    linkedEventId: play.campaignType === 'event_promotion' ? current.linkedEventId : '',
+                    startsAt: toLocalDateTimeValue(start),
+                    endsAt: toLocalDateTimeValue(end)
+                  }))
+                }}
+                className="min-h-[128px] rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/30 p-4 text-left transition-colors hover:bg-[hsl(var(--secondary))]/55 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/25"
+              >
+                <div className="mb-3 flex items-center gap-2 text-ui font-semibold text-[hsl(var(--foreground))]">
+                  <Icon className="h-4 w-4 text-brand" />
+                  {play.label}
+                </div>
+                <p className="text-caption text-[hsl(var(--muted-foreground))]">
+                  {play.detail}
+                </p>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -1042,6 +1157,24 @@ function CampaignToolsPanel({
                 {formatPercent(performance?.rates.claim_rate ?? 0)}
               </p>
             </div>
+            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4">
+              <div className="mb-2 flex items-center gap-2 text-caption text-[hsl(var(--muted-foreground))]">
+                <BarChart3 className="h-4 w-4 text-brand" />
+                Action rate
+              </div>
+              <p className="text-subheading font-bold text-[hsl(var(--foreground))]">
+                {formatPercent(performance?.rates.action_rate ?? 0)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--secondary))]/35 p-4">
+              <div className="mb-2 flex items-center gap-2 text-caption text-[hsl(var(--muted-foreground))]">
+                <CheckCircle2 className="h-4 w-4 text-brand" />
+                Tracked use
+              </div>
+              <p className="text-subheading font-bold text-[hsl(var(--foreground))]">
+                {formatNumber(performance?.totals.redemption_placeholders ?? 0)}
+              </p>
+            </div>
           </div>
 
           <h4 className="mb-3 text-ui font-semibold text-[hsl(var(--foreground))] font-sub">
@@ -1064,11 +1197,11 @@ function CampaignToolsPanel({
                         {campaign.title}
                       </p>
                       <p className="text-caption text-[hsl(var(--muted-foreground))]">
-                        {campaignTypeLabel(campaign.campaign_type)} - {campaign.status}
+                        {formatCampaignType(campaign.campaign_type)} - {formatCampaignAudience(campaign.targeting.audience)} - {campaign.status}
                       </p>
                     </div>
                     <span className="rounded-lg bg-[hsl(var(--secondary))] px-2.5 py-1 text-caption font-medium text-[hsl(var(--foreground))]">
-                      {new Date(campaign.ends_at).toLocaleDateString()}
+                      Ends {new Date(campaign.ends_at).toLocaleDateString()}
                     </span>
                   </div>
                   {campaign.perk_description && (
@@ -1091,7 +1224,7 @@ function CampaignToolsPanel({
                   <div key={item.campaign_id} className="flex items-center justify-between gap-3 text-ui">
                     <span className="truncate text-[hsl(var(--foreground))]">{item.title}</span>
                     <span className="text-caption font-semibold text-[hsl(var(--muted-foreground))]">
-                      {item.actions} actions
+                      {formatNumber(item.actions)} actions
                     </span>
                   </div>
                 ))}
@@ -1169,12 +1302,16 @@ function ConversionSection({
   if (!summary) {
     return (
       <div className="card-surface mb-8 rounded-2xl p-6 text-ui text-[hsl(var(--muted-foreground))]">
-        Conversion analytics appear after match cards record customer actions.
+        Conversion analytics appear after match cards, offers, and campaigns record the path from local intent to customer action.
       </div>
     )
   }
 
-  const actions = summary.totals.offer_claims + summary.totals.directions_clicks + summary.totals.check_ins
+  const actions =
+    summary.totals.offer_claims +
+    summary.totals.directions_clicks +
+    summary.totals.check_ins +
+    summary.totals.redemption_placeholders
   const positiveIntent = summary.totals.saves + summary.totals.matches
   const headline = [
     {
@@ -1188,7 +1325,7 @@ function ConversionSection({
       icon: Bookmark,
       label: 'Saves + Matches',
       value: positiveIntent,
-      sub: `${formatPercent(summary.rates.save_rate + summary.rates.match_rate)} of impressions`,
+      sub: `${formatPercent(rateFromImpressions(positiveIntent, summary.totals.impressions))} of impressions`,
       color: 'text-success'
     },
     {
@@ -1209,6 +1346,20 @@ function ConversionSection({
 
   return (
     <div className="mb-8 space-y-6 animate-fade-in-up">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h2 className="text-subheading font-bold text-[hsl(var(--foreground))] font-heading">
+            Conversion analytics
+          </h2>
+          <p className="max-w-3xl text-ui text-[hsl(var(--muted-foreground))]">
+            Track where local intent becomes business value: saves, profile opens, claims, directions, check-ins, and tracked use.
+          </p>
+        </div>
+        <span className="text-caption font-medium text-[hsl(var(--muted-foreground))]">
+          Last {summary.range.replace('d', '')} days
+        </span>
+      </div>
+
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {headline.map(item => (
           <MetricCard
@@ -1230,16 +1381,14 @@ function ConversionSection({
                 Conversion funnel
               </h3>
               <p className="text-caption text-[hsl(var(--muted-foreground))]">
-                Counts are actions recorded, not unique customers.
+                Counts are recorded events, not unique customers.
               </p>
             </div>
-            <span className="text-caption text-[hsl(var(--muted-foreground))]">
-              Last {summary.range.replace('d', '')} days
-            </span>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             {summary.funnel.map((step, index) => {
               const previous = index > 0 ? summary.funnel[index - 1].count : 0
+              const retained = rateFromImpressions(step.count, summary.funnel[0]?.count ?? 0)
               const dropOff = previous > 0 ? Math.max(0, 1 - step.count / previous) : 0
               return (
                 <div
@@ -1249,11 +1398,16 @@ function ConversionSection({
                   <p className="min-h-10 text-caption font-medium text-[hsl(var(--muted-foreground))]">
                     {step.label}
                   </p>
+                  <p className="mt-1 min-h-8 text-caption text-[hsl(var(--muted-foreground))]">
+                    {describeFunnelStep(step.id)}
+                  </p>
                   <p className="mt-3 text-subheading font-bold text-[hsl(var(--foreground))]">
                     {formatNumber(step.count)}
                   </p>
                   <p className="mt-1 text-caption text-[hsl(var(--muted-foreground))]">
-                    {index === 0 ? 'Starting point' : `${formatPercent(dropOff)} drop-off`}
+                    {index === 0
+                      ? 'Discovery base'
+                      : `${formatPercent(retained)} of impressions, ${formatPercent(dropOff)} drop-off`}
                   </p>
                 </div>
               )
@@ -1326,7 +1480,7 @@ function ActionBreakdown({ summary }: { summary: BusinessConversionSummary }) {
     },
     {
       icon: CheckCircle2,
-      label: 'Use placeholders',
+      label: 'Tracked use',
       count: summary.totals.redemption_placeholders,
       rate: summary.rates.redemption_placeholder_rate,
       rateLabel: 'of claims'
@@ -1336,7 +1490,7 @@ function ActionBreakdown({ summary }: { summary: BusinessConversionSummary }) {
   return (
     <div className="card-surface rounded-2xl p-6">
       <h3 className="mb-4 text-body font-semibold text-[hsl(var(--foreground))] font-heading">
-        Intent actions
+        Conversion actions
       </h3>
       <div className="space-y-3">
         {rows.map(row => (
@@ -1418,7 +1572,7 @@ function TrendPanel({ timeseries }: { timeseries: BusinessConversionTimeseries |
             Daily trend
           </h3>
           <p className="text-caption text-[hsl(var(--muted-foreground))]">
-            Combined recorded conversion actions by day.
+            Combined recorded customer actions by day.
           </p>
         </div>
         {buckets.length > 0 && (
@@ -1467,18 +1621,6 @@ function formatPercent(value: number): string {
 function toLocalDateTimeValue(date: Date): string {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
-}
-
-function campaignTypeLabel(value: string): string {
-  const labels: Record<string, string> = {
-    slow_hour: 'Slow-hour',
-    first_time_visitor: 'First-time visitor',
-    event_promotion: 'Event promotion',
-    limited_time_perk: 'Limited-time perk',
-    non_discount: 'Non-discount',
-    custom_template: 'Custom'
-  }
-  return labels[value] ?? value.replaceAll('_', ' ')
 }
 
 function rateFromImpressions(count: number, impressions: number): number {

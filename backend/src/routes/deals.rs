@@ -347,7 +347,9 @@ async fn redeem_offer_claim_placeholder(
     };
     let claim = find_offer_claim(&state, &offer_claim_id).await?;
     if value_str(&claim, "user_id") != auth_user.id {
-        return Err(AppError::Forbidden("Offer claim belongs to another user".into()));
+        return Err(AppError::Forbidden(
+            "Offer claim belongs to another user".into(),
+        ));
     }
 
     let business_id = security::validate_uuid_id(value_str(&claim, "business_id"), "business ID")?;
@@ -527,13 +529,11 @@ async fn insert_offer_action_event(
     body.insert("business_id".into(), json!(business_id));
     body.insert(
         "source_surface".into(),
-        json!(
-            payload
-                .source_surface
-                .as_deref()
-                .and_then(|value| security::sanitize_optional_text(Some(value), 80))
-                .unwrap_or_else(|| "business_modal".into())
-        ),
+        json!(payload
+            .source_surface
+            .as_deref()
+            .and_then(|value| security::sanitize_optional_text(Some(value), 80))
+            .unwrap_or_else(|| "business_modal".into())),
     );
     body.insert("constraints".into(), json!([]));
     body.insert("match_reason_codes".into(), json!([]));

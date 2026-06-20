@@ -229,7 +229,10 @@ async fn fetch_customer_events(
                     "event_type,created_at,match_reason_codes".into(),
                 ),
                 eq("business_id", business_id),
-                ("created_at".into(), format!("gte.{}", range_start.to_rfc3339())),
+                (
+                    "created_at".into(),
+                    format!("gte.{}", range_start.to_rfc3339()),
+                ),
                 order("created_at.asc"),
             ],
         )
@@ -266,10 +269,7 @@ fn build_summary(business_id: &str, range: ConversionRange, rows: &[Value]) -> C
         profile_open_rate: safe_rate(totals.profile_opens, totals.impressions),
         action_rate: safe_rate(actions, totals.impressions),
         claim_rate: safe_rate(totals.offer_claims, totals.profile_opens),
-        redemption_placeholder_rate: safe_rate(
-            totals.redemption_placeholders,
-            totals.offer_claims,
-        ),
+        redemption_placeholder_rate: safe_rate(totals.redemption_placeholders, totals.offer_claims),
     };
 
     ConversionSummary {
@@ -325,7 +325,7 @@ fn build_timeseries(
             ..Default::default()
         });
 
-        match value_str(row, "event_type") {
+        match conversion_event_kind(value_str(row, "event_type")) {
             "match_card_impression" => bucket.impressions += 1,
             "save" => bucket.saves += 1,
             "match" => bucket.matches += 1,
@@ -350,7 +350,7 @@ fn aggregate_totals(rows: &[Value]) -> ConversionTotals {
     let mut totals = ConversionTotals::default();
 
     for row in rows {
-        match value_str(row, "event_type") {
+        match conversion_event_kind(value_str(row, "event_type")) {
             "match_card_impression" => totals.impressions += 1,
             "swipe_left" => totals.swipe_left += 1,
             "swipe_right" => totals.swipe_right += 1,
@@ -366,6 +366,20 @@ fn aggregate_totals(rows: &[Value]) -> ConversionTotals {
     }
 
     totals
+}
+
+fn conversion_event_kind(event_type: &str) -> &str {
+    match event_type {
+        "campaign_impression" | "sponsored_impression" => "match_card_impression",
+        "campaign_open" | "sponsored_open" | "sponsored_profile_open" => "business_profile_open",
+        "campaign_claim" | "sponsored_offer_claim" => "offer_claim",
+        "campaign_directions_click" | "sponsored_directions_click" => "directions_click",
+        "sponsored_check_in_placeholder" => "check_in_placeholder",
+        "campaign_redemption_placeholder" | "sponsored_redemption_placeholder" => {
+            "redemption_placeholder"
+        }
+        _ => event_type,
+    }
 }
 
 fn aggregate_reasons(rows: &[Value], event_types: &[&str]) -> Vec<ReasonCount> {
@@ -480,27 +494,49 @@ mod tests {
 
         assert!(ensure_owner_authorized("550e8400-e29b-41d4-a716-446655440000", &owner).is_ok());
         assert!(ensure_owner_authorized("550e8400-e29b-41d4-a716-446655440000", &admin).is_ok());
-        assert!(ensure_owner_authorized("550e8400-e29b-41d4-a716-446655440000", &other_owner).is_err());
+        assert!(
+            ensure_owner_authorized("550e8400-e29b-41d4-a716-446655440000", &other_owner).is_err()
+        );
     }
 
     #[test]
     fn summary_counts_rates_funnel_and_reasons_are_aggregated() {
         let rows = vec![
-            event("match_card_impression", "2026-06-01T00:00:00Z", json!(["high_trust"])),
-            event("match_card_impression", "2026-06-01T01:00:00Z", json!(["open_now"])),
+            event(
+                "match_card_impression",
+                "2026-06-01T00:00:00Z",
+                json!(["high_trust"]),
+            ),
+            event(
+                "match_card_impression",
+                "2026-06-01T01:00:00Z",
+                json!(["open_now"]),
+            ),
             event("swipe_right", "2026-06-01T02:00:00Z", json!(["high_trust"])),
-            event("save", "2026-06-02T00:00:00Z", json!(["open_now", "nearby"])),
+            event(
+                "save",
+                "2026-06-02T00:00:00Z",
+                json!(["open_now", "nearby"]),
+            ),
             event("match", "2026-06-02T01:00:00Z", json!(["high_trust"])),
             event("business_profile_open", "2026-06-03T00:00:00Z", json!([])),
             event("offer_claim", "2026-06-03T01:00:00Z", json!([])),
             event("directions_click", "2026-06-04T00:00:00Z", json!([])),
             event("check_in_placeholder", "2026-06-04T01:00:00Z", json!([])),
             event("redemption_placeholder", "2026-06-05T00:00:00Z", json!([])),
-            event("swipe_left", "2026-06-05T01:00:00Z", json!(["too_far", "open_now"])),
+            event(
+                "swipe_left",
+                "2026-06-05T01:00:00Z",
+                json!(["too_far", "open_now"]),
+            ),
             event("swipe_left", "2026-06-05T02:00:00Z", json!(["too_far"])),
         ];
 
-        let summary = build_summary("550e8400-e29b-41d4-a716-446655440000", ConversionRange::Days30, &rows);
+        let summary = build_summary(
+            "550e8400-e29b-41d4-a716-446655440000",
+            ConversionRange::Days30,
+            &rows,
+        );
 
         assert_eq!(summary.totals.impressions, 2);
         assert_eq!(summary.totals.saves, 1);
@@ -522,6 +558,57 @@ mod tests {
         assert_eq!(summary.top_match_reasons[0].count, 2);
         assert_eq!(summary.top_skipped_reasons[0].reason_code, "too_far");
         assert_eq!(summary.top_skipped_reasons[0].count, 2);
+    }
+
+    #[test]
+    fn summary_counts_campaign_and_sponsored_conversion_actions() {
+        let rows = vec![
+            event("campaign_impression", "2026-06-01T00:00:00Z", json!([])),
+            event("campaign_open", "2026-06-01T01:00:00Z", json!([])),
+            event("campaign_claim", "2026-06-01T02:00:00Z", json!([])),
+            event(
+                "campaign_directions_click",
+                "2026-06-01T03:00:00Z",
+                json!([]),
+            ),
+            event(
+                "campaign_redemption_placeholder",
+                "2026-06-01T04:00:00Z",
+                json!([]),
+            ),
+            event("sponsored_impression", "2026-06-02T00:00:00Z", json!([])),
+            event("sponsored_profile_open", "2026-06-02T01:00:00Z", json!([])),
+            event("sponsored_offer_claim", "2026-06-02T02:00:00Z", json!([])),
+            event(
+                "sponsored_directions_click",
+                "2026-06-02T03:00:00Z",
+                json!([]),
+            ),
+            event(
+                "sponsored_check_in_placeholder",
+                "2026-06-02T04:00:00Z",
+                json!([]),
+            ),
+            event(
+                "sponsored_redemption_placeholder",
+                "2026-06-02T05:00:00Z",
+                json!([]),
+            ),
+        ];
+
+        let summary = build_summary(
+            "550e8400-e29b-41d4-a716-446655440000",
+            ConversionRange::Days30,
+            &rows,
+        );
+
+        assert_eq!(summary.totals.impressions, 2);
+        assert_eq!(summary.totals.profile_opens, 2);
+        assert_eq!(summary.totals.offer_claims, 2);
+        assert_eq!(summary.totals.directions_clicks, 2);
+        assert_eq!(summary.totals.check_ins, 1);
+        assert_eq!(summary.totals.redemption_placeholders, 2);
+        assert_eq!(summary.funnel[3].count, 5);
     }
 
     #[test]
@@ -560,7 +647,47 @@ mod tests {
         assert_eq!(series.buckets[1].offer_claims, 1);
     }
 
-    fn event(event_type: &str, created_at: &str, reason_codes: serde_json::Value) -> serde_json::Value {
+    #[test]
+    fn timeseries_counts_campaign_and_sponsored_conversion_actions() {
+        let rows = vec![
+            event("campaign_impression", "2026-06-01T10:00:00Z", json!([])),
+            event("campaign_claim", "2026-06-01T11:00:00Z", json!([])),
+            event(
+                "campaign_directions_click",
+                "2026-06-01T12:00:00Z",
+                json!([]),
+            ),
+            event("sponsored_impression", "2026-06-02T10:00:00Z", json!([])),
+            event("sponsored_profile_open", "2026-06-02T11:00:00Z", json!([])),
+            event("sponsored_offer_claim", "2026-06-02T12:00:00Z", json!([])),
+            event(
+                "sponsored_redemption_placeholder",
+                "2026-06-02T13:00:00Z",
+                json!([]),
+            ),
+        ];
+
+        let series = build_timeseries(
+            "550e8400-e29b-41d4-a716-446655440000",
+            ConversionRange::Days7,
+            &rows,
+        );
+
+        assert_eq!(series.buckets.len(), 2);
+        assert_eq!(series.buckets[0].impressions, 1);
+        assert_eq!(series.buckets[0].offer_claims, 1);
+        assert_eq!(series.buckets[0].directions_clicks, 1);
+        assert_eq!(series.buckets[1].impressions, 1);
+        assert_eq!(series.buckets[1].profile_opens, 1);
+        assert_eq!(series.buckets[1].offer_claims, 1);
+        assert_eq!(series.buckets[1].redemption_placeholders, 1);
+    }
+
+    fn event(
+        event_type: &str,
+        created_at: &str,
+        reason_codes: serde_json::Value,
+    ) -> serde_json::Value {
         json!({
             "event_type": event_type,
             "created_at": created_at,
