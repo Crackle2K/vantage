@@ -277,7 +277,7 @@ export function BusinessModal({ business, onClose, onBusinessUpdated }: Business
                 <span className="ml-1 font-medium">{business.rating.toFixed(1)}</span>
                 <span className="text-secondary">({business.review_count})</span>
               </div>
-              {business.distance !== undefined && (
+              {typeof business.distance === 'number' && Number.isFinite(business.distance) && (
                 <>
                   <span>|</span>
                   <span>{business.distance.toFixed(1)} km</span>
