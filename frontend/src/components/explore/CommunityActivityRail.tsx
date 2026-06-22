@@ -58,7 +58,11 @@ export function CommunityActivityRail({ items }: CommunityActivityRailProps) {
                 alt={item.name}
                 className="explore-rail-card__image"
               />
-              <button className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/24 bg-black/38 text-white backdrop-blur-md">
+              <button
+                type="button"
+                aria-label={`Save ${item.name}`}
+                className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/24 bg-black/38 text-white backdrop-blur-md"
+              >
                 <Heart className="h-3.5 w-3.5" />
               </button>
             </div>

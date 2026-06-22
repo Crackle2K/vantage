@@ -23,7 +23,7 @@ interface BusinessCardProps {
 const IMAGE_ASPECTS = ['aspect-[4/5]', 'aspect-[1/1]', 'aspect-[6/5]', 'aspect-[5/6]', 'aspect-[4/4.5]'] as const;
 
 function formatDistance(distance?: number): string | null {
-  if (typeof distance !== 'number') {
+  if (typeof distance !== 'number' || !Number.isFinite(distance)) {
     return null;
   }
   return `${distance.toFixed(1)} km away`;

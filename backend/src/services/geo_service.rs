@@ -5,7 +5,9 @@ pub fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let dlon = (lon2 - lon1).to_radians();
     let a = (dlat / 2.0).sin().powi(2)
         + lat1.to_radians().cos() * lat2.to_radians().cos() * (dlon / 2.0).sin().powi(2);
-    2.0 * R * a.sqrt().asin()
+    // Clamp to [0, 1] so floating-point overshoot on near-antipodal points
+    // cannot push `asin` out of domain and yield NaN.
+    2.0 * R * a.sqrt().min(1.0).asin()
 }
 
 /// Encode a lat/lng pair into a geo cell string at the given precision.
