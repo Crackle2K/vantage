@@ -236,18 +236,11 @@ function collectBullets(lines) {
       if (current) bullets.push(current);
       current = m[1];
       continue;
-    }
-    // continuation of a bullet (indented line)
-    if (current && raw.match(/^\s{2,}\S/)) {
-      current += ' ' + raw.trim();
-      continue;
-    }
-    // blank line ends a bullet
-    if (raw.trim() === '' && current) {
-      bullets.push(current);
-      current = null;
-    }
-  }
+function collectColorValues(s) {
+  const hexMatches = s.match(HEX_RE) || [];
+  const oklchMatches = s.match(OKLCH_RE) || [];
+  return [...hexMatches, ...oklchMatches];
+}
   if (current) bullets.push(current);
   return bullets;
 }
